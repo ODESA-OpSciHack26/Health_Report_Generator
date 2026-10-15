@@ -1,8 +1,0 @@
-.venv
-.git
-.env
-__pycache__
-*.py[cod]
-data/raw
-data/processed
-outputs
