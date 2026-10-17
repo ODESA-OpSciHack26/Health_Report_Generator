@@ -96,7 +96,7 @@ def test_canonical_data_root_is_used_everywhere_active():
 
 
 def test_legacy_data_root_remains_removed_and_auditable():
-    assert not (ROOT / "Data").exists()
+    assert "Data" not in {path.name for path in ROOT.iterdir()}
     migration = json.loads(text("docs/phase-3-data-migration.json"))
     removal = json.loads(text("docs/phase-4-legacy-removal.json"))
     assert removal["action"] == "remove_frozen_legacy_data_root"
