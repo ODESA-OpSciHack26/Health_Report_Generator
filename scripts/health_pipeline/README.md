@@ -10,8 +10,12 @@ Schema and lineage: [SCHEMA.md](SCHEMA.md).
 
 ## Importing a CSV or TSV file
 
-The optional tabular importer accepts a UTF-8 CSV or TSV file and creates the
-dataset-folder layout used by the pipeline:
+The optional tabular importer accepts a UTF-8 CSV or TSV file with arbitrary
+column names. Inputs may contain a time field for time-series reporting, or
+omit time entirely for a dated snapshot. A mapping file identifies the
+category and numeric value columns when the generic input path is used.
+
+The importer creates the dataset-folder layout used by the pipeline:
 
 ```text
 data/imported/<filename>/
@@ -29,6 +33,7 @@ python scripts/health_pipeline/ingest_tabular.py \
 
 Use a `.tsv` filename for tab-separated input. The importer validates the
 header and row widths, records the delimiter, row and column counts, import
-time, and input SHA-256 in `metadata.json`. It does not change the existing
-IDD source tree under `data/reference/` and is not part of the default
-Snakemake build yet.
+time, and input SHA-256 in `metadata.json`. For a snapshot, it records an
+explicit snapshot period and does not imply that the values form a time
+series. It does not change the existing IDD source tree under
+`data/reference/` and is not part of the default Snakemake build yet.
