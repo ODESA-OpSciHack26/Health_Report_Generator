@@ -69,7 +69,8 @@ def test_imports_snapshot_with_arbitrary_columns(tmp_path):
     metadata = json.loads((output / "metadata.json").read_text(encoding="utf-8"))
 
     assert "__snapshot_period" in frame.columns
+    assert set(frame["__measure"]) == {"value"}
     assert set(frame["__snapshot_period_type"]) == {"snapshot"}
     assert metadata["generic_input"]["mode"] == "snapshot"
-    assert metadata["temporalVariables"]["period"]["column"] == "__snapshot_period"
+    assert metadata["temporalVariables"]["column"] == "__snapshot_period"
     assert metadata["valueVariables"] == {"Number of mutations": {}}
