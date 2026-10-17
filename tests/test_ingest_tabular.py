@@ -42,3 +42,34 @@ def test_rejects_inconsistent_rows(tmp_path):
 
     with pytest.raises(ValueError, match="expected 2"):
         import_table(str(source), str(tmp_path / "output"))
+
+
+def test_imports_snapshot_with_arbitrary_columns(tmp_path):
+    source = tmp_path / "mutations.csv"
+    source.write_text(
+        "GeneName,Number of mutations\nBRCA1,12\nTP53,27\n",
+        encoding="utf-8",
+    )
+    mapping = tmp_path / "mutations.mapping.json"
+    mapping.write_text(
+        json.dumps({
+            "topic": "gene_mutations",
+            "source": "user_upload",
+            "mode": "snapshot",
+            "category_column": "GeneName",
+            "value_column": "Number of mutations",
+        }),
+        encoding="utf-8",
+    )
+
+    output = import_table(
+        str(source), str(tmp_path / "output"), str(mapping)
+    )
+    frame = __import__("pandas").read_csv(output / "data.csv")
+    metadata = json.loads((output / "metadata.json").read_text(encoding="utf-8"))
+
+    assert "__snapshot_period" in frame.columns
+    assert set(frame["__snapshot_period_type"]) == {"snapshot"}
+    assert metadata["generic_input"]["mode"] == "snapshot"
+    assert metadata["temporalVariables"]["period"]["column"] == "__snapshot_period"
+    assert metadata["valueVariables"] == {"Number of mutations": {}}

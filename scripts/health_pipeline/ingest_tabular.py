@@ -6,6 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+import pandas as pd
 
 
 def sha256_file(path: Path) -> str:
@@ -43,7 +44,7 @@ def inspect_table(path: Path) -> tuple[str, list[str], int]:
     return delimiter, columns, rows
 
 
-def import_table(input_path: str, output_root: str) -> Path:
+def import_table(input_path: str, output_root: str, mapping_path: str | None = None) -> Path:
     source = Path(input_path)
     if source.suffix.lower() not in {".csv", ".tsv"}:
         raise ValueError("Input must be a .csv or .tsv file.")
@@ -53,13 +54,49 @@ def import_table(input_path: str, output_root: str) -> Path:
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
     data_path = dataset_dir / "data.csv"
-    with source.open("r", encoding="utf-8-sig", newline="") as source_file:
-        content = source_file.read()
+    mapping = json.loads(Path(mapping_path).read_text(encoding="utf-8")) if mapping_path else None
+    if mapping is not None:
+        mode = mapping.get("mode", "auto")
+        if mode not in {"auto", "snapshot", "timeseries"}:
+            raise ValueError("mapping mode must be auto, snapshot, or timeseries")
+        frame = pd.read_csv(source, sep="\t" if delimiter == "\t" else ",")
+        value_column = mapping.get("value_column")
+        category_column = mapping.get("category_column")
+        time_column = mapping.get("time_column")
+        for name, column in (("value_column", value_column), ("category_column", category_column), ("time_column", time_column)):
+            if column and column not in frame.columns:
+                raise ValueError(f"{name} {column!r} is not present in the input")
+        if not value_column or not category_column:
+            raise ValueError("mapping requires category_column and value_column")
+        if mode == "auto":
+            mode = "timeseries" if time_column else "snapshot"
+        if mode == "timeseries" and not time_column:
+            raise ValueError("timeseries mode requires time_column")
+        if mode == "snapshot":
+            frame["__snapshot_period"] = datetime.now(timezone.utc).date().isoformat()
+            frame["__snapshot_period_type"] = "snapshot"
+            time_column = "__snapshot_period"
+            time_type_column = "__snapshot_period_type"
+        else:
+            time_type_column = mapping.get("time_type_column")
+            if not time_type_column:
+                frame["__period_type"] = "date"
+                time_type_column = "__period_type"
+        frame.to_csv(data_path, index=False)
+        metadata = {
+            "metaVariables": {"topic": mapping.get("topic", source.stem), "source": mapping.get("source", "user_upload")},
+            "temporalVariables": {"period": {"column": time_column, "typeColumn": time_type_column}},
+            "groupingVariables": {category_column: {"column": category_column, "allValue": "All"}},
+            "valueVariables": {value_column: {}},
+            "generic_input": {"mode": mode, "source_has_time_field": bool(mapping.get("time_column"))},
+        }
+    else:
+        with source.open("r", encoding="utf-8-sig", newline="") as source_file:
+            content = source_file.read()
+        data_path.write_text(content, encoding="utf-8", newline="")
+        metadata = None
 
-    with data_path.open("w", encoding="utf-8", newline="") as output_file:
-        output_file.write(content)
-
-    metadata = {
+    provenance = {
         "source_filename": source.name,
         "source_format": source.suffix.lower().lstrip("."),
         "delimiter": "tab" if delimiter == "\t" else "comma",
@@ -70,6 +107,12 @@ def import_table(input_path: str, output_root: str) -> Path:
         "input_sha256": sha256_file(source),
         "structural_validation": "passed",
     }
+    if metadata is None:
+        metadata = dict(provenance)
+        metadata["generic_input"] = dict(provenance)
+    else:
+        metadata.update(provenance)
+        metadata["generic_input"].update(provenance)
 
     (dataset_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
@@ -83,9 +126,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("input")
     parser.add_argument("--output-root", default="data/imported")
+    parser.add_argument("--mapping")
     args = parser.parse_args()
 
-    output = import_table(args.input, args.output_root)
+    output = import_table(args.input, args.output_root, args.mapping)
     print(f"Imported dataset into {output}")
 
 
