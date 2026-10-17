@@ -7,3 +7,28 @@ The processing stages are `inventory.py`, `harmonise.py`, `checks.py`, `analyse.
 `report_public_health_expert.qmd` is a generic presentation template despite its historical filename. The workflow copies it as `report.qmd` beside the validated CSVs and shared R helpers in each app bundle. Render that packaged copy, not this source file without its data.
 
 Schema and lineage: [SCHEMA.md](SCHEMA.md).
+
+## Importing a CSV or TSV file
+
+The optional tabular importer accepts a UTF-8 CSV or TSV file and creates the
+dataset-folder layout used by the pipeline:
+
+```text
+data/imported/<filename>/
+├── data.csv
+└── metadata.json
+```
+
+Run it explicitly from the repository root:
+
+```bash
+python scripts/health_pipeline/ingest_tabular.py \
+  path/to/input.csv \
+  --output-root data/imported
+```
+
+Use a `.tsv` filename for tab-separated input. The importer validates the
+header and row widths, records the delimiter, row and column counts, import
+time, and input SHA-256 in `metadata.json`. It does not change the existing
+IDD source tree under `data/reference/` and is not part of the default
+Snakemake build yet.
