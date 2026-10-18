@@ -161,8 +161,9 @@ cases,2026-M03,month,CHFL,CHFL,all,agegroup_food,all,510,9127125,5.59,1689,NA,fa
 cases,2026-M04,month,CHFL,CHFL,all,agegroup_food,all,563,9127125,6.17,2252,NA,stagnant,NA,NA,NA,NA,NA,TRUE
 cases,2026-M05,month,CHFL,CHFL,all,agegroup_food,all,851,9127125,9.32,3103,NA,rising,NA,NA,NA,NA,NA,TRUE
 cases,2026-M06,month,CHFL,CHFL,all,agegroup_food,all,1096,9127125,12.01,4199,NA,rising,NA,NA,NA,NA,NA,TRUE
-cases,2026-M07,month,CHFL,CHFL,all,agegroup_food,all,1280,9127125,14.02,5479,NA,rising,NA,NA,NA,NA,NA,TRUE
-cases,2026-M08,month,CHFL,CHFL,all,agegroup_food,all,1392,9127125,15.25,6871,NA,rising,NA,NA,NA,NA,NA,TRUE
+cases,2026-M07,month,CHFL,CHFL,all,agegroup_food,all,1281,9127125,14.04,5480,NA,rising,NA,NA,NA,NA,NA,TRUE
+cases,2026-M08,month,CHFL,CHFL,all,agegroup_food,all,1393,9127125,15.26,6873,NA,rising,NA,NA,NA,NA,NA,TRUE
+cases,2026-M09,month,CHFL,CHFL,all,agegroup_food,all,961,9127125,10.53,7834,NA,stagnant,NA,NA,NA,NA,NA,TRUE
 min_value_10y,2022-M01,month,CHFL,CHFL,all,agegroup_food,all,537,NA,6.14,537,NA,NA,NA,NA,NA,NA,NA,TRUE
 min_value_10y,2022-M02,month,CHFL,CHFL,all,agegroup_food,all,254,NA,3.04,854,NA,NA,NA,NA,NA,NA,NA,TRUE
 min_value_10y,2022-M03,month,CHFL,CHFL,all,agegroup_food,all,226,NA,2.59,1090,NA,NA,NA,NA,NA,NA,NA,TRUE
@@ -219,6 +220,7 @@ min_value_10y,2026-M05,month,CHFL,CHFL,all,agegroup_food,all,335,NA,3.85,1585,NA
 min_value_10y,2026-M06,month,CHFL,CHFL,all,agegroup_food,all,591,NA,6.57,2232,NA,NA,NA,NA,NA,NA,NA,TRUE
 min_value_10y,2026-M07,month,CHFL,CHFL,all,agegroup_food,all,724,NA,8.04,3103,NA,NA,NA,NA,NA,NA,NA,TRUE
 min_value_10y,2026-M08,month,CHFL,CHFL,all,agegroup_food,all,875,NA,9.72,4037,NA,NA,NA,NA,NA,NA,NA,TRUE
+min_value_10y,2026-M09,month,CHFL,CHFL,all,agegroup_food,all,663,NA,7.42,4741,NA,NA,NA,NA,NA,NA,NA,TRUE
 median_value_10y,2022-M01,month,CHFL,CHFL,all,agegroup_food,all,612,NA,7.2,612,NA,NA,NA,NA,NA,NA,NA,TRUE
 median_value_10y,2022-M02,month,CHFL,CHFL,all,agegroup_food,all,336,NA,3.87,923,NA,NA,NA,NA,NA,NA,NA,TRUE
 median_value_10y,2022-M03,month,CHFL,CHFL,all,agegroup_food,all,362,NA,4.2,1308,NA,NA,NA,NA,NA,NA,NA,TRUE
@@ -275,6 +277,7 @@ median_value_10y,2026-M05,month,CHFL,CHFL,all,agegroup_food,all,549,NA,6.4,2250,
 median_value_10y,2026-M06,month,CHFL,CHFL,all,agegroup_food,all,744,NA,8.7,2979,NA,NA,NA,NA,NA,NA,NA,TRUE
 median_value_10y,2026-M07,month,CHFL,CHFL,all,agegroup_food,all,931,NA,10.42,3922,NA,NA,NA,NA,NA,NA,NA,TRUE
 median_value_10y,2026-M08,month,CHFL,CHFL,all,agegroup_food,all,1035,NA,11.87,4963,NA,NA,NA,NA,NA,NA,NA,TRUE
+median_value_10y,2026-M09,month,CHFL,CHFL,all,agegroup_food,all,714,NA,8.31,5696,NA,NA,NA,NA,NA,NA,NA,TRUE
 max_value_10y,2022-M01,month,CHFL,CHFL,all,agegroup_food,all,817,NA,9.91,817,NA,NA,NA,NA,NA,NA,NA,TRUE
 max_value_10y,2022-M02,month,CHFL,CHFL,all,agegroup_food,all,433,NA,5.12,1250,NA,NA,NA,NA,NA,NA,NA,TRUE
 max_value_10y,2022-M03,month,CHFL,CHFL,all,agegroup_food,all,446,NA,5.23,1674,NA,NA,NA,NA,NA,NA,NA,TRUE
@@ -329,8 +332,9 @@ max_value_10y,2026-M03,month,CHFL,CHFL,all,agegroup_food,all,510,NA,5.59,1689,NA
 max_value_10y,2026-M04,month,CHFL,CHFL,all,agegroup_food,all,563,NA,6.17,2252,NA,NA,NA,NA,NA,NA,NA,TRUE
 max_value_10y,2026-M05,month,CHFL,CHFL,all,agegroup_food,all,851,NA,9.32,3103,NA,NA,NA,NA,NA,NA,NA,TRUE
 max_value_10y,2026-M06,month,CHFL,CHFL,all,agegroup_food,all,1096,NA,12.01,4199,NA,NA,NA,NA,NA,NA,NA,TRUE
-max_value_10y,2026-M07,month,CHFL,CHFL,all,agegroup_food,all,1280,NA,14.02,5479,NA,NA,NA,NA,NA,NA,NA,TRUE
-max_value_10y,2026-M08,month,CHFL,CHFL,all,agegroup_food,all,1392,NA,15.25,6871,NA,NA,NA,NA,NA,NA,NA,TRUE
+max_value_10y,2026-M07,month,CHFL,CHFL,all,agegroup_food,all,1281,NA,14.04,5480,NA,NA,NA,NA,NA,NA,NA,TRUE
+max_value_10y,2026-M08,month,CHFL,CHFL,all,agegroup_food,all,1393,NA,15.26,6873,NA,NA,NA,NA,NA,NA,NA,TRUE
+max_value_10y,2026-M09,month,CHFL,CHFL,all,agegroup_food,all,987,NA,10.81,7834,NA,NA,NA,NA,NA,NA,NA,TRUE
 cases,2013,year,AG,canton,all,agegroup_food,all,546,636362,85.8,NA,NA,NA,7.3,NA,NA,NA,NA,TRUE
 cases,2013,year,AI,canton,all,agegroup_food,all,25,15778,158.45,NA,NA,NA,0.3,NA,NA,NA,NA,TRUE
 cases,2013,year,AR,canton,all,agegroup_food,all,52,53691,96.85,NA,NA,NA,0.7,NA,NA,NA,NA,TRUE
