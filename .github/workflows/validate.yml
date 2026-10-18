@@ -55,7 +55,21 @@ jobs:
       - name: Build container
         run: docker build --tag health-report:ci .
       - name: Container smoke test (locked uv sync, Quarto, Marimo)
-        run: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/app" health-report:ci
+        run: |
+          set -euo pipefail
+          container=health-report-ui-ci
+          docker run --detach --name "$container" --user "$(id -u):$(id -g)" \
+            --publish 2718:2718 --volume "$PWD:/app" health-report:ci \
+            marimo run src/ui.py --host 0.0.0.0 --port 2718
+          trap 'docker rm --force "$container" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:2718 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$container"
+          exit 1
 
       - name: Build report container
         run: docker build --file Dockerfile.report --tag health-report:reports-ci .
