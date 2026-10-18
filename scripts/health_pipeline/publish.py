@@ -29,7 +29,17 @@ def package(bundle,dest):
     dest.mkdir(parents=True,exist_ok=True)
     for n in [*m['files'],'bundle.json']:
         shutil.copyfile(bundle/n,dest/n)
-    shutil.copyfile(HERE/'report_public_health_expert.qmd',dest/'report.qmd')
+    stakeholder=json.loads((bundle/'stakeholder.json').read_text())['id']
+    exact_templates={
+        'researcher': PROJECT/'reports/researcher.qmd',
+        'health_institution': PROJECT/'reports/public_health.qmd',
+    }
+    shutil.copyfile(exact_templates.get(stakeholder, HERE/'report_public_health_expert.qmd'), dest/'report.qmd')
+    for helper in ['helpers.py','provenance.py']:
+        shutil.copyfile(PROJECT/'reports/shared'/helper, dest/helper)
+    assets=PROJECT/'reports/assets'
+    if assets.is_dir():
+        shutil.copytree(assets, dest/'assets', dirs_exist_ok=True)
     for n in ['report_helpers.R','audience_reports.R','app.R','dashboard.css','methods.qmd']:
         shutil.copyfile(HERE/'templates'/n,dest/n)
     write_json(dest/'package.json',{'schema_version':'2.0','files':{p.name:digest(p) for p in sorted(dest.iterdir()) if p.is_file() and p.name!='package.json'}})
