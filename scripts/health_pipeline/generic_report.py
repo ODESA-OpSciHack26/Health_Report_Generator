@@ -13,6 +13,67 @@ import pandas as pd
 TEMPLATE_ROOT = Path(__file__).resolve().parent / "templates"
 
 
+def _chart_html(frame: pd.DataFrame, out: Path) -> tuple[str, str]:
+    """Create one self-contained Plotly chart, or explain why a chart is unsafe."""
+    try:
+        import plotly.express as px
+        import plotly.io as pio
+    except ImportError:
+        return "", "Plotly is not available in this environment; the table was retained without a chart."
+
+    numeric = frame.select_dtypes(include="number").columns.tolist()
+    categorical = [c for c in frame.columns if c not in numeric]
+    time_like = []
+    for column in categorical:
+        parsed = pd.to_datetime(frame[column], errors="coerce")
+        if parsed.notna().mean() >= 0.8:
+            time_like.append(column)
+
+    fig = None
+    rule = ""
+    if time_like and numeric:
+        time = time_like[0]
+        work = frame.copy()
+        work["_time"] = pd.to_datetime(work[time], errors="coerce")
+        work = work.dropna(subset=["_time"])
+        if len(work) >= 2:
+            measure = numeric[0]
+            grouped = work.groupby("_time", as_index=False)[measure].sum()
+            fig = px.line(grouped, x="_time", y=measure, markers=True,
+                          title=f"{measure} over time", labels={"_time": time})
+            rule = "date/period + numeric → time trend"
+    elif categorical and numeric:
+        group = categorical[0]
+        measure = numeric[0]
+        grouped = frame.groupby(group, dropna=False, as_index=False)[measure].sum()
+        grouped = grouped.nlargest(15, measure).sort_values(measure)
+        fig = px.bar(grouped, x=measure, y=group, orientation="h",
+                     title=f"{measure} by {group}")
+        rule = "category + numeric → ranked bar chart"
+    elif len(numeric) >= 2:
+        fig = px.scatter(frame, x=numeric[0], y=numeric[1],
+                         title=f"{numeric[1]} compared with {numeric[0]}")
+        rule = "numeric + numeric → scatter plot"
+    elif numeric:
+        measure = numeric[0]
+        fig = px.histogram(frame, x=measure, marginal="box",
+                           title=f"Distribution of {measure}")
+        rule = "numeric → distribution and box plot"
+    elif categorical:
+        group = categorical[0]
+        counts = frame[group].value_counts(dropna=False).head(15).rename_axis(group).reset_index(name="rows")
+        fig = px.bar(counts.sort_values("rows"), x="rows", y=group, orientation="h",
+                     title=f"Rows by {group}")
+        rule = "category only → frequency bar chart"
+
+    if fig is None:
+        return "", "No safe automatic chart rule matched this table; the report contains the table and data-quality explanation."
+    fig.update_layout(template="plotly_white", height=480, margin=dict(l=40, r=30, t=70, b=40))
+    chart_path = out / "automatic_chart.html"
+    chart_path.write_text(pio.to_html(fig, full_html=False, include_plotlyjs="inline"), encoding="utf-8")
+    return chart_path.read_text(encoding="utf-8"), rule
+
+
 def build(input_file: str, output: str, audience: str) -> Path:
     source = Path(input_file)
     out = Path(output) / "reports" / audience
@@ -22,6 +83,7 @@ def build(input_file: str, output: str, audience: str) -> Path:
     summary = frame.describe(include="all").transpose().reset_index(names="column")
     summary.to_csv(out / "summary.csv", index=False)
     frame.to_csv(out / "data.csv", index=False)
+    chart_html, chart_rule = _chart_html(frame, out)
     title = f"Descriptive health report — {audience.replace('_', ' ').title()}"
     rows = "\n".join(f"<tr><td>{c}</td><td>{frame[c].dtype}</td><td>{frame[c].nunique(dropna=True)}</td></tr>" for c in frame.columns)
     style = """
@@ -50,12 +112,38 @@ def build(input_file: str, output: str, audience: str) -> Path:
 <h2>Columns</h2><div class='table-wrap'><table><thead><tr><th>Column</th><th>Type</th><th>Distinct values</th></tr></thead><tbody>{rows}</tbody></table></div>
 <h2>Data preview</h2><div class='table-wrap'>{preview}</div></main><footer>This is an automatic descriptive summary. See the accompanying methods page for processing details.</footer>
 </body></html>"""
+    chart_section = (f"<h2>Automatic visual summary</h2><p class='muted'>{chart_rule}</p>{chart_html}"
+                     if chart_html else f"<h2>Automatic visual summary</h2><p>{chart_rule}</p>")
+    html = html.replace("<h2>Data preview</h2>", chart_section + "<h2>Data preview</h2>")
     (out / "report.html").write_text(html, encoding="utf-8")
     (out / "methods.html").write_text(f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Methods and provenance</title><style>{style}</style></head><body><header><h1>Methods and provenance</h1><p class='muted'>How this report was produced.</p></header><main><h2>Input</h2><p><strong>File:</strong> {source.name}</p><p><strong>Rows:</strong> {len(frame)} &nbsp; <strong>Columns:</strong> {len(frame.columns)}</p><h2>Processing</h2><p>The table was read locally and summarised descriptively. Numeric columns were treated as measures and text columns as descriptive fields. No IDD-specific disease classification, population denominator, or causal interpretation was applied.</p><h2>Audience</h2><p>This report was prepared for the <strong>{audience.replace('_', ' ')}</strong> audience.</p></main><footer>Machine-readable provenance is stored alongside this page.</footer></body></html>""", encoding="utf-8")
     (out / "report.css").write_text(style, encoding="utf-8")
-    template_name = "csv_public_health.qmd" if audience == "health_institution" else "csv_researcher.qmd"
-    qmd = (TEMPLATE_ROOT / template_name).read_text(encoding="utf-8")
-    qmd = qmd.replace("SOURCE_FILENAME", repr(source.name))
+    # CSV reports are deliberately static: the QMD remains editable, but rendering
+    # does not require a notebook kernel to recalculate charts.
+    qmd = f'''---
+title: "Descriptive data report — {audience.replace('_', ' ').title()}"
+subtitle: "A reproducible summary of the uploaded table"
+author: "Nisha Suthar"
+format:
+  html:
+    css: report.css
+    toc: true
+    embed-resources: true
+---
+
+## Input
+
+This report was generated locally from **{source.name}**. It is a descriptive summary and does not apply IDD-specific classifications.
+
+## Automatic visual summary
+
+{chart_rule}.
+
+'''
+    if chart_html:
+        qmd += chart_html + "\n"
+    qmd += "\n## Data preview\n\n" + frame.head(20).to_markdown(index=False) + "\n"
+    qmd += "\n## Reproducibility note\n\nThe input table, generated summary, provenance record, chart asset, and this editable Quarto source are stored together. This CSV report is descriptive and does not apply IDD-specific classifications.\n\n<div class=\"credit\">Reporting and visual design: Nisha Suthar</div>\n"
     (out / "report.qmd").write_text(qmd, encoding="utf-8")
     if shutil.which("quarto"):
         rendered = subprocess.run(
