@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import tomllib
@@ -14,6 +15,17 @@ WORKFLOWS = (
 
 def text(path: str) -> str:
     return (ROOT / path).read_text()
+
+
+def history_json(name: str):
+    history = text("docs/project-history.md")
+    match = re.search(
+        rf"## Original record: docs/{re.escape(name)}\n\n(.*?)(?=\n\n## Original record:|\Z)",
+        history,
+        flags=re.DOTALL,
+    )
+    assert match, f"Missing historical record: {name}"
+    return json.loads(match.group(1).strip())
 
 
 def test_python_contract_is_aligned():
@@ -85,7 +97,7 @@ def test_canonical_data_root_is_used_everywhere_active():
     for workflow in WORKFLOWS:
         content = text(workflow)
         assert "data_root=Data" not in content
-    migration = json.loads(text("docs/phase-3-data-migration.json"))
+    migration = history_json("phase-3-data-migration.json")
     assert migration["canonical_root"] == "data/reference"
     assert migration["legacy_root"] == "Data"
     assert migration["unmapped_legacy_directories"] == 0
@@ -94,8 +106,8 @@ def test_canonical_data_root_is_used_everywhere_active():
 
 def test_legacy_data_root_remains_removed_and_auditable():
     assert "Data" not in {path.name for path in ROOT.iterdir()}
-    migration = json.loads(text("docs/phase-3-data-migration.json"))
-    removal = json.loads(text("docs/phase-4-legacy-removal.json"))
+    migration = history_json("phase-3-data-migration.json")
+    removal = history_json("phase-4-legacy-removal.json")
     assert removal["action"] == "remove_frozen_legacy_data_root"
     assert removal["canonical_root"] == migration["canonical_root"] == "data/reference"
     assert removal["legacy_root"] == migration["legacy_root"] == "Data"
