@@ -1,7 +1,6 @@
 ---
 title: "Descriptive data report — Public health"
 subtitle: "A plain-language summary of the uploaded table"
-author: "Nisha Suthar"
 format:
   html:
     css: report.css
@@ -129,4 +128,3 @@ display(df.head(20))
 
 This is an automatic descriptive report. It does not establish disease thresholds, risk, causation, or public-health recommendations. Interpret the results using the source context and data-quality information.
 
-<div class="credit">Reporting and visual design: Nisha Suthar</div>

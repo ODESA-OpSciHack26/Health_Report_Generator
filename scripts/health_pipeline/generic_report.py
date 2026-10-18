@@ -123,17 +123,41 @@ def build(input_file: str, output: str, audience: str) -> Path:
     qmd = f'''---
 title: "Descriptive data report — {audience.replace('_', ' ').title()}"
 subtitle: "A reproducible summary of the uploaded table"
-author: "Nisha Suthar"
 format:
   html:
     css: report.css
     toc: true
     embed-resources: true
+    theme: cosmo
+    page-layout: article
 ---
+
+<style>
+:root {{ --ink: #263238; --blue: #173f63; --soft: #f5f7fa; --border: #dde3ea; }}
+body {{ background: #fbfcfe; color: var(--ink); }}
+h1, h2, h3 {{ color: var(--blue); }}
+.summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: .8rem; margin: .6rem 0 1.3rem; }}
+.summary-card {{ background: #245b8a; color: white; border-radius: 12px; padding: 1rem 1.05rem; min-height: 92px; box-shadow: 0 3px 10px rgba(30,55,80,.10); }}
+.summary-card .label {{ display: block; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; opacity: .95; font-weight: 650; }}
+.summary-card .value {{ display: block; font-size: 1.75rem; font-weight: 800; margin-top: .25rem; }}
+table {{ width: 100%; background: white; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }}
+thead th {{ background: var(--blue) !important; color: white !important; font-weight: 650; padding: .65rem .75rem !important; }}
+tbody td {{ padding: .58rem .75rem !important; border-bottom: 1px solid #edf0f3 !important; }}
+tbody tr:nth-child(even) {{ background: #f8fafc; }}
+@media (max-width: 800px) {{ .summary-grid {{ grid-template-columns: repeat(2, minmax(140px, 1fr)); }} }}
+@media print {{ * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }} .summary-card {{ background: #245B8A !important; color: white !important; }} }}
+</style>
 
 ## Input
 
 This report was generated locally from **{source.name}**. It is a descriptive summary and does not apply IDD-specific classifications.
+
+<div class="summary-grid">
+<div class="summary-card"><span class="label">Rows</span><span class="value">{len(frame):,}</span></div>
+<div class="summary-card"><span class="label">Columns</span><span class="value">{len(frame.columns):,}</span></div>
+<div class="summary-card"><span class="label">Numeric measures</span><span class="value">{len(frame.select_dtypes(include="number").columns):,}</span></div>
+<div class="summary-card"><span class="label">Missing cells</span><span class="value">{int(frame.isna().sum().sum()):,}</span></div>
+</div>
 
 ## Automatic visual summary
 
@@ -143,7 +167,7 @@ This report was generated locally from **{source.name}**. It is a descriptive su
     if chart_html:
         qmd += chart_html + "\n"
     qmd += "\n## Data preview\n\n" + frame.head(20).to_markdown(index=False) + "\n"
-    qmd += "\n## Reproducibility note\n\nThe input table, generated summary, provenance record, chart asset, and this editable Quarto source are stored together. This CSV report is descriptive and does not apply IDD-specific classifications.\n\n<div class=\"credit\">Reporting and visual design: Nisha Suthar</div>\n"
+    qmd += "\n## Reproducibility note\n\nThe input table, generated summary, provenance record, chart asset, and this editable Quarto source are stored together. This CSV report is descriptive and does not apply IDD-specific classifications.\n"
     (out / "report.qmd").write_text(qmd, encoding="utf-8")
     if shutil.which("quarto"):
         rendered = subprocess.run(

@@ -1,6 +1,5 @@
 ---
 title: "Disease notifications | Findings"
-author: "Nisha Suthar"
 format:
   html:
     embed-resources: true
@@ -61,7 +60,6 @@ if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && 
 }
 ```
 
-<div class="credit">Reporting and visual design: Nisha Suthar</div>
 
 ```{r}
 #| results: asis

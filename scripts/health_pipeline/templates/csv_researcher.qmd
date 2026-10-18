@@ -1,7 +1,6 @@
 ---
 title: "Descriptive data report — Researcher"
 subtitle: "A reproducible summary of the uploaded table"
-author: "Nisha Suthar"
 format:
   html:
     css: report.css
@@ -135,4 +134,3 @@ display(df.head(20))
 
 The uploaded file, generated summary, provenance record, and this editable Quarto source are stored together in the run directory. The report is descriptive only; it does not infer causality or apply IDD disease classifications.
 
-<div class="credit">Reporting and visual design: Nisha Suthar</div>
