@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
+TEMPLATE_ROOT = Path(__file__).resolve().parent / "templates"
+
 
 def build(input_file: str, output: str, audience: str) -> Path:
     source = Path(input_file)
@@ -51,7 +53,9 @@ def build(input_file: str, output: str, audience: str) -> Path:
     (out / "report.html").write_text(html, encoding="utf-8")
     (out / "methods.html").write_text(f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Methods and provenance</title><style>{style}</style></head><body><header><h1>Methods and provenance</h1><p class='muted'>How this report was produced.</p></header><main><h2>Input</h2><p><strong>File:</strong> {source.name}</p><p><strong>Rows:</strong> {len(frame)} &nbsp; <strong>Columns:</strong> {len(frame.columns)}</p><h2>Processing</h2><p>The table was read locally and summarised descriptively. Numeric columns were treated as measures and text columns as descriptive fields. No IDD-specific disease classification, population denominator, or causal interpretation was applied.</p><h2>Audience</h2><p>This report was prepared for the <strong>{audience.replace('_', ' ')}</strong> audience.</p></main><footer>Machine-readable provenance is stored alongside this page.</footer></body></html>""", encoding="utf-8")
     (out / "report.css").write_text(style, encoding="utf-8")
-    qmd = f"""---\ntitle: '{title}'\nformat:\n  html:\n    css: report.css\n    toc: false\n    page-layout: full\n---\n\nGenerated locally from **{source.name}**.\n\n## At a glance\n\n- **Rows:** {len(frame)}\n- **Columns:** {len(frame.columns)}\n- **Numeric measures:** {', '.join(numeric) or 'none'}\n\n## Column summary\n\n```{{python}}\nimport pandas as pd\ndf = pd.read_csv('data.csv')\nsummary = pd.DataFrame({{\n    'column': df.columns,\n    'type': [str(df[c].dtype) for c in df.columns],\n    'distinct_values': [df[c].nunique(dropna=True) for c in df.columns],\n}})\nsummary\n```\n\n## Data preview\n\n```{{python}}\ndf.head(20)\n```\n\n## Interpretation\n\nThis is an automatic descriptive summary. It does not apply IDD-specific disease classification, population denominators, or causal interpretation.\n"""
+    template_name = "csv_public_health.qmd" if audience == "health_institution" else "csv_researcher.qmd"
+    qmd = (TEMPLATE_ROOT / template_name).read_text(encoding="utf-8")
+    qmd = qmd.replace("SOURCE_FILENAME", repr(source.name))
     (out / "report.qmd").write_text(qmd, encoding="utf-8")
     if shutil.which("quarto"):
         rendered = subprocess.run(

@@ -60,8 +60,10 @@ def test_audiences_share_identical_analytic_parameters():
 
 
 def test_single_shared_report_source():
-    reports = sorted(p.name for p in P.rglob('*.qmd') if 'example_output' not in p.parts)
+    reports = sorted(p.name for p in P.rglob('*.qmd') if 'example_output' not in p.parts and not p.name.startswith('csv_'))
     assert reports == ['methods.qmd', 'report_public_health_expert.qmd']
+    assert (P / 'templates/csv_researcher.qmd').is_file()
+    assert (P / 'templates/csv_public_health.qmd').is_file()
     snakefile = (ROOT / 'Snakefile').read_text()
     assert snakefile.count('report_public_health_expert.qmd') == 1  # declared once as SHARED_TEMPLATE
     assert 'SHARED_TEMPLATE' in snakefile.split('PRESENTATION_CODE =')[1].split(']')[0]

@@ -1,5 +1,6 @@
 ---
 title: "Disease notifications | Methods & sources"
+author: "Nisha Suthar"
 format:
   html:
     embed-resources: true
@@ -77,3 +78,5 @@ if(knitr::is_latex_output()) {
   cat('[Return to the findings report](report.pdf).\n')
 }
 ```
+
+<div class="credit">Reporting and visual design: Nisha Suthar</div>

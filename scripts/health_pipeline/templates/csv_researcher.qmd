@@ -1,0 +1,88 @@
+---
+title: "Descriptive data report — Researcher"
+subtitle: "A reproducible summary of the uploaded table"
+author: "Nisha Suthar"
+format:
+  html:
+    css: report.css
+    toc: true
+    toc-depth: 2
+    page-layout: article
+    code-fold: true
+    embed-resources: true
+jupyter: python3
+---
+
+<style>
+:root { --ink: #263238; --blue: #173f63; --soft: #f5f7fa; --border: #dde3ea; }
+body { background: #fbfcfe; color: var(--ink); }
+h1, h2, h3 { color: var(--blue); }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: .8rem; margin: .8rem 0 1.4rem; }
+.summary-card { background: var(--blue); color: white; border-radius: 12px; padding: 1rem; min-height: 92px; box-shadow: 0 3px 10px rgba(30,55,80,.10); }
+.summary-card .label { display: block; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; opacity: .9; }
+.summary-card .value { display: block; font-size: 1.7rem; font-weight: 800; margin-top: .25rem; }
+table { width: 100%; background: white; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+thead th { background: var(--blue) !important; color: white !important; }
+tbody tr:nth-child(even) { background: var(--soft); }
+.credit { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); color: #667085; font-size: .9rem; }
+</style>
+
+```{python}
+import pandas as pd
+from IPython.display import display, Markdown
+
+df = pd.read_csv("data.csv")
+numeric = df.select_dtypes(include="number")
+time_columns = [c for c in df.columns if any(token in c.lower() for token in ("date", "time", "year", "period"))]
+display(Markdown(f"<div class='summary-grid'><div class='summary-card'><span class='label'>Rows</span><span class='value'>{len(df):,}</span></div><div class='summary-card'><span class='label'>Columns</span><span class='value'>{len(df.columns)}</span></div><div class='summary-card'><span class='label'>Numeric measures</span><span class='value'>{len(numeric)}</span></div></div>\n\n**Input:** `{SOURCE_FILENAME}`"))
+```
+
+## Research view
+
+This report describes the uploaded table without imposing an IDD-specific schema. It shows the observed fields, distributions, missingness, and—when a date or period field is present—how numeric measures vary over time.
+
+## Data quality overview
+
+```{python}
+quality = pd.DataFrame({
+    "column": df.columns,
+    "type": [str(df[c].dtype) for c in df.columns],
+    "missing": [int(df[c].isna().sum()) for c in df.columns],
+    "distinct_values": [int(df[c].nunique(dropna=True)) for c in df.columns],
+})
+display(quality)
+```
+
+## Numeric measures
+
+```{python}
+if numeric.empty:
+    display(Markdown("No numeric measures were detected."))
+else:
+    display(numeric.describe().transpose().round(3))
+```
+
+## Time structure
+
+```{python}
+if not time_columns:
+    display(Markdown("No time or period column was detected. This is treated as a snapshot."))
+else:
+    display(Markdown("Detected time-like column(s): " + ", ".join(f"`{c}`" for c in time_columns)))
+    for column in time_columns:
+        parsed = pd.to_datetime(df[column], errors="coerce")
+        if parsed.notna().mean() >= 0.8:
+            display(df.assign(_time=parsed).groupby("_time")[list(numeric.columns)].sum().tail(20) if not numeric.empty else df[column].value_counts().head(20))
+```
+
+## Data preview
+
+```{python}
+display(df.head(20))
+```
+
+## Reproducibility note
+
+The uploaded file, generated summary, provenance record, and this editable Quarto source are stored together in the run directory. The report is descriptive only; it does not infer causality or apply IDD disease classifications.
+
+<div class="credit">Reporting and visual design: Nisha Suthar</div>

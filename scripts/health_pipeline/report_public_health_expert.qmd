@@ -1,5 +1,6 @@
 ---
 title: "Disease notifications | Findings"
+author: "Nisha Suthar"
 format:
   html:
     embed-resources: true
@@ -59,6 +60,8 @@ if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && 
   cat('\nSource: FOPH national annual case series, summed over the selected diseases. COVID-19, AIDS and sentinel estimates are excluded from the default group totals. Only configured reporting and reference years are shown.\n\n')
 }
 ```
+
+<div class="credit">Reporting and visual design: Nisha Suthar</div>
 
 ```{r}
 #| results: asis
