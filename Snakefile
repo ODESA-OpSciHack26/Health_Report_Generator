@@ -8,6 +8,12 @@ sys.path.insert(0, str(Path(P).resolve()))
 from common import digest, object_hash
 OUT = config['out'].rstrip('/')
 STAKEHOLDERS = config['stakeholders']
+# Interactive callers may request one audience while the normal workflow
+# continues to build every configured audience.
+REQUESTED_STAKEHOLDER = config.get('stakeholder')
+TARGET_STAKEHOLDERS = ([REQUESTED_STAKEHOLDER] if REQUESTED_STAKEHOLDER else STAKEHOLDERS)
+if REQUESTED_STAKEHOLDER and REQUESTED_STAKEHOLDER not in STAKEHOLDERS:
+    raise ValueError(f"Unknown stakeholder {REQUESTED_STAKEHOLDER!r}; choose one of {STAKEHOLDERS}")
 PYTHON = sys.executable
 QUARTO = config.get('quarto', 'quarto')
 for s in STAKEHOLDERS:
@@ -16,16 +22,16 @@ for s in STAKEHOLDERS:
 CONFIGS = {s: f'{P}/config/stakeholders/{s}.json' for s in STAKEHOLDERS}
 BUNDLE_NAMES = ['series.csv','metrics.csv','lineage.csv','selection.csv','sources.csv','checks.csv',
                 'snapshot.json','stakeholder.json','pathogen_class.csv','bundle.json']
-ANALYSIS = expand(OUT+'/reports/{s}/data/{n}',s=STAKEHOLDERS,n=BUNDLE_NAMES)
-HTML = expand(OUT+'/reports/{s}/{doc}.html',s=STAKEHOLDERS,doc=['report','methods'])
-PDF = expand(OUT+'/reports/{s}/{doc}.pdf',s=STAKEHOLDERS,doc=['report','methods'])
-APPS = expand(OUT+'/reports/{s}/app/package.json',s=STAKEHOLDERS)
+ANALYSIS = expand(OUT+'/reports/{s}/data/{n}',s=TARGET_STAKEHOLDERS,n=BUNDLE_NAMES)
+HTML = expand(OUT+'/reports/{s}/{doc}.html',s=TARGET_STAKEHOLDERS,doc=['report','methods'])
+PDF = expand(OUT+'/reports/{s}/{doc}.pdf',s=TARGET_STAKEHOLDERS,doc=['report','methods'])
+APPS = expand(OUT+'/reports/{s}/app/package.json',s=TARGET_STAKEHOLDERS)
 # Every audience is rendered from this one shared template; audiences differ only by stakeholder JSON.
 SHARED_TEMPLATE = f'{P}/report_public_health_expert.qmd'
 PRESENTATION_CODE = [f'{P}/publish.py', f'{P}/common.py', SHARED_TEMPLATE, f'{P}/templates/report_helpers.R',
                      f'{P}/templates/audience_reports.R', f'{P}/templates/app.R', f'{P}/templates/dashboard.css',
                      f'{P}/templates/methods.qmd']
-PROVENANCE = expand(OUT+'/reports/{s}/{name}',s=STAKEHOLDERS,name=['provenance.json','provenance.pdf.json'])
+PROVENANCE = expand(OUT+'/reports/{s}/{name}',s=TARGET_STAKEHOLDERS,name=['provenance.json','provenance.pdf.json'])
 DATA_ROOT = config['data_root'] if not config.get('snapshot_manifest') else ''
 ENVIRONMENT = [f'{P}/requirements.lock.txt', 'workflow/environment.yml', 'workflow/r-packages.tsv', 'renv.lock', '.Rprofile']
 
