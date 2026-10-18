@@ -1,5 +1,6 @@
 services:
   report:
+    image: health-report:local
     build:
       context: .
       dockerfile: Dockerfile.report
@@ -30,22 +31,29 @@ services:
       XDG_CACHE_HOME: /tmp/health-report-cache
     command: ["python", "src/sync_idd_exports.py"]
 
-  ui:
-    profiles: ["ui"]
+  app:
+    image: health-report:local
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.report
+    platform: linux/amd64
     working_dir: /app
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
       - .:/app
-      - ./.cache/uv:/tmp/uv-cache
+    ports:
+      - "8501:8501"
+      - "8502:8502"
     environment:
-      UV_CACHE_DIR: /tmp/uv-cache
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
-      GITHUB_OWNER: ${GITHUB_OWNER:-LarsEBaumann}
-      GITHUB_REPO: ${GITHUB_REPO:-Health_Report_Generator}
-      GITHUB_APP_REF: ${GITHUB_APP_REF:-main}
-      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
-      GITHUB_WORKFLOW: ${GITHUB_WORKFLOW:-refresh-idd-data.yml}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/health-report-config
+      XDG_CACHE_HOME: /tmp/health-report-cache
+      HEALTH_REPORT_R_LIBRARY: /opt/health-report-r-library
+      R_LIBS_USER: /opt/health-report-r-library
+    command:
+      - streamlit
+      - run
+      - src/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --browser.gatherUsageStats=false

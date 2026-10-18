@@ -40,7 +40,7 @@ Snakemake (`Snakefile`) orchestrates the stages. It expands the analysis and ren
 | `scripts/health_pipeline/config/stakeholders/` | One JSON per audience (plus the retained `public_health_expert.json` base profile) |
 | `scripts/health_pipeline/report_public_health_expert.qmd`, `templates/` | The shared report source, methods report, R presentation helpers, styles, Shiny app |
 | `data/reference/` | Canonical committed source data and per-dataset retrieval records |
-| `src/` | Optional connector utilities and Marimo interface (see `CONNECTOR_SETUP.md`) |
+| `src/` | `app.py` (optional Streamlit page over `custom_report.py`) and `sync_idd_exports.py` (data acquisition) |
 | `tests/` | Python tests (calculations, gates, audiences, environment) and R smoke tests |
 
 ## Known structural limits

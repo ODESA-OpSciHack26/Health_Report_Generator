@@ -175,9 +175,10 @@ Local builds use the committed snapshot, not a live API request.
 Remote API acquisition is implemented separately by the IDD data-update
 workflow. A successful update can change the committed data and later findings.
 
-The optional Marimo interface downloads a GitHub workflow artifact and
-requests selected reports from a configured repository.
-See `CONNECTOR_SETUP.md`; it is not required for local reporting.
+The optional web page (`src/app.py`, Streamlit) builds one report from a
+chosen audience and period using the committed data. Start it with
+`docker compose up app` and open http://localhost:8501. It needs no GitHub
+token and is not required for local reporting.
 
 ## 9. Troubleshooting and evidence
 

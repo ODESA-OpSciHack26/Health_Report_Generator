@@ -23,8 +23,8 @@ docker compose build report
 docker compose run --rm report snakemake --cores 2
 ```
 
-The report image uses `Dockerfile.report`; the separate optional UI uses
-`Dockerfile`. Runtime versions are declared in `workflow/toolchain.json`.
+The report image uses `Dockerfile.report` (it also runs the optional web
+page, below). Runtime versions are declared in `workflow/toolchain.json`.
 The build reads committed data in `data/reference/`; it does not fetch
 new IDD data or require GitHub credentials.
 
@@ -48,10 +48,16 @@ bash scripts/health_pipeline/run_all.sh
 
 For native setup, diagnostics, and reproduction checks, see
 [GETTING_STARTED.md](GETTING_STARTED.md).
-The optional fork-backed Marimo interface is a separate path described in
-[CONNECTOR_SETUP.md](CONNECTOR_SETUP.md); it is not required for local reports.
-It depends on GitHub Actions and a user token, and each request is rendered
-from scratch. It does not use the custom-report cache.
+## Web page (easiest way to start)
+
+If you prefer clicking to typing commands, start the Streamlit page. It runs in the same Docker image, reads the committed data and needs no GitHub token.
+
+```sh
+docker compose build app
+docker compose up app
+```
+
+Open http://localhost:8501, choose the audience and the years, and press **Generate report**. The first report takes a few minutes; an identical request is then answered from the cache. The report is shown on the page, can be downloaded, and is also saved in `results/app/`. It builds one report at a time.
 
 ## What you get
 
@@ -76,7 +82,7 @@ docker compose run --rm report python scripts/health_pipeline/custom_report.py \
 
 The last line printed is either `cache miss: key=<sha256> -> <folder>` or `cache hit: key=<sha256> -> <folder>`.
 
-**Cache.** Finished reports are stored in `results/cache/custom_reports/`. The cache key is a SHA-256 over the request, the data snapshot id, the report code hash, the toolchain hash and the schema version. An identical request returns the stored report in seconds, with its original provenance and render time. A different request, a data refresh or a template change produces a new key and a new render. The cache is local to one machine and grows with each distinct request. It is used by `custom_report.py` only, not by the optional Marimo interface. You can delete `results/cache/` at any time; the next run simply renders again.
+**Cache.** Finished reports are stored in `results/cache/custom_reports/`. The cache key is a SHA-256 over the request, the data snapshot id, the report code hash, the toolchain hash and the schema version. An identical request returns the stored report in seconds, with its original provenance and render time. A different request, a data refresh or a template change produces a new key and a new render. The cache is local to one machine and grows with each distinct request. It is used by `custom_report.py` only, and by the web page, which calls it. You can delete `results/cache/` at any time; the next run simply renders again.
 
 **Output.** The `--out` folder is replaced on every run and holds `report.html`, `methods.html`, `provenance.json` and `request_provenance.json`. In `provenance.json`, `filters` and `effective_parameters` record the years and other settings that were applied. `request_provenance.json` records `cache_key`, the key components (including `code_hash`) and `rendered_utc`.
 
@@ -122,7 +128,6 @@ The reports describe officially notified cases, not all infections. They are des
 | Release notes and checklist | [RELEASE_NOTES.md](RELEASE_NOTES.md), [docs/release-checklist.md](docs/release-checklist.md) |
 | Repository map, phase records | [docs/repository-map.md](docs/repository-map.md), [docs/history.md](docs/history.md), `docs/phase-*.md` |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md), [GETTING_STARTED.md](GETTING_STARTED.md) |
-| Optional Marimo interface | [CONNECTOR_SETUP.md](CONNECTOR_SETUP.md) |
 
 Citing this work: see [CITATION.cff](CITATION.cff).
 
@@ -142,6 +147,6 @@ Tests cover subgroup safety, incomplete months/years/baselines, denominators, so
 
 CI is split into gated jobs (`docs/phase-6-ci-hardening.md`): `fast` (Ruff, tests, dry run), `secrets` (pinned gitleaks history scan), `container` (optional UI image smoke test plus report-image build, all-audience rendering, provenance/release verification, app smoke tests and no-op rebuild) and `full` (all three audiences, output and provenance checks, release-hash and rendered-link verification, Shiny checks, no-op rebuild). It uploads a release bundle only after every `full` step succeeds. It does not deploy or overwrite a production site. A failed local build may leave older reports on disk; treat only a successfully completed build and its matching `release.json` as a release. Preserve previously uploaded successful artifacts independently of a new build.
 
-The production Python lock at `scripts/health_pipeline/requirements.lock.txt` pins the Snakemake/report pipeline; `uv.lock` pins the optional Marimo/connector environment from `pyproject.toml`; `renv.lock` records R dependencies. `workflow/toolchain.json` is the machine-readable source of runtime version policy. `workflow/environment.yml` is an alternative convenience environment, not an additional authoritative lock.
+The production Python lock at `scripts/health_pipeline/requirements.lock.txt` pins the Snakemake/report pipeline; `renv.lock` records R dependencies. `workflow/toolchain.json` is the machine-readable source of runtime version policy. `workflow/environment.yml` is an alternative convenience environment, not an additional authoritative lock.
 
 See [GETTING_STARTED.md](GETTING_STARTED.md) for setup and reproduction instructions.

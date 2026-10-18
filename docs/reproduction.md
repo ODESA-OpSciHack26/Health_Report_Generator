@@ -25,7 +25,7 @@ The report command reads committed reference data and requires no GitHub
 token, fork, or GitHub Actions. It does not perform an IDD data update.
 
 `Dockerfile.report` provides the report environment.
-The original `Dockerfile` provides the separate optional UI environment.
+The same image runs the optional Streamlit page (`docker compose up app`).
 
 ### Alternative: native setup
 

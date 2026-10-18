@@ -25,18 +25,16 @@ This map distinguishes the supported production workflow from optional, experime
 
 | Path | Role | Status |
 |---|---|---|
-| `src/ui.py` | Marimo interface that dispatches selected audience/dataset reports through GitHub Actions. | Optional interface |
-| `src/artifact_download.py` | Downloads the versioned source artifact used by the Marimo interface. | Optional interface |
+| `src/app.py` | Streamlit page: pick audience and years, build and view a report via `custom_report.py`. | Optional interface |
 | `.github/workflows/render-selected-report.yml` | Renders a selected report from an exact lineage artifact. | Optional but supported |
 | `src/sync_idd_exports.py` | IDD acquisition and synchronization utilities. | Active connector utilities |
-| `Dockerfile`, `compose.yaml` | Container environment for the Marimo/connector path. | Experimental |
+| `Dockerfile.report`, `compose.yaml` | Container image and services (`report`, `sync`, `app`). | Supported |
 
 ## Historical material
 
 | Path | Role | Status |
 |---|---|---|
 | `scripts/health_pipeline/example_output/` | Outputs from an earlier prototype. | Historical; not release evidence |
-| `design/report-mockups.html` | Alternate editorial design exploration. | Historical design reference |
 | `docs/phase-3-data-migration.json` | Path-level hashes and scientific comparison for the retired `Data/` release. | Historical machine-readable audit record |
 | `docs/phase-4-legacy-removal.json` | Removal gate and deletion commit for the retired root. | Active audit record |
 | `docs/history.md` | Merged record of project phases 0 to 3. | Historical |

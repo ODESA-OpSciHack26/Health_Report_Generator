@@ -21,7 +21,6 @@ TOOLCHAIN_FILES = [
     'workflow/config.schema.json',
     'workflow/r-packages.tsv',
     'scripts/health_pipeline/requirements.lock.txt',
-    'scripts/health_pipeline/requirements.ui.lock.txt',
 ]
 IGNORED_TOP = {'__pycache__', 'example_output', 'config'}
 

@@ -45,24 +45,3 @@ def test_selected_renderer_and_presentation_profiles_match():
     audiences = ast.literal_eval(assignments[0].value)
     assert set(audiences) == EXPECTED
     assert set(profiles) == EXPECTED
-
-
-def test_ui_audience_dropdown_matches():
-    tree = ast.parse((ROOT / "src/ui.py").read_text())
-    mappings = []
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "dropdown"
-        ):
-            continue
-        for keyword in node.keywords:
-            if keyword.arg == "options" and isinstance(keyword.value, ast.Dict):
-                mappings.append(ast.literal_eval(keyword.value))
-
-    assert len(mappings) == 1
-    assert set(mappings[0].values()) == EXPECTED
-    assert len(mappings[0]) == len(EXPECTED)
