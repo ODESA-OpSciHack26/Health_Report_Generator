@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import marimo
 
 __generated_with = "0.25.1"
@@ -6,199 +8,104 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    import json
-    import os
-    import uuid
+    from datetime import datetime, timezone
+    import io
+    import pathlib
+    import subprocess
+    import sys
 
     import marimo as mo
     import pandas as pd
-    import requests
 
-    from artifact_download import download_latest_report
-    from github_config import resolve_repository
-
-    return download_latest_report, json, mo, os, pd, requests, resolve_repository, uuid
+    return datetime, io, mo, pathlib, pd, subprocess, sys, timezone
 
 
 @app.cell
-def _(mo, resolve_repository):
-    try:
-        _owner, _repo = resolve_repository()
-        _repository_status = mo.callout(
-            mo.md(
-                f"GitHub repository: `{_owner}/{_repo}`. "
-                "Artifact lookup and report requests use this repository. "
-                "Fork users must configure their own repository and token."
-            ),
-            kind="info",
-        )
-    except ValueError as _error:
-        _repository_status = mo.callout(
-            mo.md(f"Repository configuration error: {_error}"),
-            kind="danger",
-        )
-    _repository_status
-    return
+def _(mo):
+    audience = mo.ui.dropdown(
+        options={"Researcher": "researcher", "Public health": "health_institution", "Public": "public"},
+        value="Public health", label="Audience type",
+    )
+    source = mo.ui.dropdown(
+        options={"Local IDD dataset": "idd", "Upload CSV/TSV": "upload"},
+        value="Local IDD dataset", label="Data source",
+    )
+    mo.vstack([
+        mo.md("# Local health report generator\n\nGenerate a report locally from the IDD dataset or an uploaded CSV/TSV file."),
+        mo.hstack([audience, source]),
+    ])
+    return audience, source
 
 
 @app.cell
-def _(download_latest_report, pd):
-    try:
-        bundle_dir, source_run, source_artifact = download_latest_report()
-        series = pd.read_csv(bundle_dir / "series.csv").fillna("")
-        selection = pd.read_csv(bundle_dir / "selection.csv").fillna("")
-        required_series = {"dataset_id", "pathogen_class", "label"}
-        required_selection = {"dataset_id", "status", "group_eligible"}
-        if not required_series.issubset(series.columns):
-            raise ValueError(f"series.csv missing columns: {sorted(required_series - set(series.columns))}")
-        if not required_selection.issubset(selection.columns):
-            raise ValueError(f"selection.csv missing columns: {sorted(required_selection - set(selection.columns))}")
-        eligible = selection[
-            selection["status"].astype(str).str.lower().eq("included")
-            & selection["group_eligible"].astype(str).str.lower().isin(["true", "1"])
-        ]
-        allowed = set(eligible["dataset_id"].astype(str))
-        datasets = series[
-            series["dataset_id"].astype(str).isin(allowed)
-            & series["pathogen_class"].isin(["viral", "bacterial"])
-        ].drop_duplicates("dataset_id").sort_values(["pathogen_class", "label"])
-        ready = not datasets.empty
-        message = None if ready else "No eligible viral or bacterial datasets were found."
-    except Exception as exc:
-        source_run = None
-        source_artifact = None
-        datasets = pd.DataFrame(columns=["dataset_id", "pathogen_class", "label"])
-        ready = False
-        message = str(exc)
-    return datasets, message, ready, source_artifact, source_run
-
-
-@app.cell
-def _(datasets, message, mo, ready, source_artifact, source_run):
-    audience_widget = mo.ui.dropdown(
-        options={"Researcher": "researcher", "Public health": "health_institution", "General public": "public"},
-        value="Researcher",
-        label="Who is this report for?",
-        full_width=True,
-    )
-    def disease_options(pathogen_class):
-        return {
-            f"{row.label} [{row.dataset_id}]": str(row.dataset_id)
-            for row in datasets[
-                datasets["pathogen_class"].eq(pathogen_class)
-            ].itertuples(index=False)
-        } if ready else {}
-
-    bacterial_widget = mo.ui.multiselect(
-        options=disease_options("bacterial"),
-        label="Bacterial diseases",
-        full_width=True,
-    )
-    viral_widget = mo.ui.multiselect(
-        options=disease_options("viral"),
-        label="Viral diseases",
-        full_width=True,
-    )
-    report_form = mo.ui.form(
-        mo.md(
-            "## Create a report\n\n{audience}\n\n"
-            "Select bacterial diseases, viral diseases, or both. "
-            "The report uses only your selected datasets.\n\n"
-            "{bacterial}\n\n{viral}"
-        ).batch(
-            audience=audience_widget,
-            bacterial=bacterial_widget,
-            viral=viral_widget,
-        ),
-        submit_button_label="Generate report",
-        submit_button_disabled=not ready or source_run is None,
-    )
-    if ready:
-        status = mo.md(
-            f"Data ready: {len(datasets)} eligible datasets from source run "
-            f"`{source_run['run_number']}` (artifact `{source_artifact['name']}`)."
-        )
+def _(mo, source):
+    upload = None
+    idd_button = None
+    csv_button = None
+    if source.value == "idd":
+        idd_button = mo.ui.run_button(label="Generate local IDD report")
+        controls = idd_button
     else:
-        status = mo.callout(
-            mo.md(f"Could not load report data: `{message}`"), kind="warn"
-        )
-    mo.vstack([status, report_form])
-    return audience_widget, bacterial_widget, viral_widget, report_form
+        upload = mo.ui.file(filetypes=[".csv", ".tsv"], multiple=False, label="Upload CSV/TSV")
+        csv_button = mo.ui.run_button(label="Generate CSV/TSV report")
+        controls = mo.vstack([upload, csv_button])
+    restart = mo.ui.button(label="Restart analysis")
+    mo.hstack([controls, restart])
+    return csv_button, idd_button, restart, upload
 
 
 @app.cell
-def _(json, mo, os, report_form, requests, resolve_repository, source_run, uuid):
-    if report_form.value is None:
-        result = mo.md("Choose a stakeholder and diseases, then select **Generate report**.")
-    else:
-        values = report_form.value
-        audience = values["audience"]
-        dataset_ids = sorted(set(
-            values["bacterial"] + values["viral"]
-        ))
-        if not dataset_ids:
-            result = mo.callout(mo.md("Select at least one disease."), kind="warn")
+def _(audience, csv_button, datetime, idd_button, io, mo, pathlib, pd, restart, source, subprocess, sys, timezone, upload):
+    if restart.value:
+        result = mo.md("Analysis reset. Choose an audience and data source to begin.")
+    elif source.value == "idd":
+        if not idd_button.value:
+            result = mo.callout(mo.md(f"Local IDD data selected for the **{audience.value}** audience. Select **Generate local IDD report**."), kind="info")
         else:
-            token = os.getenv("GITHUB_TOKEN")
-            ref = os.getenv("GITHUB_APP_REF", "main")
-            if not token:
-                result = mo.callout(mo.md("Set GITHUB_TOKEN with Actions read/write permission."), kind="warn")
+            run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            output_root = f"results/runs/idd/{run_id}"
+            completed = subprocess.run(
+                ["snakemake", "--cores", "2", "--config", f"out={output_root}", f"stakeholder={audience.value}"],
+                capture_output=True, text=True, check=False,
+            )
+            if completed.returncode == 0:
+                result = mo.callout(mo.md(f"The **{audience.value}** IDD report is ready in `{output_root}/reports/{audience.value}/`."), kind="success")
             else:
-                request_id = uuid.uuid4().hex
-                headers = {
-                    "Accept": "application/vnd.github+json",
-                    "Authorization": f"Bearer {token}",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                try:
-                    owner, repo = resolve_repository()
-                    url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/render-selected-report.yml/dispatches"
-                    response = requests.post(
-                        url, headers=headers,
-                        json={"ref": ref, "inputs": {
-                            "request_id": request_id,
-                            "lineage_run_id": str(source_run["id"]),
-                            "audience": audience,
-                            "dataset_ids_json": json.dumps(dataset_ids),
-                        }},
-                        timeout=30,
-                    )
-                    if response.status_code == 204:
-                        result = mo.callout(
-                            mo.md(
-                                f"Report request `{request_id}` queued using source run "
-                                f"`{source_run['run_number']}`. Check [GitHub Actions]"
-                                f"(https://github.com/{owner}/{repo}/actions/workflows/render-selected-report.yml) "
-                                "for completion and the selected-report artifact."
-                            ), kind="success"
-                        )
-                    else:
-                        result = mo.callout(
-                            mo.md(
-                                f"Workflow dispatch failed ({response.status_code}). "
-                                + {
-                                    401: "Check that the token is valid and has not expired.",
-                                    403: "Check token access to this repository, Actions write permission, repository policy, and API rate limits.",
-                                    404: "Check the configured repository, token access, and whether render-selected-report.yml exists and Actions is enabled.",
-                                    422: "Check the workflow branch and input values against the workflow definition.",
-                                }.get(
-                                    response.status_code,
-                                    "Inspect the GitHub Actions/API status and retry after resolving the error.",
-                                )
-                            ),
-                            kind="danger",
-                        )
-                except ValueError as exc:
-                    result = mo.callout(
-                        mo.md(f"Repository configuration error: {exc}"),
-                        kind="danger",
-                    )
-                except requests.RequestException:
-                    result = mo.callout(
-                        mo.md("Could not contact GitHub. Check network connectivity and retry."),
-                        kind="danger",
-                    )
+                result = mo.callout(mo.md(f"The local IDD report failed:\n\n```text\n{completed.stderr[-4000:]}\n```"), kind="danger")
+    elif not upload or not upload.value:
+        result = mo.md("Upload a CSV/TSV file to generate a report.")
+    elif not csv_button.value:
+        result = mo.md("Your file is ready. Select **Generate CSV/TSV report**.")
+    else:
+        item = upload.value[0]
+        name = getattr(item, "name", "uploaded.csv")
+        contents = getattr(item, "contents", b"")
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_root = pathlib.Path("results/runs/csv") / run_id
+        input_path = run_root / "upload" / name
+        input_path.parent.mkdir(parents=True, exist_ok=True)
+        input_path.write_bytes(contents)
+        completed = subprocess.run(
+            [sys.executable, "scripts/health_pipeline/ingest_tabular.py", str(input_path), "--output-root", str(run_root / "data")],
+            capture_output=True, text=True, check=False,
+        )
+        if completed.returncode != 0:
+            result = mo.callout(mo.md(f"Could not read this file:\n\n```text\n{completed.stderr[-4000:]}\n```"), kind="danger")
+        else:
+            completed = subprocess.run(
+                [sys.executable, "scripts/health_pipeline/generic_report.py", str(input_path), "--output", str(run_root), "--audience", audience.value],
+                capture_output=True, text=True, check=False,
+            )
+            if completed.returncode == 0:
+                result = mo.callout(mo.md(f"The **{audience.value}** CSV/TSV report is ready in `{run_root}/reports/{audience.value}/`."), kind="success")
+            else:
+                result = mo.callout(mo.md(f"The CSV/TSV report failed:\n\n```text\n{completed.stderr[-4000:]}\n```"), kind="danger")
     result
+
+
+@app.cell
+def _(mo):
+    mo.md("---\n\nReports are generated locally and remain with the project outputs.")
 
 
 if __name__ == "__main__":
