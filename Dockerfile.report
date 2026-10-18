@@ -2,9 +2,13 @@ ARG UV_VERSION=0.8.14
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uvbin
 
 # Python, the locked packages and Quarto: everything the pipeline and the reports need.
+# Builds natively for the computer's processor: amd64 (Windows, Linux, Intel Mac) or
+# arm64 (Apple-chip Mac, ARM Linux), so nothing runs emulated.
 FROM python:3.11.6-slim-bookworm
 
 ARG QUARTO_VERSION=1.10.19
+# Set by Docker to the processor the image is built for: amd64 or arm64.
+ARG TARGETARCH
 
 ENV UV_LINK_MODE=copy \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -38,10 +42,15 @@ RUN for tool in snakemake pytest streamlit; do \
     done \
     && python -c "import pandas, plotly, ipykernel; assert pandas.__version__ == '2.2.3', pandas.__version__; assert plotly.__version__ == '5.24.1', plotly.__version__"
 
-RUN curl --fail --show-error --location \
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) arch=amd64 ;; \
+      arm64) arch=arm64 ;; \
+      *) echo "unsupported processor: ${TARGETARCH}; Quarto is published for amd64 and arm64" >&2; exit 1 ;; \
+    esac \
+    && curl --fail --show-error --location \
       --retry 5 --retry-all-errors --retry-delay 3 \
       --connect-timeout 30 --max-time 600 \
-      "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz" \
+      "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${arch}.tar.gz" \
       -o /tmp/quarto.tar.gz \
     && mkdir -p /opt/quarto \
     && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1 \

@@ -24,7 +24,7 @@ The reports state the limits relevant to reading the numbers; this page adds the
 
 - **Reproduction means the same snapshot, code and toolchain.** Changed data give changed reports. Hashes cannot recover deleted inputs, so retain the snapshot folder.
 - **Python packages are pinned** in `scripts/health_pipeline/requirements.lock.txt` and `reports/requirements.txt`. Other versions of pandas or Plotly can change figures or layout.
-- **Linux is the reference platform.** CI and the Docker image run on Linux x86_64. Windows builds give the same figures; file checksums of the CSV differ because of line endings.
+- **Linux x86_64 is the reference platform.** CI runs there. The Docker image also builds natively for arm64 (Apple-chip Macs); the locked packages are the same, so the figures are the same. Windows builds give the same figures; file checksums of the CSV differ because of line endings.
 
 ## Project
 

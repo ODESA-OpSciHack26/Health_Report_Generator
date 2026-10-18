@@ -5,7 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.report
-    platform: linux/amd64
     working_dir: /app
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
@@ -22,7 +21,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.report
-    platform: linux/amd64
     working_dir: /app
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
@@ -38,7 +36,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.report
-    platform: linux/amd64
     working_dir: /app
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:

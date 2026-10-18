@@ -9,7 +9,8 @@ Run commands from the repository root. The version policy is recorded in
 
 ### Recommended: Docker
 
-The report image targets Linux/amd64. Docker and Docker Compose must be
+The report image is built for the computer's own processor: amd64 (Windows, Linux,
+Intel Mac) or arm64 (Apple-chip Mac). Docker and Docker Compose must be
 installed, and the Docker daemon must be reachable.
 
 ```sh

@@ -18,6 +18,15 @@ def test_report_image_matches_toolchain_contract():
     assert "reports/requirements.txt" in dockerfile
 
 
+def test_image_builds_natively_on_every_processor():
+    """No platform pin: an Apple-chip Mac builds arm64 instead of emulating amd64."""
+    dockerfile = (ROOT / "Dockerfile.report").read_text()
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    assert not any("platform" in service for service in services.values())
+    assert "ARG TARGETARCH" in dockerfile and "linux-${arch}.tar.gz" in dockerfile
+    assert "linux-amd64" not in dockerfile
+
+
 def test_services_share_one_image_without_github_credentials():
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     assert set(services) == {"report", "sync", "app"}

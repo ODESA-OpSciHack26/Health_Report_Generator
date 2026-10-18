@@ -10,7 +10,8 @@ Everything runs inside Docker, so you do not install Python or Quarto yourself.
 
 | Item | Notes |
 |---|---|
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Must be running (on Windows 11 it uses WSL2) |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Must be running. Windows (uses WSL2), macOS (Intel or Apple chip) and Linux all work: the image is built for your computer's own processor |
+| Memory for Docker | At least 4 GB (Docker Desktop -> Settings -> Resources) |
 | [VS Code](https://code.visualstudio.com/) | Optional; this guide uses its terminal |
 | Internet | Only for the first build |
 | About 4 GB free disk | The image is about 2.6 GB |
@@ -23,8 +24,9 @@ Everything runs inside Docker, so you do not install Python or Quarto yourself.
 4. **Check Docker**: `docker info` should print details. `failed to connect to the docker API` means Docker Desktop is not running yet.
 5. **Set two variables** (needed in every new terminal window):
    ```
-   $env:LOCAL_UID=1000; $env:LOCAL_GID=1000          # PowerShell
-   export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"   # Git Bash, Linux, macOS
+   $env:LOCAL_UID=1000; $env:LOCAL_GID=1000          # Windows PowerShell
+   export LOCAL_UID=1000 LOCAL_GID=1000                # Windows Git Bash
+   export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"   # macOS and Linux Terminal
    ```
 6. **Build the image** (about 3 minutes, once):
    ```
@@ -125,6 +127,8 @@ The reports describe officially notified cases, not all infections. They are des
 |---|---|
 | `failed to connect to the docker API` | Docker Desktop is not running. Start it and wait for "Engine running". |
 | Docker Desktop stuck on "Starting" | Run `wsl --update`, then `wsl --shutdown`, then start Docker Desktop again. Make sure virtualization is on in BIOS and "Use the WSL 2 based engine" is ticked in Docker settings. |
+| `Kernel died`, `DeadKernelError` or the render stops | The report's Python ran out of memory. Give Docker at least 4 GB (Docker Desktop -> Settings -> Resources) and close other heavy programs. |
+| `Kernel didn't respond` or very slow, on a Mac | The image was made for another processor. Rebuild it on the Mac: `docker compose build --no-cache app`. Antivirus or VPN software that blocks local connections can cause the same error on any computer. |
 | Port 8501 or 8502 already in use | In `compose.yaml` change the left number of `"8501:8501"` (page) or `"8502:8502"` (report viewer; also change `VIEWER_PORT` in `src/app.py`). |
 | Permission errors writing to `results/` | Set the two variables (step 5) first. |
 | **Generate report** is grey | Pick at least one disease; with *Use my own cleaned table* switched on, upload a file that passed the checks. |
