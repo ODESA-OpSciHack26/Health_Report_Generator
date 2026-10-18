@@ -44,6 +44,64 @@ def inspect_table(path: Path) -> tuple[str, list[str], int]:
     return delimiter, columns, rows
 
 
+def infer_mapping(frame: pd.DataFrame, source: Path) -> dict:
+    """Create internal metadata for an ordinary user table without prompting."""
+    columns = list(frame.columns)
+    time_candidates = [
+        c for c in columns
+        if any(token in c.lower() for token in ("date", "time", "period", "year"))
+    ]
+    time_column = None
+    for column in time_candidates:
+        parsed = pd.to_datetime(frame[column], errors="coerce")
+        if parsed.notna().mean() >= 0.8:
+            time_column = column
+            break
+
+    numeric_columns = [
+        c for c in columns
+        if pd.to_numeric(frame[c], errors="coerce").notna().mean() >= 0.8
+        and c != time_column
+    ]
+    text_columns = [c for c in columns if c != time_column and c not in numeric_columns]
+    if not numeric_columns:
+        raise ValueError("Could not find a numeric measure column in the uploaded table.")
+    if not text_columns:
+        raise ValueError("Could not find a descriptive category column in the uploaded table.")
+
+    if time_column:
+        frame["__period_type"] = "date"
+        temporal_column = time_column
+        temporal_type_column = "__period_type"
+        mode = "timeseries"
+    else:
+        frame["__snapshot_period"] = datetime.now(timezone.utc).date().isoformat()
+        frame["__snapshot_period_type"] = "snapshot"
+        temporal_column = "__snapshot_period"
+        temporal_type_column = "__snapshot_period_type"
+        mode = "snapshot"
+
+    frame["__measure"] = "value"
+    metadata = {
+        "metaVariables": {
+            "topic": source.stem,
+            "source": "user_upload",
+            "valueCategory": {"column": "__measure"},
+        },
+        "temporalVariables": {"column": temporal_column, "typeColumn": temporal_type_column},
+        "groupingVariables": {
+            column: {"column": column, "allValue": "All"} for column in text_columns
+        },
+        "valueVariables": {column: {} for column in numeric_columns},
+        "generic_input": {
+            "mode": mode,
+            "inference": "numeric columns as measures; text columns as groupings",
+            "source_has_time_field": bool(time_column),
+        },
+    }
+    return metadata
+
+
 def import_table(input_path: str, output_root: str, mapping_path: str | None = None) -> Path:
     source = Path(input_path)
     if source.suffix.lower() not in {".csv", ".tsv"}:
@@ -96,10 +154,9 @@ def import_table(input_path: str, output_root: str, mapping_path: str | None = N
             "generic_input": {"mode": mode, "source_has_time_field": bool(mapping.get("time_column"))},
         }
     else:
-        with source.open("r", encoding="utf-8-sig", newline="") as source_file:
-            content = source_file.read()
-        data_path.write_text(content, encoding="utf-8", newline="")
-        metadata = None
+        frame = pd.read_csv(source, sep="\t" if delimiter == "\t" else ",")
+        metadata = infer_mapping(frame, source)
+        frame.to_csv(data_path, index=False)
 
     provenance = {
         "source_filename": source.name,
