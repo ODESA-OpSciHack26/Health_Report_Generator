@@ -10,4 +10,5 @@ curl --fail --location --retry 5 --retry-all-errors --output "$work/$asset" \
   "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${asset}"
 echo "${expected_sha256}  $work/$asset" | sha256sum --check --status
 tar -xzf "$work/$asset" -C "$work" gitleaks
-"$work/gitleaks" git --no-banner --redact --exit-code 1 "${1:-.}"
+# Keep candidate values redacted, but include file/line/rule context in CI logs.
+"$work/gitleaks" git --no-banner --redact --verbose --exit-code 1 "${1:-.}"
