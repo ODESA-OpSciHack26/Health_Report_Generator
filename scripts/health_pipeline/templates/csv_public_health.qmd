@@ -29,16 +29,60 @@ tbody tr:nth-child(even) { background: var(--soft); }
 ```{python}
 import pandas as pd
 from IPython.display import display, Markdown
+from IPython.display import Image as DisplayImage
+import matplotlib.pyplot as plt
 
 df = pd.read_csv("data.csv")
 numeric = df.select_dtypes(include="number")
 time_columns = [c for c in df.columns if any(token in c.lower() for token in ("date", "time", "year", "period"))]
 display(Markdown(f"<div class='summary-grid'><div class='summary-card'><span class='label'>Rows</span><span class='value'>{len(df):,}</span></div><div class='summary-card'><span class='label'>Columns</span><span class='value'>{len(df.columns)}</span></div><div class='summary-card'><span class='label'>Numeric measures</span><span class='value'>{len(numeric)}</span></div></div>\n\n**Input:** `{SOURCE_FILENAME}`"))
+
+def automatic_chart(frame, measures, time_like):
+    plt.close("all")
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    text_columns = [c for c in frame.columns if c not in measures and c not in time_like]
+    if time_like and measures:
+        raw_time = frame[time_like[0]].astype(str) if pd.api.types.is_numeric_dtype(frame[time_like[0]]) else frame[time_like[0]]
+        parsed = pd.to_datetime(raw_time, format="%Y" if pd.api.types.is_numeric_dtype(frame[time_like[0]]) else None, errors="coerce")
+        plot = frame.assign(_time=parsed).dropna(subset=["_time"])
+        if len(plot) >= 2:
+            grouped = plot.groupby("_time")[measures[0]].sum().sort_index()
+            ax.plot(grouped.index, grouped.values, marker="o", color="#245b8a")
+            ax.set_title(f"{measures[0]} over time")
+            ax.set_xlabel(time_like[0]); ax.set_ylabel(measures[0])
+        else:
+            return None
+    elif text_columns and measures:
+        grouped = frame.groupby(text_columns[0])[measures[0]].sum().nlargest(12).sort_values()
+        grouped.plot.barh(ax=ax, color="#245b8a")
+        ax.set_title(f"{measures[0]} by {text_columns[0]}"); ax.set_xlabel(measures[0])
+    elif len(measures) >= 2:
+        ax.scatter(frame[measures[0]], frame[measures[1]], color="#245b8a", alpha=.8)
+        ax.set_title(f"{measures[1]} compared with {measures[0]}")
+        ax.set_xlabel(measures[0]); ax.set_ylabel(measures[1])
+    elif measures:
+        ax.hist(frame[measures[0]].dropna(), bins=min(12, max(4, frame[measures[0]].nunique())), color="#245b8a")
+        ax.set_title(f"Distribution of {measures[0]}"); ax.set_xlabel(measures[0]); ax.set_ylabel("Rows")
+    elif text_columns:
+        frame[text_columns[0]].value_counts().head(12).sort_values().plot.barh(ax=ax, color="#245b8a")
+        ax.set_title(f"Most common {text_columns[0]} values"); ax.set_xlabel("Rows")
+    else:
+        return None
+    fig.tight_layout(); fig.savefig("automatic_chart.png", dpi=150, bbox_inches="tight")
+    display(DisplayImage(filename="automatic_chart.png"))
+    plt.close(fig)
+```
 ```
 
 ## Public-health view
 
 This report gives a concise overview of the uploaded table. It highlights the size of the dataset, missing values, numeric ranges, important categories, and any visible time pattern.
+
+## Automatic visual summary
+
+```{python}
+automatic_chart(df, list(numeric.columns), time_columns)
+```
 
 ## What is in the file?
 
