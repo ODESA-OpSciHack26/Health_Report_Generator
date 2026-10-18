@@ -9,6 +9,7 @@ outputs
 
 # Local build environments and generated files
 .venv-pipeline
+.venv-report
 .r-library
 .r-bootstrap
 .snakemake

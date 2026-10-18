@@ -73,6 +73,21 @@ Open **http://localhost:8501** in your browser, or inside VS Code:
 **Ctrl+Shift+P -> Simple Browser: Show -> http://localhost:8501**.
 
 ### 4. Make a report
+The page has two tabs.
+
+**Quarto report** (first tab): the full data reports, one HTML file each.
+1. **Which report?**
+   - *Researcher*: coverage, quality checks, methods and provenance.
+   - *Public health officials*: what needs attention now, and where.
+2. **Which diseases?** All are picked at first. Remove the ones you do not want
+   (click the x), or add them back. The report lists diseases in the order you pick them.
+3. Click **Generate report** and wait (about 1-2 minutes; the same choice again is instant).
+4. Click **Open report in new tab**, or **Download report** / **Download provenance**.
+
+Reports are saved in `results/app/quarto/`. Each is one self-contained file: it works
+offline, and you can email it or put it online.
+
+**Audience report (R)** (second tab):
 1. **Who is the report for?**
    - *General public*: plain language, with a "How sure can we be?" section.
    - *Health institution*: monitoring brief with the biggest changes.
@@ -107,6 +122,7 @@ docker compose down
 | See the log | `docker compose logs -f app` |
 | Stop the background run | `docker compose down` |
 | Build the 3 standard reports (no web page) | `docker compose run --rm report snakemake --cores 2` |
+| Build the 2 Quarto reports, all diseases (no web page) | `docker compose run --rm report snakemake --cores 2 quarto` (written to `results/site/`) |
 | Run the tests | `docker compose run --rm report python -m pytest -q` |
 | Rebuild after changing `Dockerfile.report` | `docker compose build app` |
 

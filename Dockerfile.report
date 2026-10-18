@@ -69,6 +69,30 @@ RUN mkdir -p /opt/tex \
     && HOME=/opt/tex bash /opt/build/install_tinytex.sh 2026.10 \
     && chmod -R a+rX /opt/tex
 
+# Python Quarto reports in reports/ (researcher, public_health). They are rendered with the
+# Quarto they were made with, kept apart from the Quarto above so the R reports do not change.
+ARG REPORTS_QUARTO_VERSION=1.10.19
+ENV HEALTH_REPORTS_QUARTO=/opt/quarto-reports/bin/quarto
+
+COPY reports/requirements.txt /opt/build/reports-requirements.txt
+
+RUN uv pip install \
+      --python /opt/health-report-venv/bin/python \
+      -c /opt/build/requirements.lock.txt \
+      -r /opt/build/reports-requirements.txt \
+    && uv pip check --python /opt/health-report-venv/bin/python \
+    && python -c "import plotly, ipykernel; assert plotly.__version__ == '5.24.1', plotly.__version__"
+
+RUN curl --fail --show-error --location \
+      --retry 5 --retry-all-errors --retry-delay 3 \
+      --connect-timeout 30 --max-time 600 \
+      "https://github.com/quarto-dev/quarto-cli/releases/download/v${REPORTS_QUARTO_VERSION}/quarto-${REPORTS_QUARTO_VERSION}-linux-amd64.tar.gz" \
+      -o /tmp/quarto-reports.tar.gz \
+    && mkdir -p /opt/quarto-reports \
+    && tar -xzf /tmp/quarto-reports.tar.gz -C /opt/quarto-reports --strip-components=1 \
+    && rm /tmp/quarto-reports.tar.gz \
+    && /opt/quarto-reports/bin/quarto --version
+
 WORKDIR /app
 
 CMD ["snakemake", "--cores", "2"]

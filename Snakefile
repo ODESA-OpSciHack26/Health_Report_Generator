@@ -33,6 +33,9 @@ ENVIRONMENT = [f'{P}/requirements.lock.txt', 'workflow/environment.yml', 'workfl
 rule all:
     input: HTML, PDF, APPS, PROVENANCE, OUT+'/release.json'
 
+# Python Quarto reports in reports/ (`snakemake quarto`); not part of `all`.
+include: 'workflow/quarto.smk'
+
 rule tables:
     input: ANALYSIS
 
