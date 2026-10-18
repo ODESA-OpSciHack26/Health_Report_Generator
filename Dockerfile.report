@@ -42,6 +42,9 @@ RUN uv pip install \
       --python /opt/health-report-venv/bin/python \
       -r /opt/build/requirements.ui.lock.txt \
     && uv pip check --python /opt/health-report-venv/bin/python \
+    && uv pip install --python /opt/health-report-venv/bin/python ipykernel==6.29.5 \
+    && uv pip check --python /opt/health-report-venv/bin/python \
+    && /opt/health-report-venv/bin/python -m ipykernel install --sys-prefix --name python3 --display-name "Python 3" \
     && for tool in snakemake pytest marimo; do \
          command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }; \
        done \
