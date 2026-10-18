@@ -1,5 +1,6 @@
 services:
   report:
+    image: health-report-generator-report:local
     build:
       context: .
       dockerfile: Dockerfile.report
@@ -32,20 +33,19 @@ services:
 
   ui:
     profiles: ["ui"]
-    build:
-      context: .
-      dockerfile: Dockerfile
+    platform: linux/amd64
+    image: health-report-generator-report:local
     working_dir: /app
+    ports:
+      - "2718:2718"
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
       - .:/app
       - ./.cache/uv:/tmp/uv-cache
     environment:
-      UV_CACHE_DIR: /tmp/uv-cache
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
-      GITHUB_OWNER: ${GITHUB_OWNER:-LarsEBaumann}
-      GITHUB_REPO: ${GITHUB_REPO:-Health_Report_Generator}
-      GITHUB_APP_REF: ${GITHUB_APP_REF:-main}
-      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
-      GITHUB_WORKFLOW: ${GITHUB_WORKFLOW:-refresh-idd-data.yml}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/health-report-config
+      XDG_CACHE_HOME: /tmp/health-report-cache
+      HEALTH_REPORT_R_LIBRARY: /opt/health-report-r-library
+      R_LIBS_USER: /opt/health-report-r-library
+    command: ["marimo", "run", "src/ui.py", "--host", "0.0.0.0", "--port", "2718"]

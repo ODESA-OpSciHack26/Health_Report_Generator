@@ -26,4 +26,4 @@ RUN curl -fsSL \
 
 WORKDIR /app
 
-CMD ["sh", "-lc", "mkdir -p /tmp/report-home/.config /tmp/report-home/.cache && export HOME=/tmp/report-home XDG_CONFIG_HOME=/tmp/report-home/.config XDG_CACHE_HOME=/tmp/report-home/.cache && uv sync --locked && quarto --version && uv run marimo --version"]
+CMD ["sh", "-lc", "mkdir -p /tmp/report-home/.config /tmp/report-home/.cache && export HOME=/tmp/report-home XDG_CONFIG_HOME=/tmp/report-home/.config XDG_CACHE_HOME=/tmp/report-home/.cache && uv sync --locked && exec uv run marimo run src/ui.py --host 0.0.0.0 --port 2718"]
