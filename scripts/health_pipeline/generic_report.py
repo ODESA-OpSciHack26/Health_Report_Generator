@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,7 +17,6 @@ def build(input_file: str, output: str, audience: str) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     frame = pd.read_csv(source, sep="\t" if source.suffix.lower() == ".tsv" else ",")
     numeric = frame.select_dtypes(include="number").columns.tolist()
-    text = [c for c in frame.columns if c not in numeric]
     summary = frame.describe(include="all").transpose().reset_index(names="column")
     summary.to_csv(out / "summary.csv", index=False)
     frame.to_csv(out / "data.csv", index=False)
@@ -49,8 +50,16 @@ def build(input_file: str, output: str, audience: str) -> Path:
 </body></html>"""
     (out / "report.html").write_text(html, encoding="utf-8")
     (out / "methods.html").write_text(f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Methods and provenance</title><style>{style}</style></head><body><header><h1>Methods and provenance</h1><p class='muted'>How this report was produced.</p></header><main><h2>Input</h2><p><strong>File:</strong> {source.name}</p><p><strong>Rows:</strong> {len(frame)} &nbsp; <strong>Columns:</strong> {len(frame.columns)}</p><h2>Processing</h2><p>The table was read locally and summarised descriptively. Numeric columns were treated as measures and text columns as descriptive fields. No IDD-specific disease classification, population denominator, or causal interpretation was applied.</p><h2>Audience</h2><p>This report was prepared for the <strong>{audience.replace('_', ' ')}</strong> audience.</p></main><footer>Machine-readable provenance is stored alongside this page.</footer></body></html>""", encoding="utf-8")
-    qmd = f"""---\ntitle: '{title}'\nformat: html\n---\n\n# Input\n\nSource file: `{source.name}`\n\nRows: {len(frame)}  \nColumns: {len(frame.columns)}\n\n# Column summary\n\n```{{python}}\nimport pandas as pd\ndf = pd.read_csv('data.csv')\ndf.describe(include='all').T\n```\n"""
+    (out / "report.css").write_text(style, encoding="utf-8")
+    qmd = f"""---\ntitle: '{title}'\nformat:\n  html:\n    css: report.css\n    toc: false\n    page-layout: full\n---\n\nGenerated locally from **{source.name}**.\n\n## At a glance\n\n- **Rows:** {len(frame)}\n- **Columns:** {len(frame.columns)}\n- **Numeric measures:** {', '.join(numeric) or 'none'}\n\n## Column summary\n\n```{{python}}\nimport pandas as pd\ndf = pd.read_csv('data.csv')\nsummary = pd.DataFrame({{\n    'column': df.columns,\n    'type': [str(df[c].dtype) for c in df.columns],\n    'distinct_values': [df[c].nunique(dropna=True) for c in df.columns],\n}})\nsummary\n```\n\n## Data preview\n\n```{{python}}\ndf.head(20)\n```\n\n## Interpretation\n\nThis is an automatic descriptive summary. It does not apply IDD-specific disease classification, population denominators, or causal interpretation.\n"""
     (out / "report.qmd").write_text(qmd, encoding="utf-8")
+    if shutil.which("quarto"):
+        rendered = subprocess.run(
+            ["quarto", "render", "report.qmd", "--to", "html", "--output", "report.html"],
+            cwd=out, capture_output=True, text=True, check=False,
+        )
+        if rendered.returncode != 0:
+            (out / "quarto_render.log").write_text(rendered.stdout + "\n" + rendered.stderr, encoding="utf-8")
     provenance = {"source_filename": source.name, "audience": audience, "rows": len(frame), "columns": list(frame.columns), "generated_at_utc": datetime.now(timezone.utc).isoformat()}
     (out / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
     return out
