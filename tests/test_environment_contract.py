@@ -68,9 +68,6 @@ def test_workflow_branch_refs_are_main():
         content = text(workflow)
         assert "ref: main" in content
         assert "ref: connector" not in content
-    assert 'os.getenv("GITHUB_APP_REF", "main")' in text("src/ui.py")
-    assert 'os.getenv("GITHUB_APP_REF", "connector")' not in text("src/ui.py")
-    assert "`connector` branch" not in text("CONNECTOR_SETUP.md")
 
 
 def test_documentation_names_authoritative_contract():

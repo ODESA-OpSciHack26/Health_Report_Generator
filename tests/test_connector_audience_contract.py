@@ -60,8 +60,10 @@ def test_ui_audience_dropdown_matches():
         ):
             continue
         for keyword in node.keywords:
-            if keyword.arg == "options" and isinstance(keyword.value, ast.Dict):
-                mappings.append(ast.literal_eval(keyword.value))
+            if keyword.arg == "label" and isinstance(keyword.value, ast.Constant) and keyword.value.value == "Audience type":
+                for option in node.keywords:
+                    if option.arg == "options" and isinstance(option.value, ast.Dict):
+                        mappings.append(ast.literal_eval(option.value))
 
     assert len(mappings) == 1
     assert set(mappings[0].values()) == EXPECTED
