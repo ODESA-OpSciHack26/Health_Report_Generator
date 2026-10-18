@@ -60,7 +60,7 @@ jobs:
           container=health-report-ui-ci
           docker run --detach --name "$container" --user "$(id -u):$(id -g)" \
             --publish 2718:2718 --volume "$PWD:/app" health-report:ci \
-            marimo run src/ui.py --host 0.0.0.0 --port 2718
+            sh -lc 'mkdir -p /tmp/report-home/.config /tmp/report-home/.cache && export HOME=/tmp/report-home XDG_CONFIG_HOME=/tmp/report-home/.config XDG_CACHE_HOME=/tmp/report-home/.cache && uv sync --locked && exec uv run marimo run src/ui.py --host 0.0.0.0 --port 2718'
           trap 'docker rm --force "$container" >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:2718 >/dev/null; then
