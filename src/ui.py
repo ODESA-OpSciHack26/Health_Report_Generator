@@ -92,20 +92,14 @@ def _(audience, csv_button, datetime, idd_button, io, mo, pathlib, pd, restart, 
         if completed.returncode != 0:
             result = mo.callout(mo.md(f"Could not read this file:\n\n```text\n{completed.stderr[-4000:]}\n```"), kind="danger")
         else:
-            audiences = ("researcher", "health_institution", "public")
-            failures = []
-            for report_audience in audiences:
-                completed = subprocess.run(
-                    [sys.executable, "scripts/health_pipeline/generic_report.py", str(input_path), "--output", str(run_root), "--audience", report_audience],
-                    capture_output=True, text=True, check=False,
-                )
-                if completed.returncode != 0:
-                    failures.append(f"{report_audience}: {completed.stderr[-1200:]}")
-            if not failures:
-                result = mo.callout(mo.md(f"Reports for all three audiences are ready in `{run_root}/reports/`."), kind="success")
+            completed = subprocess.run(
+                [sys.executable, "scripts/health_pipeline/generic_report.py", str(input_path), "--output", str(run_root), "--audience", audience.value],
+                capture_output=True, text=True, check=False,
+            )
+            if completed.returncode == 0:
+                result = mo.callout(mo.md(f"The **{audience.value}** CSV/TSV report is ready in `{run_root}/reports/{audience.value}/`."), kind="success")
             else:
-                failure_text = "\n".join(failures)
-                result = mo.callout(mo.md(f"The CSV/TSV report failed:\n\n```text\n{failure_text}\n```"), kind="danger")
+                result = mo.callout(mo.md(f"The CSV/TSV report failed:\n\n```text\n{completed.stderr[-4000:]}\n```"), kind="danger")
     result
 
 
