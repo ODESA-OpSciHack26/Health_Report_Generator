@@ -18,7 +18,7 @@ This map distinguishes the supported production workflow from optional, experime
 | `.github/workflows/refresh-idd-data.yml` | Scheduled/manual IDD synchronization and versioned artifact build. | Active |
 | `scripts/health_pipeline/run_all.sh` | One-command wrapper around `snakemake` (defaults from `workflow/config.yaml`). | Active |
 | `docs/architecture.md`, `docs/limitations.md`, `docs/demo.md`, `docs/audiences.md`, `docs/reproduction.md`, `docs/scientific-policy.md` | Final documentation set linked from the README. | Active |
-| `docs/phase-7-release.md` | Scope and decisions of the release-polish phase. | Active |
+| `docs/project-history.md` | Consolidated historical release and audit evidence. | Historical reference |
 | `CITATION.cff`, `RELEASE_NOTES.md`, `docs/release-checklist.md` | Citation metadata and release process. | Active |
 
 ## Optional interfaces
@@ -39,8 +39,6 @@ This map distinguishes the supported production workflow from optional, experime
 | `Health_Report_Generator-test/quarto/` | Standalone audience-report prototype with committed rendered files. | Historical prototype; not part of Snakemake |
 | `design/report-mockups.html` | Alternate editorial design exploration. | Historical design reference |
 | `configs/report.yml` | Small dataset-selection configuration from an earlier path. | Legacy; not consumed by the main Snakefile |
-| `docs/phase-3-data-migration.json` | Path-level hashes and scientific comparison for the retired `Data/` release. | Historical machine-readable audit record |
-| `docs/phase-4-legacy-removal.json` | Removal gate and deletion commit for the retired root. | Active audit record |
 
 Historical material must not be cited as proof that the current workflow built successfully. Supported release evidence is a successful current workflow run and its matching `results/release.json`.
 

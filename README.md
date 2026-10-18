@@ -1,147 +1,60 @@
-# Reproducible infectious-disease reports
+# Local Health Report Generator
 
-One open Swiss data source, three audiences, one command. This project turns the Federal Office of Public Health (FOPH) [Infectious Diseases Dashboard](https://www.idd.bag.admin.ch/) exports into interactive HTML reports for researchers, health institutions and the public. All three come from a single shared Quarto template and differ only by audience parameter files. Every report carries machine-readable provenance, and uncertainty and limitations are shown to every audience, translated rather than hidden.
+Generate audience-specific health reports locally from either:
 
-Built for the hackathon challenge *One Data Source, Many Audiences: reproducible, parameterised communication of life-science data*.
+- the committed IDD dataset; or
+- an uploaded CSV/TSV file.
 
-## Quick start
+The project runs in Docker. No Python, R, Quarto, TinyTeX, GitHub token, or
+GitHub Actions setup is required for local use.
 
-Recommended local path: Docker with Docker Compose, on Linux/amd64.
-You do not need a GitHub token, fork, GitHub Actions, or host installations
-of Python, R, Quarto, or TinyTeX to generate reports this way.
+## Start the local interface
 
 ```sh
-git clone [https://github.com/LarsEBaumann/Health_Report_Generator.git](https://github.com/LarsEBaumann/Health_Report_Generator.git)
-cd Health_Report_Generator
-export LOCAL_UID="$(id -u)"
-export LOCAL_GID="$(id -g)"
-
-# One-time software setup; requires internet access.
 docker compose build report
+docker compose --profile ui up ui
+```
 
-# One command generates all three audience releases.
+Open <http://localhost:2718>.
+
+1. Choose an audience.
+2. Choose the IDD dataset or upload a CSV/TSV file.
+3. Generate the report.
+4. Find the run under `results/runs/`.
+
+IDD reports use the validated IDD analysis. Uploaded tables use automatic
+descriptive analysis. A CSV/TSV file does not need a mapping file. A detected
+date/time column creates a time-series report; otherwise the file is treated
+as a snapshot.
+
+## Run the IDD pipeline directly
+
+```sh
 docker compose run --rm report snakemake --cores 2
 ```
 
-The report image uses `Dockerfile.report`; the separate optional UI uses
-`Dockerfile`. Runtime versions are declared in `workflow/toolchain.json`.
-The build reads committed data in `data/reference/`; it does not fetch
-new IDD data or require GitHub credentials.
+The equivalent native wrapper is `bash scripts/health_pipeline/run_all.sh`.
+Runtime versions are recorded in `workflow/toolchain.json`.
 
-Open `results/reports/public/report.html` in your browser. Keep each
-`results/reports/<id>/` folder together so links and downloads work.
+Reports are written to `results/reports/` with HTML, PDF, provenance, QC,
+and editable report sources.
 
-Verify a completed release:
-
-```sh
-docker compose run --rm report python scripts/health_pipeline/check_outputs.py
-docker compose run --rm report python scripts/health_pipeline/verify_release.py --out results
-```
-
-The repository also provides the one-command wrapper
-`scripts/health_pipeline/run_all.sh`. With the native pipeline environment
-and rendering tools configured, run:
-
-```sh
-bash scripts/health_pipeline/run_all.sh
-```
-
-For native setup, diagnostics, and reproduction checks, see
-[GETTING_STARTED.md](GETTING_STARTED.md).
-The optional fork-backed Marimo interface is a separate path described in
-[CONNECTOR_SETUP.md](CONNECTOR_SETUP.md); it is not required for local reports.
-It depends on GitHub Actions and a user token, and each request is rendered
-from scratch. It does not use the custom-report cache.
-
-## What you get
-
-| Audience | Report | Style |
-|---|---|---|
-| Researchers (`researcher`) | `results/reports/researcher/report.html` | Technical: parameters and filters, coverage, quality checks, methods, reproduction code |
-| Health institutions (`health_institution`) | `results/reports/health_institution/report.html` | Monitoring: largest changes in case counts, small-number flags, quality summary |
-| Public (`public`) | `results/reports/public/report.html` | Plain language: "How sure can we be?", readable provenance |
-
-Each folder also holds `methods.html`, PDFs, `provenance.json` (also embedded in each HTML page), the analysis tables in `data/`, and a Shiny app. `results/release.json` records artifact hashes, code hashes, Git state and runtime versions. Details: [audiences, outputs and provenance](docs/audiences.md).
-
-To add an audience, copy a file in `scripts/health_pipeline/config/stakeholders/`, change its `id`, wording, sections and presentation, and list the id in `workflow/config.yaml`. The template does not change.
-
-## Custom reports
-
-Beyond the three standard audiences, one command builds a report from a request file. A request is a stakeholder settings file, the same format as the files in `scripts/health_pipeline/config/stakeholders/`. Copy one (for example `public.json`) and change the fields you need, such as `years`, `title` or `geography`. The request is validated before anything renders, and an invalid one stops with `Invalid request: ...`.
-
-```sh
-docker compose run --rm report python scripts/health_pipeline/custom_report.py \
-  examples/request-2022-2025.json --out results/custom
-```
-
-The last line printed is either `cache miss: key=<sha256> -> <folder>` or `cache hit: key=<sha256> -> <folder>`.
-
-**Cache.** Finished reports are stored in `results/cache/custom_reports/`. The cache key is a SHA-256 over the request, the data snapshot id, the report code hash, the toolchain hash and the schema version. An identical request returns the stored report in seconds, with its original provenance and render time. A different request, a data refresh or a template change produces a new key and a new render. The cache is local to one machine and grows with each distinct request. It is used by `custom_report.py` only, not by the optional Marimo interface. You can delete `results/cache/` at any time; the next run simply renders again.
-
-**Output.** The `--out` folder is replaced on every run and holds `report.html`, `methods.html`, `provenance.json` and `request_provenance.json`. In `provenance.json`, `filters` and `effective_parameters` record the years and other settings that were applied. `request_provenance.json` records `cache_key`, the key components (including `code_hash`) and `rendered_utc`.
-
-**Reference year.** A request carries its own `reference_year` and `index_base_year`. A request copied from `public.json` compares with 2019, so a 2022 to 2025 report is still compared with the pre-COVID baseline. Change both fields in the request if you want another baseline.
-
-Custom reports are not part of `results/release.json`, which describes only the three standard audiences.
-
-## How it works
-
-```mermaid
-flowchart LR
-  A["IDD API<br/>(weekly sync, separate step)"] --> B["data/reference/<br/>CSV + metadata + retrieval.json"]
-  B --> C["Snapshot<br/>content-addressed hashes"]
-  C --> D["Harmonise"]
-  D --> E{"Blocking<br/>quality checks"}
-  E --> F["Analysis<br/>metrics + lineage<br/>(calculated once)"]
-  P["Stakeholder JSON<br/>(3 audiences)"] --> F
-  F --> G["Shared Quarto template<br/>+ R helpers"]
-  G --> H["HTML + PDF + Shiny<br/>per audience"]
-  F --> I["provenance.json<br/>release.json"]
-```
-
-Statistics are calculated once in Python; every format and audience only presents the verified tables. Full description: [architecture](docs/architecture.md).
-
-## Data source and version
-
-FOPH Infectious Diseases Dashboard exports from the public API (`https://api.idd.bag.admin.ch/api/v1/export/latest/<DATASET>/csv`), committed under `data/reference/` with a `retrieval.json` per dataset (source URL, retrieval time, SHA-256). The publisher updates weekly on Wednesdays. Each report's provenance names the snapshot id, publisher release dates and retrieval dates it used. The FOPH states the data are publicly accessible and may be used with proper source attribution; please attribute **Federal Office of Public Health (FOPH/BAG), Infectious Diseases Dashboard**. See [data/README.md](data/README.md).
-
-## Read this before using the numbers
-
-The reports describe officially notified cases, not all infections. They are descriptive comparisons with a reference year, not tests of significance or causal claims. National totals only (Switzerland plus Liechtenstein); no canton-level or weekly seasonal alert analysis. The viral increase versus 2019 (+124%) turns into −3% when influenza is excluded. Full list: [limitations](docs/limitations.md).
+Standard report paths are `results/reports/researcher/report.html`,
+`results/reports/health_institution/report.html`, and
+`results/reports/public/report.html`.
 
 ## Documentation
 
-| Topic | Document |
-|---|---|
-| Architecture and design decisions | [docs/architecture.md](docs/architecture.md) |
-| Audiences, outputs, provenance format | [docs/audiences.md](docs/audiences.md) |
-| Setup, full reproduction, archived releases | [docs/reproduction.md](docs/reproduction.md) |
-| Scientific policy and data contract | [docs/scientific-policy.md](docs/scientific-policy.md), [SCHEMA.md](scripts/health_pipeline/SCHEMA.md) |
-| Limitations | [docs/limitations.md](docs/limitations.md) |
-| Demo walkthrough | [docs/demo.md](docs/demo.md) |
-| Release notes and checklist | [RELEASE_NOTES.md](RELEASE_NOTES.md), [docs/release-checklist.md](docs/release-checklist.md) |
-| Repository map, phase records | [docs/repository-map.md](docs/repository-map.md), `docs/phase-*.md` |
-| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md), [GETTING_STARTED.md](GETTING_STARTED.md) |
-| Optional Marimo interface | [CONNECTOR_SETUP.md](CONNECTOR_SETUP.md) |
+Read the [Developer and user guide](docs/guide.md) for the complete workflow,
+architecture, data rules, outputs, testing, and release checklist.
 
-Citing this work: see [CITATION.cff](CITATION.cff).
+Technical references: [architecture](docs/architecture.md),
+[limitations](docs/limitations.md), [data notes](data/README.md), and
+[citation metadata](CITATION.cff).
 
-## Tests and release discipline
+## Project metadata
 
-```sh
-ruff check .
-python -m pytest -q
-snakemake --dry-run --cores 1
-# after a full build
-python scripts/health_pipeline/check_outputs.py
-python scripts/health_pipeline/verify_release.py --out results
-Rscript tests/shiny_smoke.R results/reports/researcher/app
-```
-
-Tests cover subgroup safety, incomplete months/years/baselines, denominators, source completeness, metadata conflicts, overlapping exports, nonzero CLI failures, stale gates, snapshot relocation/tampering, deterministic tables, and independent reconstruction of every fixture metric from raw records and formula inputs. The final dry run should say no work is needed after a successful unchanged build.
-
-CI is split into gated jobs (`docs/phase-6-ci-hardening.md`): `fast` (Ruff, tests, dry run), `secrets` (pinned gitleaks history scan), `container` (optional UI image smoke test plus report-image build, all-audience rendering, provenance/release verification, app smoke tests and no-op rebuild) and `full` (all three audiences, output and provenance checks, release-hash and rendered-link verification, Shiny checks, no-op rebuild). It uploads a release bundle only after every `full` step succeeds. It does not deploy or overwrite a production site. A failed local build may leave older reports on disk; treat only a successfully completed build and its matching `release.json` as a release. Preserve previously uploaded successful artifacts independently of a new build.
-
-The production Python lock at `scripts/health_pipeline/requirements.lock.txt` pins the Snakemake/report pipeline; `uv.lock` pins the optional Marimo/connector environment from `pyproject.toml`; `renv.lock` records R dependencies. `workflow/toolchain.json` is the machine-readable source of runtime version policy. `workflow/environment.yml` is an alternative convenience environment, not an additional authoritative lock.
-
-See [GETTING_STARTED.md](GETTING_STARTED.md) for setup and reproduction instructions.
+- Authors: ODESA OpSciHack26 project team and contributors
+- Guide created: 2026-10-18
+- Guide last updated: 2026-10-18
+- License: see the repository owner’s release decision and `CITATION.cff`
