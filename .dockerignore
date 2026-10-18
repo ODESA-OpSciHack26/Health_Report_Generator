@@ -10,13 +10,9 @@ outputs
 # Local build environments and generated files
 .venv-pipeline
 .venv-report
-.r-library
-.r-bootstrap
 .snakemake
 .pytest_cache
 .cache
 results
 reproduced
 out
-renv/library
-renv/staging

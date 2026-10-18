@@ -1,152 +1,151 @@
 # Reproducible infectious-disease reports
 
-One open Swiss data source, three audiences, one command. This project turns the Federal Office of Public Health (FOPH) [Infectious Diseases Dashboard](https://www.idd.bag.admin.ch/) exports into interactive HTML reports for researchers, health institutions and the public. All three come from a single shared Quarto template and differ only by audience parameter files. Every report carries machine-readable provenance, and uncertainty and limitations are shown to every audience, translated rather than hidden.
+This project turns the Federal Office of Public Health (FOPH) [Infectious Diseases Dashboard](https://www.idd.bag.admin.ch/) exports into interactive Quarto reports. Each report is one self-contained HTML file with interactive charts, a canton map and a machine-readable provenance record. On a simple home page you choose the stakeholder, the years and the diseases, and the report opens in a new tab.
 
 Built for the hackathon challenge *One Data Source, Many Audiences: reproducible, parameterised communication of life-science data*.
 
-## Quick start
+Everything runs inside Docker, so you do not install Python or Quarto yourself.
 
-Recommended local path: Docker with Docker Compose, on Linux/amd64.
-You do not need a GitHub token, fork, GitHub Actions, or host installations
-of Python, R, Quarto, or TinyTeX to generate reports this way.
+## What you need
 
-```sh
-git clone [https://github.com/LarsEBaumann/Health_Report_Generator.git](https://github.com/LarsEBaumann/Health_Report_Generator.git)
-cd Health_Report_Generator
-export LOCAL_UID="$(id -u)"
-export LOCAL_GID="$(id -g)"
+| Item | Notes |
+|---|---|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Must be running (on Windows 11 it uses WSL2) |
+| [VS Code](https://code.visualstudio.com/) | Optional; this guide uses its terminal |
+| Internet | Only for the first build |
+| About 4 GB free disk | The image is about 2.6 GB |
 
-# One-time software setup; requires internet access.
-docker compose build report
+## First time only
 
-# One command generates all three audience releases.
-docker compose run --rm report snakemake --cores 2
+1. **Start Docker Desktop** from the Start menu and wait until it says **"Engine running"** (1-2 minutes).
+2. **Open the project** in VS Code: **File -> Open Folder...** -> `Health_Report_Generator`.
+3. **Open a terminal**: **Ctrl+`** (the key above Tab). PowerShell is fine.
+4. **Check Docker**: `docker info` should print details. `failed to connect to the docker API` means Docker Desktop is not running yet.
+5. **Set two variables** (needed in every new terminal window):
+   ```
+   $env:LOCAL_UID=1000; $env:LOCAL_GID=1000          # PowerShell
+   export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"   # Git Bash, Linux, macOS
+   ```
+6. **Build the image** (about 3 minutes, once):
+   ```
+   docker compose build app
+   ```
+   Wait for `Image health-report:local Built`.
+
+## Make a report on the home page
+
+1. Start Docker Desktop and set the two variables (step 5).
+2. Start the page and leave the terminal open:
+   ```
+   docker compose up app
+   ```
+   Wait for `You can now view your Streamlit app in your browser.`
+3. Open **http://localhost:8501** in Chrome or Edge (or in VS Code: **Ctrl+Shift+P -> Simple Browser: Show**).
+4. Make your choices:
+   1. **Stakeholder.** Click **Choose** on a card:
+      - 🔬 *Researcher*: methods, quality checks, trends, seasonality, age groups, cantons and provenance.
+      - 🏥 *Public health officials*: what needs attention now, and where.
+   2. **Years.** Drag the two ends of the slider, for example 2019 to 2025. Charts and tables over time show only these years. The current status of each disease always uses the newest data, because it is compared with the previous 5 to 10 years.
+   3. **Diseases.** Click a tile to select or deselect it. **Select all** and **Clear** change all of them at once.
+5. Click **📄 Generate report**. The report opens in a **new tab**. If your browser blocks it, click **Open report in new tab** (or allow pop-ups for `localhost`). **Download report** and **Download provenance** save the files; they are also kept in `results/app/`.
+6. To stop: press **Ctrl+C** in the terminal, then `docker compose down`.
+
+**How long it takes.** When the page starts, it prepares both full reports in the background (seconds if nothing changed, about a minute after new data); the first click waits for that. Then: all diseases and all years about 2 seconds, a new choice about 30 seconds, the same choice again about 1 second. The page builds one report at a time.
+
+**Optional: your own data.** Open **📂 Use your own data (optional)** and switch on *Use my own cleaned table*. Upload a `harmonised.csv` or `harmonised.parquet` made by this pipeline (or with the same columns; the page lists them), up to 500 MB. It is checked first and refused if it fails (missing columns, numbers that cannot be read, negative counts, no known disease). It is used only for your reports and the project's data is not changed. Only the diseases and years in your file are offered, and the report says at the top and in its Provenance that it was made from your file.
+
+## Without the web page
+
+```
+docker compose run --rm report    # = snakemake --cores 2
 ```
 
-The report image uses `Dockerfile.report` (it also runs the optional web
-page, below). Runtime versions are declared in `workflow/toolchain.json`.
-The build reads committed data in `data/reference/`; it does not fetch
-new IDD data or require GitHub credentials.
+This builds both full reports (all diseases, all years) into `results/site/`: `researcher.html`, `public_health.html`, their `provenance_*.json` and a landing page `index.html`. It reads the committed data in `data/reference/` and does not need GitHub credentials.
 
-Open `results/reports/public/report.html` in your browser. Keep each
-`results/reports/<id>/` folder together so links and downloads work.
+| Goal | Command |
+|---|---|
+| Run the page in the background | `docker compose up -d app` |
+| See the log | `docker compose logs -f app` |
+| Stop it | `docker compose down` |
+| Download the latest FOPH data | `docker compose run --rm sync` |
+| Run the tests | `docker compose run --rm report python -m pytest -q` |
+| Check nothing is left to rebuild | `docker compose run --rm report snakemake --dry-run --cores 1` |
+| Rebuild the image after changing `Dockerfile.report` or a requirements file | `docker compose build app` |
 
-Verify a completed release:
-
-```sh
-docker compose run --rm report python scripts/health_pipeline/check_outputs.py
-docker compose run --rm report python scripts/health_pipeline/verify_release.py --out results
-```
-
-The repository also provides the one-command wrapper
-`scripts/health_pipeline/run_all.sh`. With the native pipeline environment
-and rendering tools configured, run:
-
-```sh
-bash scripts/health_pipeline/run_all.sh
-```
-
-For native setup, diagnostics, and reproduction checks, see
-[GETTING_STARTED.md](GETTING_STARTED.md).
-## Web page (easiest way to start)
-
-If you prefer clicking to typing commands, start the Streamlit page. It runs in the same Docker image, reads the committed data and needs no GitHub token.
-
-```sh
-docker compose build app
-docker compose up app
-```
-
-Open http://localhost:8501, choose the audience and the years, and press **Generate report**. The first report takes a few minutes; an identical request is then answered from the cache. The report is shown on the page, can be downloaded, and is also saved in `results/app/`. It builds one report at a time.
+Editing `src/app.py` or anything in `reports/` needs no rebuild: the project folder is shared with the container, so refresh the browser page.
 
 ## What you get
 
-| Audience | Report | Style |
+| Report | Question it answers | Main content |
 |---|---|---|
-| Researchers (`researcher`) | `results/reports/researcher/report.html` | Technical: parameters and filters, coverage, quality checks, methods, reproduction code |
-| Health institutions (`health_institution`) | `results/reports/health_institution/report.html` | Monitoring: largest changes in case counts, small-number flags, quality summary |
-| Public (`public`) | `results/reports/public/report.html` | Plain language: "How sure can we be?", readable provenance |
+| **Researcher** (`reports/researcher.qmd`) | How was it measured, and can I reproduce it? | Data coverage, quality checks, methods, current status of every series, long-term trends, recent series against the comparison window, seasonality, age groups, canton map and table, limitations, provenance; the code behind every figure under "Show code" |
+| **Public health officials** (`reports/public_health.qmd`) | What needs attention now, and where? | Diseases above their usual level, cantons with the highest incidence, this year against last year, respiratory season watch, how to read the report, provenance |
 
-Each folder also holds `methods.html`, PDFs, `provenance.json` (also embedded in each HTML page), the analysis tables in `data/`, and a Shiny app. `results/release.json` records artifact hashes, code hashes, Git state and runtime versions. Details: [audiences, outputs and provenance](docs/audiences.md).
-
-To add an audience, copy a file in `scripts/health_pipeline/config/stakeholders/`, change its `id`, wording, sections and presentation, and list the id in `workflow/config.yaml`. The template does not change.
-
-## Custom reports
-
-Beyond the three standard audiences, one command builds a report from a request file. A request is a stakeholder settings file, the same format as the files in `scripts/health_pipeline/config/stakeholders/`. Copy one (for example `public.json`) and change the fields you need, such as `years`, `title` or `geography`. The request is validated before anything renders, and an invalid one stops with `Invalid request: ...`.
-
-```sh
-docker compose run --rm report python scripts/health_pipeline/custom_report.py \
-  examples/request-2022-2025.json --out results/custom
-```
-
-The last line printed is either `cache miss: key=<sha256> -> <folder>` or `cache hit: key=<sha256> -> <folder>`.
-
-**Cache.** Finished reports are stored in `results/cache/custom_reports/`. The cache key is a SHA-256 over the request, the data snapshot id, the report code hash, the toolchain hash and the schema version. An identical request returns the stored report in seconds, with its original provenance and render time. A different request, a data refresh or a template change produces a new key and a new render. The cache is local to one machine and grows with each distinct request. It is used by `custom_report.py` only, and by the web page, which calls it. You can delete `results/cache/` at any time; the next run simply renders again.
-
-**Output.** The `--out` folder is replaced on every run and holds `report.html`, `methods.html`, `provenance.json` and `request_provenance.json`. In `provenance.json`, `filters` and `effective_parameters` record the years and other settings that were applied. `request_provenance.json` records `cache_key`, the key components (including `code_hash`) and `rendered_utc`.
-
-**Reference year.** A request carries its own `reference_year` and `index_base_year`. A request copied from `public.json` compares with 2019, so a 2022 to 2025 report is still compared with the pre-COVID baseline. Change both fields in the request if you want another baseline.
-
-Custom reports are not part of `results/release.json`, which describes only the three standard audiences.
+Every report compares each disease's latest week or month with the same week or month in the previous 5 to 10 years and labels it **Record high**, **Above normal**, **Normal** or **Low**. Each file works offline and can be emailed or put online. Its Provenance section and `provenance_<report>.json` record the source checksums, data snapshot, retrieval dates, code version, tool versions and the chosen diseases and years.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  A["IDD API<br/>(weekly sync, separate step)"] --> B["data/reference/<br/>CSV + metadata + retrieval.json"]
-  B --> C["Snapshot<br/>content-addressed hashes"]
-  C --> D["Harmonise"]
-  D --> E{"Blocking<br/>quality checks"}
-  E --> F["Analysis<br/>metrics + lineage<br/>(calculated once)"]
-  P["Stakeholder JSON<br/>(3 audiences)"] --> F
-  F --> G["Shared Quarto template<br/>+ R helpers"]
-  G --> H["HTML + PDF + Shiny<br/>per audience"]
-  F --> I["provenance.json<br/>release.json"]
+  A["FOPH IDD API<br/>(sync, separate step)"] --> B["data/reference/<br/>CSV + metadata + retrieval.json"]
+  B --> C["inventory.py<br/>snapshot with checksums"]
+  C --> D["harmonise.py<br/>one cleaned table"]
+  D --> E{"checks.py<br/>blocking quality checks"}
+  E --> F["export_csv.py<br/>harmonised.csv"]
+  F --> G["render_quarto.py<br/>Quarto + Python (pandas, Plotly)"]
+  G --> H["One HTML report<br/>+ provenance JSON"]
 ```
 
-Statistics are calculated once in Python; every format and audience only presents the verified tables. Full description: [architecture](docs/architecture.md).
+Snakemake runs the steps once and repeats only what changed; only the last step runs per report. When you press **Generate report**:
 
-## Data source and version
+```
+your choice -> src/app.py
+   -> project data: did any data or code file change since the last build?
+        yes -> snakemake: data/reference -> inventory -> harmonise -> quality checks
+               -> harmonised.csv -> both full reports (only what changed is rebuilt)
+      your own table: upload_table.py checks it and writes results/uploads/<id>/
+   -> same choice seen before (or all diseases and years)?  yes -> reuse the saved report
+                                                            no  -> render_quarto.py: Quarto runs reports/<report>.qmd
+   -> results/app/<report>-<id>.html opens in a new tab
+```
 
-FOPH Infectious Diseases Dashboard exports from the public API (`https://api.idd.bag.admin.ch/api/v1/export/latest/<DATASET>/csv`), committed under `data/reference/` with a `retrieval.json` per dataset (source URL, retrieval time, SHA-256). The publisher updates weekly on Wednesdays. Each report's provenance names the snapshot id, publisher release dates and retrieval dates it used. The FOPH states the data are publicly accessible and may be used with proper source attribution; please attribute **Federal Office of Public Health (FOPH/BAG), Infectious Diseases Dashboard**. See [data/README.md](data/README.md).
+Details: [architecture](docs/architecture.md).
+
+## Data source
+
+FOPH Infectious Diseases Dashboard exports from the public API (`https://api.idd.bag.admin.ch/api/v1/export/latest/<DATASET>/csv`), committed under `data/reference/` with a `retrieval.json` per dataset. The page and the build never download data by themselves: run `docker compose run --rm sync` for the latest exports. On GitHub, `.github/workflows/refresh-idd-data.yml` does this every Wednesday night (the publisher updates on Wednesdays) for the `main` branch. Please attribute **Federal Office of Public Health (FOPH/BAG), Infectious Diseases Dashboard**. See [data/README.md](data/README.md).
 
 ## Read this before using the numbers
 
-The reports describe officially notified cases, not all infections. They are descriptive comparisons with a reference year, not tests of significance or causal claims. National totals only (Switzerland plus Liechtenstein); no canton-level or weekly seasonal alert analysis. The viral increase versus 2019 (+124%) turns into −3% when influenza is excluded. Full list: [limitations](docs/limitations.md).
+The reports describe officially notified cases, not all infections. They are descriptive comparisons with the same period in earlier years, not significance tests, forecasts or causal claims. Colours are visual cues, not a clinical risk classification. Full list: [limitations](docs/limitations.md).
 
-## Documentation
+## If something goes wrong
+
+| Problem | Fix |
+|---|---|
+| `failed to connect to the docker API` | Docker Desktop is not running. Start it and wait for "Engine running". |
+| Docker Desktop stuck on "Starting" | Run `wsl --update`, then `wsl --shutdown`, then start Docker Desktop again. Make sure virtualization is on in BIOS and "Use the WSL 2 based engine" is ticked in Docker settings. |
+| Port 8501 or 8502 already in use | In `compose.yaml` change the left number of `"8501:8501"` (page) or `"8502:8502"` (report viewer; also change `VIEWER_PORT` in `src/app.py`). |
+| Permission errors writing to `results/` | Set the two variables (step 5) first. |
+| **Generate report** is grey | Pick at least one disease; with *Use my own cleaned table* switched on, upload a file that passed the checks. |
+| "This table cannot be used: ..." | The message names the failed check. A `harmonised.csv` from this project's `results/` always works. |
+| "The report could not be built" | Run `docker compose logs app` and read the last lines. |
+
+The page has **no login**: run it only on your own computer or a trusted network.
+
+## More documentation
 
 | Topic | Document |
 |---|---|
-| Architecture and design decisions | [docs/architecture.md](docs/architecture.md) |
-| Audiences, outputs, provenance format | [docs/audiences.md](docs/audiences.md) |
-| Setup, full reproduction, archived releases | [docs/reproduction.md](docs/reproduction.md) |
-| Scientific policy and data contract | [docs/scientific-policy.md](docs/scientific-policy.md), [SCHEMA.md](scripts/health_pipeline/SCHEMA.md) |
+| Architecture and components | [docs/architecture.md](docs/architecture.md) |
+| Native setup (without Docker) and exact reproduction | [docs/reproduction.md](docs/reproduction.md) |
+| Quality rules and data contract | [docs/scientific-policy.md](docs/scientific-policy.md), [SCHEMA.md](scripts/health_pipeline/SCHEMA.md) |
 | Limitations | [docs/limitations.md](docs/limitations.md) |
-| Demo walkthrough | [docs/demo.md](docs/demo.md) |
-| Release notes and checklist | [RELEASE_NOTES.md](RELEASE_NOTES.md), [docs/release-checklist.md](docs/release-checklist.md) |
-| Repository map, phase records | [docs/repository-map.md](docs/repository-map.md), [docs/history.md](docs/history.md), `docs/phase-*.md` |
-| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md), [GETTING_STARTED.md](GETTING_STARTED.md) |
+
+## Tests and versions
+
+The tests cover the data steps (subgroups never taken as totals, damaged or conflicting input blocking the quality gate, stale gates, duplicate exports, snapshot relocation and tampering, repeatable output), the CSV export, uploaded tables, the render script, the CI configuration and the toolchain contract. CI (`.github/workflows/validate.yml`) runs `fast` (Ruff, tests, dry run), `container` (builds the image and both reports inside it) and `full` (builds both reports natively, checks a rebuild is a no-op, uploads `results/site/`).
+
+Python packages are locked in `scripts/health_pipeline/requirements.lock.txt` (pipeline and tests) and `reports/requirements.txt` (reports); `scripts/health_pipeline/requirements.txt` installs both. `workflow/toolchain.json` is the machine-readable version policy (Python 3.11.6, Quarto 1.10.19, uv 0.8.14).
 
 Citing this work: see [CITATION.cff](CITATION.cff).
-
-## Tests and release discipline
-
-```sh
-ruff check .
-python -m pytest -q
-snakemake --dry-run --cores 1
-# after a full build
-python scripts/health_pipeline/check_outputs.py
-python scripts/health_pipeline/verify_release.py --out results
-Rscript tests/shiny_smoke.R results/reports/researcher/app
-```
-
-Tests cover subgroup safety, incomplete months/years/baselines, denominators, source completeness, metadata conflicts, overlapping exports, nonzero CLI failures, stale gates, snapshot relocation/tampering, deterministic tables, and independent reconstruction of every fixture metric from raw records and formula inputs. The final dry run should say no work is needed after a successful unchanged build.
-
-CI is split into gated jobs (`docs/phase-6-ci-hardening.md`): `fast` (Ruff, tests, dry run), `secrets` (pinned gitleaks history scan), `container` (optional UI image smoke test plus report-image build, all-audience rendering, provenance/release verification, app smoke tests and no-op rebuild) and `full` (all three audiences, output and provenance checks, release-hash and rendered-link verification, Shiny checks, no-op rebuild). It uploads a release bundle only after every `full` step succeeds. It does not deploy or overwrite a production site. A failed local build may leave older reports on disk; treat only a successfully completed build and its matching `release.json` as a release. Preserve previously uploaded successful artifacts independently of a new build.
-
-The production Python lock at `scripts/health_pipeline/requirements.lock.txt` pins the Snakemake/report pipeline; `renv.lock` records R dependencies. `workflow/toolchain.json` is the machine-readable source of runtime version policy. `workflow/environment.yml` is an alternative convenience environment, not an additional authoritative lock.
-
-See [GETTING_STARTED.md](GETTING_STARTED.md) for setup and reproduction instructions.

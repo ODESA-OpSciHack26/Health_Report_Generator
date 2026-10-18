@@ -1,35 +1,33 @@
 # Limitations
 
-These apply to every audience. Reports state the ones relevant to reading the numbers; this page adds the technical and project limits.
+The reports state the limits relevant to reading the numbers; this page adds the technical and project limits.
 
 ## Interpreting the data
 
-- **Notifications are not infections.** Counts are officially reported cases. Testing, clinician awareness and reporting practice affect them. A rise can mean more disease, more testing, or both.
-- **Descriptive only.** Changes are percentage differences against a reference year. There are no significance tests, confidence intervals or causal claims.
-- **Influenza dominates the viral group.** The viral change is +124% (2025 vs 2019) with influenza and −3% without it. The reports show both. The data cannot explain why.
-- **Recent years can be revised.** The publisher may update counts as late notifications arrive. The snapshot id pins exactly which release a report used.
-- **Small numbers.** Percentages for diseases with few cases swing widely. The monitoring report flags fewer than 20 cases in either year; this is a display rule, not a statistical threshold.
-- **Excluded series.** COVID-19 (no 2019 baseline) and AIDS (a stage of HIV) are left out of group totals. Sentinella estimates are shown as context and never added to mandatory notifications. Series that fail completeness rules (incomplete year or months, missing population, missing `dataComplete`) are excluded and listed with reasons in each methods report.
-- **Classification is curated by the project team.** `pathogen_class.csv` assigns diseases to viral or bacterial; no external scientific review has been recorded. Unclassified datasets are excluded rather than guessed.
-- **Rates differ slightly from publisher rates**, which use unrounded figures.
+- **Notifications are not infections.** Mandatory reports reflect testing and reporting behaviour, not true incidence. A rise can mean more disease, more testing, or both.
+- **Sentinella figures are extrapolations** from a sample of GP practices.
+- **Descriptive only.** No significance testing, modelling or forecasting is applied. Small counts can change level on a handful of cases.
+- **Comparison windows include the current value** where FOPH publishes them (5- or 10-year minimum, median and maximum). They are comparison windows, not purely historical baselines.
+- **COVID-19.** The computed 5-year comparison window spans pandemic years and is not a normal reference; "low" there is relative to an exceptional period.
+- **Different periods.** Canton and age figures refer to the last full year (or the last 4 weeks for weekly series), not the same period as the national latest value.
+- **Colours are visual cues** for the levels defined in the report's Methods; they are not a clinical risk classification.
+- **Not analysed.** Lab positivity, wastewater and variant data are in the cleaned table but not in the reports.
+- **Recent periods can be revised.** The publisher updates counts as late notifications arrive. The snapshot id pins exactly which release a report used.
+- **Rates are FOPH's published rates** per 100,000, not recomputed.
 
-## Scope
+## Year choice
 
-- **National totals only** (Switzerland plus Liechtenstein, `CHFL`). The schema accepts `CH` or `CHFL`. Canton-level series exist for some diseases but not all selected ones, so no canton view was invented. A Switzerland-only scope would drop influenza (no complete 2019 baseline) and change the viral headline, so it is not used.
-- **Annual comparison only.** No weekly alert levels, seasonal thresholds, age or sex breakdowns, or maps.
-- **The operational report is not an outbreak detector.** It ranks changes between two years and does not replace local surveillance.
+- The years limit only the sections that show history. The current status always uses the newest data and its full comparison window; the report says so at the top.
+- A year choice that ends before the newest data shows canton and age figures for the last chosen year where FOPH publishes them; some series only publish the most recent period or a long-term mean.
 
 ## Reproducibility
 
 - **Reproduction means the same snapshot, code and toolchain.** Changed data give changed reports. Hashes cannot recover deleted inputs, so retain the snapshot folder.
-- **R packages.** The lockfile `renv.lock` is authoritative. Other R installations (for example conda) can produce slightly different package versions and, in principle, differences in figures.
-- **PDF builds need the pinned TinyTeX.** Quarto automatic TeX installation is disabled so incomplete installations fail loudly.
-- **Linux CI is the reference platform.** The secret scan and container job target Linux x86_64.
+- **Python packages are pinned** in `scripts/health_pipeline/requirements.lock.txt` and `reports/requirements.txt`. Other versions of pandas or Plotly can change figures or layout.
+- **Linux is the reference platform.** CI and the Docker image run on Linux x86_64. Windows builds give the same figures; file checksums of the CSV differ because of line endings.
 
 ## Project
 
-- **No project licence is stated yet** (see `data/README.md`); the source data carry their own terms (source attribution).
-- **Interactivity is client-side.** HTML tables are filterable and sortable and the Shiny app is reactive, but there is no hosted service. Sharing a folder does not deploy anything.
-- **Code layout is transitional.** Modules are not yet an installable package, and the optional Streamlit page (`src/app.py`) renders one report at a time. It has no authentication, so run it only on a trusted machine or network.
-- **Historical prototypes remain in the repository** (`example_output/`) and are not release evidence. An earlier standalone prototype (`Health_Report_Generator-test/`) and a legacy dataset-selection config (`configs/report.yml`) were removed from `main`; both remain in tag `v1.0.0` and branch `release/v1.0.0`.
-- The unused archived Lyme sentinel data (`data/archive/lyme_sentinella_legacy/`) was also removed from `main` and remains in tag `v1.0.0`.
+- **No hosted service.** Each report is a file. The web page (`src/app.py`) renders one report at a time and has no login, so run it only on a trusted machine or network.
+- **Code layout is transitional.** The pipeline modules are not yet an installable package.
+- **No PDF output.** Use the browser's *Print -> Save as PDF* if a PDF is needed.

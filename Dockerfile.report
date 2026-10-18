@@ -1,48 +1,42 @@
 ARG UV_VERSION=0.8.14
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uvbin
 
-FROM rocker/r-ver:4.3.2
+# Python, the locked packages and Quarto: everything the pipeline and the reports need.
+FROM python:3.11.6-slim-bookworm
 
-ARG QUARTO_VERSION=1.3.353
+ARG QUARTO_VERSION=1.10.19
 
-ENV UV_PYTHON_INSTALL_DIR=/opt/python \
-    UV_PYTHON_PREFERENCE=only-managed \
-    UV_LINK_MODE=copy \
+ENV UV_LINK_MODE=copy \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    RENV_CONFIG_CACHE_ENABLED=false \
-    HEALTH_REPORT_R_LIBRARY=/opt/health-report-r-library \
-    R_LIBS_USER=/opt/health-report-r-library \
-    PATH="/opt/health-report-venv/bin:/opt/tex/.TinyTeX/bin/x86_64-linux:${PATH}"
+    PATH="/opt/health-report-venv/bin:${PATH}"
 
+# git: the reports record the code version in their Provenance section.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       ca-certificates curl git xz-utils perl make g++ gfortran \
-       pkg-config libuv1-dev \
-       libcurl4-openssl-dev libssl-dev libxml2-dev \
-       libfontconfig1-dev libfreetype6-dev libpng-dev \
-       libjpeg-dev libtiff-dev libharfbuzz-dev libfribidi-dev \
+    && apt-get install -y --no-install-recommends ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uvbin /uv /uvx /usr/local/bin/
 
-RUN uv python install 3.11.6 \
-    && uv venv --python 3.11.6 /opt/health-report-venv
+RUN uv venv --python /usr/local/bin/python3.11 /opt/health-report-venv
 
 COPY scripts/health_pipeline/requirements.lock.txt /opt/build/requirements.lock.txt
+COPY reports/requirements.txt /opt/build/reports-requirements.txt
 
+# Pipeline and tests, the report packages, and the web page (src/app.py), all
+# constrained to the locked versions.
 RUN uv pip install \
       --python /opt/health-report-venv/bin/python \
+      -c /opt/build/requirements.lock.txt \
       -r /opt/build/requirements.lock.txt \
+      -r /opt/build/reports-requirements.txt \
+      "streamlit==1.66.0" \
     && uv pip check --python /opt/health-report-venv/bin/python
 
-# Web page for beginners (src/app.py). Constrained to the locked versions above.
-RUN uv pip install       --python /opt/health-report-venv/bin/python       -c /opt/build/requirements.lock.txt       "streamlit==1.66.0"     && uv pip check --python /opt/health-report-venv/bin/python
-
-RUN for tool in snakemake pytest; do \
+RUN for tool in snakemake pytest streamlit; do \
       command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }; \
     done \
-    && python -c "import pandas; assert pandas.__version__ == '2.2.3', pandas.__version__"
+    && python -c "import pandas, plotly, ipykernel; assert pandas.__version__ == '2.2.3', pandas.__version__; assert plotly.__version__ == '5.24.1', plotly.__version__"
 
 RUN curl --fail --show-error --location \
       --retry 5 --retry-all-errors --retry-delay 3 \
@@ -52,46 +46,12 @@ RUN curl --fail --show-error --location \
     && mkdir -p /opt/quarto \
     && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1 \
     && ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto \
-    && rm /tmp/quarto.tar.gz
+    && rm /tmp/quarto.tar.gz \
+    && quarto --version
 
-WORKDIR /opt/r-build
-COPY renv.lock ./renv.lock
-COPY workflow/restore_r.R ./workflow/restore_r.R
-
-RUN Rscript workflow/restore_r.R \
-    && mv .r-library /opt/health-report-r-library \
-    && chmod -R a+rX /opt/health-report-r-library \
-    && rm -rf /opt/r-build
-
-COPY scripts/ci/install_tinytex.sh /opt/build/install_tinytex.sh
-
-RUN mkdir -p /opt/tex \
-    && HOME=/opt/tex bash /opt/build/install_tinytex.sh 2026.10 \
-    && chmod -R a+rX /opt/tex
-
-# Python Quarto reports in reports/ (researcher, public_health). They are rendered with the
-# Quarto they were made with, kept apart from the Quarto above so the R reports do not change.
-ARG REPORTS_QUARTO_VERSION=1.10.19
-ENV HEALTH_REPORTS_QUARTO=/opt/quarto-reports/bin/quarto
-
-COPY reports/requirements.txt /opt/build/reports-requirements.txt
-
-RUN uv pip install \
-      --python /opt/health-report-venv/bin/python \
-      -c /opt/build/requirements.lock.txt \
-      -r /opt/build/reports-requirements.txt \
-    && uv pip check --python /opt/health-report-venv/bin/python \
-    && python -c "import plotly, ipykernel; assert plotly.__version__ == '5.24.1', plotly.__version__"
-
-RUN curl --fail --show-error --location \
-      --retry 5 --retry-all-errors --retry-delay 3 \
-      --connect-timeout 30 --max-time 600 \
-      "https://github.com/quarto-dev/quarto-cli/releases/download/v${REPORTS_QUARTO_VERSION}/quarto-${REPORTS_QUARTO_VERSION}-linux-amd64.tar.gz" \
-      -o /tmp/quarto-reports.tar.gz \
-    && mkdir -p /opt/quarto-reports \
-    && tar -xzf /tmp/quarto-reports.tar.gz -C /opt/quarto-reports --strip-components=1 \
-    && rm /tmp/quarto-reports.tar.gz \
-    && /opt/quarto-reports/bin/quarto --version
+# The project is mounted at /app and owned by the host user, not the container user; without
+# this git refuses to read it and the reports record the code version as "unavailable".
+RUN git config --system --add safe.directory /app
 
 WORKDIR /app
 

@@ -13,6 +13,7 @@ Usage:  python render_quarto.py --report researcher --results results \
             --output results/site/researcher.html --data-root data/reference
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -33,10 +34,7 @@ def reports():
     return sorted(p.stem for p in SOURCE.glob("*.qmd"))
 
 
-def render(report, results, output, quarto=None, data_root=None, topics=None):
-    # The Docker image keeps the R reports on their own Quarto and sets this to the
-    # Quarto these reports were made with.
-    quarto = quarto or os.environ.get("HEALTH_REPORTS_QUARTO", "quarto")
+def render(report, results, output, quarto="quarto", data_root=None, topics=None, years=None):
     results = Path(results).resolve()
     output = Path(output).resolve()
     document = SOURCE / f"{report}.qmd"
@@ -64,6 +62,13 @@ def render(report, results, output, quarto=None, data_root=None, topics=None):
         # Restricts the report to the diseases a reader selected; see helpers.SELECTED.
         if topics:
             env["HEALTH_TOPICS"] = ",".join(topics)
+        # Limits the sections over time to these years, e.g. (2019, 2025); see helpers.FIRST_YEAR.
+        if years:
+            env["HEALTH_YEARS"] = f"{years[0]}-{years[1]}"
+        # A reader's own table (upload_table.py): the report names it instead of the FOPH sources.
+        upload = results / "upload.json"
+        if upload.is_file():
+            env["HEALTH_UPLOAD"] = json.loads(upload.read_text(encoding="utf-8"))["name"]
         subprocess.run([quarto, "render", document.name, "--to", "html"],
                        cwd=build, check=True, env=env)
         # Publish only after a successful render.
@@ -81,10 +86,13 @@ if __name__ == "__main__":
     ap.add_argument("--report", required=True, help=f"one of: {', '.join(reports())}")
     ap.add_argument("--results", default="results")
     ap.add_argument("--output", required=True)
-    ap.add_argument("--quarto", help="default: $HEALTH_REPORTS_QUARTO, else quarto on PATH")
+    ap.add_argument("--quarto", default="quarto")
     ap.add_argument("--data-root", help="raw exports the pipeline ingested, for provenance")
     ap.add_argument("--topics", help="comma-separated diseases to limit the report to "
                                      "(default: every disease)")
+    ap.add_argument("--years", help="years to show in the sections over time, e.g. 2019-2025 "
+                                    "(default: every year)")
     a = ap.parse_args()
     topics = [t.strip() for t in (a.topics or '').split(',') if t.strip()]
-    render(a.report, a.results, a.output, a.quarto, a.data_root, topics)
+    years = tuple(int(y) for y in a.years.split('-')) if a.years else None
+    render(a.report, a.results, a.output, a.quarto, a.data_root, topics, years)

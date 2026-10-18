@@ -1,2 +1,0 @@
-# Shell scripts run inside Linux containers: always keep LF line endings.
-*.sh text eol=lf

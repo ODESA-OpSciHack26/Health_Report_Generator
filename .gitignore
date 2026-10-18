@@ -8,12 +8,6 @@ __pycache__/
 results/
 reproduced/
 out/
-renv/library/
-renv/staging/
-.Rhistory
-.RData
-.r-library/
-.r-bootstrap/
 .env
 data/raw/
 data/processed/

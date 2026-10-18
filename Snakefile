@@ -1,52 +1,32 @@
 from pathlib import Path
-import json
+import shutil
 import sys
 
+# Raw FOPH exports -> snapshot -> one cleaned table -> quality checks -> Quarto reports.
+# `snakemake --cores 2` builds every report in config `reports` into <out>/site/.
 configfile: 'workflow/config.yaml'
 P = 'scripts/health_pipeline'
 sys.path.insert(0, str(Path(P).resolve()))
 from common import digest, object_hash
 OUT = config['out'].rstrip('/')
-STAKEHOLDERS = config['stakeholders']
 PYTHON = sys.executable
-QUARTO = config.get('quarto', 'quarto')
-STAKEHOLDER_DIR = Path(config.get('stakeholder_dir', f'{P}/config/stakeholders'))
-CONFIGS = {s: str(STAKEHOLDER_DIR / f'{s}.json') for s in STAKEHOLDERS}
-for s in STAKEHOLDERS:
-    if json.loads(Path(CONFIGS[s]).read_text())['id'] != s:
-        raise ValueError('Stakeholder filename and id must match')
-BUNDLE_NAMES = ['series.csv','metrics.csv','lineage.csv','selection.csv','sources.csv','checks.csv',
-                'snapshot.json','stakeholder.json','pathogen_class.csv','bundle.json']
-ANALYSIS = expand(OUT+'/reports/{s}/data/{n}',s=STAKEHOLDERS,n=BUNDLE_NAMES)
-HTML = expand(OUT+'/reports/{s}/{doc}.html',s=STAKEHOLDERS,doc=['report','methods'])
-PDF = expand(OUT+'/reports/{s}/{doc}.pdf',s=STAKEHOLDERS,doc=['report','methods'])
-APPS = expand(OUT+'/reports/{s}/app/package.json',s=STAKEHOLDERS)
-# Every audience is rendered from this one shared template; audiences differ only by stakeholder JSON.
-SHARED_TEMPLATE = f'{P}/report_public_health_expert.qmd'
-PRESENTATION_CODE = [f'{P}/publish.py', f'{P}/common.py', SHARED_TEMPLATE, f'{P}/templates/report_helpers.R',
-                     f'{P}/templates/audience_reports.R', f'{P}/templates/app.R', f'{P}/templates/dashboard.css',
-                     f'{P}/templates/methods.qmd']
-PROVENANCE = expand(OUT+'/reports/{s}/{name}',s=STAKEHOLDERS,name=['provenance.json','provenance.pdf.json'])
+SITE = OUT + '/site'
+REPORTS = list(config['reports'])
 DATA_ROOT = config['data_root'] if not config.get('snapshot_manifest') else ''
-ENVIRONMENT = [f'{P}/requirements.lock.txt', 'workflow/environment.yml', 'workflow/r-packages.tsv', 'renv.lock', '.Rprofile']
+ENVIRONMENT = [f'{P}/requirements.lock.txt', 'reports/requirements.txt']
+# Everything a report reads besides its own .qmd; render_quarto.py copies these next to it.
+REPORT_CODE = ['reports/shared/helpers.py', 'reports/shared/provenance.py',
+               'reports/assets/swiss_cantons.geojson', f'{P}/render_quarto.py']
+
+for name in REPORTS:
+    if not Path(f'reports/{name}.qmd').exists():
+        raise ValueError(f'config reports lists {name}, but reports/{name}.qmd does not exist')
+
+HTML = expand(SITE + '/{report}.html', report=REPORTS)
+PROVENANCE = expand(SITE + '/provenance_{report}.json', report=REPORTS)
 
 rule all:
-    input: HTML, PDF, APPS, PROVENANCE, OUT+'/release.json'
-
-# Python Quarto reports in reports/ (`snakemake quarto`); not part of `all`.
-include: 'workflow/quarto.smk'
-
-rule tables:
-    input: ANALYSIS
-
-rule html:
-    input: HTML, expand(OUT+'/reports/{s}/provenance.json',s=STAKEHOLDERS)
-
-rule pdf:
-    input: PDF
-
-rule shiny:
-    input: APPS
+    input: HTML, PROVENANCE, SITE + '/index.html'
 
 if not config.get('snapshot_manifest'):
     ROOT = Path(config['data_root'])
@@ -80,33 +60,27 @@ rule validate:
     params: out=OUT
     shell: '{PYTHON:q} {P}/checks.py --out {params.out:q}'
 
-rule analyse:
-    input: parquet=OUT+'/harmonised.parquet', datasets=OUT+'/datasets.csv', manifest=OUT+'/harmonised_snapshot.json', checks=OUT+'/checks.csv',gate=OUT+'/validated.json',
-           stakeholder=lambda w:CONFIGS[w.s], classes=f'{P}/config/pathogen_class.csv',code=[f'{P}/analyse.py',f'{P}/common.py','workflow/config.schema.json'], env=ENVIRONMENT
-    output: [OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES]
-    params: out=OUT, dest=lambda w:f'{OUT}/reports/{w.s}/data'
-    shell: '{PYTHON:q} {P}/analyse.py --out {params.out:q} --stakeholder {input.stakeholder:q} --classes {input.classes:q} --dest {params.dest:q}'
-
-rule render_html:
-    input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
-    output: report=OUT+'/reports/{s}/report.html', methods=OUT+'/reports/{s}/methods.html', provenance=OUT+'/reports/{s}/provenance.json'
-    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest')
-    shell: '{PYTHON:q} {P}/publish.py html --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml'
-
-rule render_pdf:
-    input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
-    output: report=OUT+'/reports/{s}/report.pdf', methods=OUT+'/reports/{s}/methods.pdf', provenance=OUT+'/reports/{s}/provenance.pdf.json'
-    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest')
-    shell: '{PYTHON:q} {P}/publish.py pdf --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml'
-
-rule package_shiny:
-    input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
-    output: manifest=OUT+'/reports/{s}/app/package.json', files=[OUT+'/reports/{s}/app/'+n for n in BUNDLE_NAMES+['report.qmd','report_helpers.R','audience_reports.R','app.R','dashboard.css','methods.qmd']]
-    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data',dest=lambda w:f'{OUT}/reports/{w.s}/app'
-    shell: '{PYTHON:q} {P}/publish.py package --bundle {params.bundle:q} --output {params.dest:q}'
-
-rule release:
-    input: HTML, PDF, APPS, PROVENANCE, ANALYSIS, ENVIRONMENT, f'{P}/release.py', 'Snakefile', 'workflow/config.yaml', *[str(p) for p in Path('tests').glob('*') if p.is_file()], *[str(p) for p in Path(P).glob('*.py')]
-    output: OUT+'/release.json'
+# The reports read the cleaned table as CSV and publish its checksum in their
+# Provenance section; harmonise.py writes Parquet, so the CSV is derived here.
+rule harmonised_csv:
+    input: parquet=OUT+'/harmonised.parquet', gate=OUT+'/validated.json', code=[f'{P}/export_csv.py'], env=ENVIRONMENT
+    output: OUT+'/harmonised.csv'
     params: out=OUT
-    shell: '{PYTHON:q} {P}/release.py --out {params.out:q} --quarto {QUARTO:q}'
+    shell: '{PYTHON:q} {P}/export_csv.py --out {params.out:q}'
+
+# The gate stops a report from being built on a table that has not passed checks.py.
+rule report:
+    input: cleaned=OUT+'/harmonised.csv', snapshot=OUT+'/harmonised_snapshot.json', datasets=OUT+'/datasets.csv',
+           checks=OUT+'/checks.csv', gate=OUT+'/validated.json', qmd='reports/{report}.qmd', code=REPORT_CODE, env=ENVIRONMENT
+    output: html=SITE+'/{report}.html', provenance=SITE+'/provenance_{report}.json'
+    wildcard_constraints: report='|'.join(REPORTS)
+    params: results=OUT, data_root=DATA_ROOT or config.get('snapshot_manifest')
+    shell: '{PYTHON:q} {P}/render_quarto.py --report {wildcards.report:q} --results {params.results:q} '
+           '--output {output.html:q} --data-root {params.data_root:q}'
+
+# The landing page links to the reports by file name, so it is published only once they all exist.
+rule landing:
+    input: page='reports/assets/index.html', reports=HTML
+    output: SITE+'/index.html'
+    run:
+        shutil.copyfile(input.page, output[0])

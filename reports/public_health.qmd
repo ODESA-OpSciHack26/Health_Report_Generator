@@ -213,6 +213,8 @@ d = h.load()
 st = h.status(d)
 above = st[st.level.isin(["high", "elevated"])]
 record = st[st.level == "high"]
+if h.selection_note():
+    display(Markdown(h.selection_note()))
 
 
 LEVEL_COLORS = {

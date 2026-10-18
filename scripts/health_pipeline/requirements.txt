@@ -1,1 +1,3 @@
+# Everything the pipeline, the tests and the reports need, at locked versions.
 -r requirements.lock.txt
+-r ../../reports/requirements.txt

@@ -1,34 +1,44 @@
-# Report bundle contract, version 2.0
+# Data contract: the cleaned table and its companions
 
-All CSVs are UTF-8, comma-delimited, with one header row. Empty numeric fields mean missing/undefined, never zero. Identifiers and paths are strings; years and source record positions are integers; values are floating-point numbers. `bundle.json` provides SHA-256 checksums for all data/config files and a snapshot identifier. A bundle is ready only when this manifest exists and all hashes match.
+The reports read only these files in `results/`. All CSVs are UTF-8, comma-delimited, with one header row. Empty numeric fields mean missing, never zero.
 
-| File | Key | Contents |
+## harmonised.parquet / harmonised.csv
+
+One row is one value for one dataset, measure, period, place and subgroup. `harmonise.py` writes the Parquet file; `export_csv.py` writes the same rows as CSV for the reports.
+
+| Column | Type | Meaning |
 |---|---|---|
-| series.csv | topic, year | Selected national count, population, calculated incidence, geography, measure, source, coverage, aggregation and metric references |
-| metrics.csv | metric_id | Metric type, subject, year, unit, value, formula, ordered inputs_json |
-| lineage.csv | metric_id plus input relationship | Derived metric edges, or raw file/record/column references and full data/metadata hashes |
-| selection.csv | dataset_id | Inclusion/exclusion, reason, and main-group eligibility |
-| sources.csv | source_file | Dataset identity, snapshot, full checksums, publication date, status and used flag; duplicate downloads remain visible |
-| checks.csv | dataset_id, check, detail | PASS, WARN, FAIL or SKIP with a reason; several period comparisons may share a check name |
-| stakeholder.json | id | Effective analysis policy and section configuration |
-| pathogen_class.csv | topic | Curated class, label and rationale/note |
-| snapshot.json | snapshot_id | Exact raw files, sizes and hashes; snapshot paths are relative to the archive root |
+| `dataset_id` | string | `<topic>__<source_system>__<data hash>_<metadata hash>` |
+| `topic` | string | Disease or indicator, e.g. `influenza`, `ehec` |
+| `source_system` | string | e.g. `mandatory_reporting_system`, `sentinella_reporting_system` |
+| `measure` | string | `cases`, `consultations`, or a comparison statistic such as `median_value_5y` |
+| `period` | string | `2025`, `2025-M08` (month), `2026-W40` (week) |
+| `period_type` | string | `year`, `month`, `iso_week`, `week`, `date` |
+| `period_start` | datetime | First day of the period |
+| `year` | integer | Calendar year of the period |
+| `place`, `place_type` | string | e.g. `CHFL`/`CHFL`, `CH`/`country`, `ZH`/`canton` |
+| `age_group`, `sex` | string | `all` for totals |
+| `breakdown` | string | Other split, e.g. `testResult=positive`; empty if none |
+| `value` | float | The published value |
+| `pop` | float | Population denominator |
+| `incValue` | float | FOPH's published rate per 100,000 |
+| `prct` | float | Published percentage, where the dataset has one |
+| `is_total` | bool | Every grouping column is at its "all" value |
+| `is_stat_row` | bool | The row is a comparison statistic (min/median/max), not a count |
+| `data_complete` | string | The publisher's completeness flag |
+| `invalid_value` | bool | The raw value could not be read as a number |
+| `groups_json` | string | The original grouping values |
+| `source_file`, `source_row` | string, integer | Raw file (relative to the snapshot) and its CSV record number (header = 1) |
+| `sha256`, `metadata_sha256`, `snapshot_id` | string | Checksums of the raw data and metadata, and the snapshot they came from |
 
-`series.csv` can include reference/base years outside the reporting window. All series have complete coverage for the union of those years. Population and count units remain distinct. The report does not pool consultations with mandatory case notifications.
+## Companion files
 
-## Formulas
+| File | Content |
+|---|---|
+| `datasets.csv` | One row per raw file: checksums, topic, source system, publishing date, rows, `status` (`ok`, `duplicate_skipped`, `quarantined`) and detail |
+| `checks.csv` | One row per quality check: `dataset_id`, `check`, `status` (`PASS`, `WARN`, `SKIP`, `FAIL`), `detail` |
+| `validated.json` | Success marker written only when no check failed; bound to the checked content |
+| `harmonised_snapshot.json`, `snapshot.json` | Snapshot id and the checksum of every raw file |
+| `role_log.csv` | How each raw column was classified (time, place, group, value) |
 
-- `raw_sum`: sum of raw values identified by all raw lineage edges (annual row or 12 monthly rows).
-- `raw_identity`: exact value in the identified raw record, used for a population denominator. For monthly aggregation all 12 denominators must first agree.
-- `sum`: sum of the ordered input metrics.
-- `ratio_100`: first input / second input * 100; group index baseline must be positive.
-- `ratio_100000`: first input / second input * 100000; population must be positive.
-- `percent_change`: (second input - first input) / first input * 100. Zero first input produces a missing value, never infinity or a false zero change.
-
-Every derived metric is a directed edge to other metric IDs. Every leaf points to archived source records, including population leaves. The snapshot and bundled settings/classification explain which candidates were selected; the release manifest records the implementation and environment used to execute those formulas.
-
-The report prints short `M<number>` references mapped to full metric IDs in its appendix. These references are presentation-local, not persistent IDs. Use full IDs with the snapshot/config identity for machine comparisons.
-
-## Compatibility
-
-The old wide `report_*_table.csv` and count-only trace CSV have been replaced by these normalised tables. HTML, PDF and Shiny must consume these tables rather than repeat disease selection or group calculations. Shiny filters change presentation only; a different analysis policy requires a new pipeline build.
+Quality rules: [docs/scientific-policy.md](../../docs/scientific-policy.md).

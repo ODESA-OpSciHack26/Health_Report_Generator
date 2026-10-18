@@ -24,6 +24,8 @@ PROJECT = Path(os.environ.get("HEALTH_REPORT_PROJECT") or HERE.parents[2])
 # The raw exports the pipeline ingested; the Snakefile passes the configured data_root
 # (workflow/config.yaml) through render_quarto.py.
 DATA_ROOT = Path(os.environ.get("HEALTH_DATA_ROOT") or PROJECT / "data" / "reference")
+# Set when the reader supplied their own cleaned table (upload_table.py): its file name.
+UPLOAD = os.environ.get("HEALTH_UPLOAD", "")
 
 
 def sha256(path: Path) -> str:
@@ -72,9 +74,12 @@ def data_retrieved() -> dict:
 def selected_topics() -> dict:
     """The diseases this render was restricted to, if any; see helpers.SELECTED."""
     topics = [t.strip() for t in os.environ.get("HEALTH_TOPICS", "").split(",") if t.strip()]
-    if not topics:
-        return {}
-    return {"Diseases selected": f"{len(topics)}: " + ", ".join(sorted(topics))}
+    chosen = {"Diseases selected": f"{len(topics)}: " + ", ".join(sorted(topics))} if topics else {}
+    # See helpers.FIRST_YEAR: the years apply to the sections over time, not to the current status.
+    years = os.environ.get("HEALTH_YEARS", "").strip()
+    if years:
+        chosen["Years shown"] = f"{years} (current status uses the latest data)"
+    return chosen
 
 
 def git() -> dict:
@@ -93,15 +98,18 @@ def build(report_file: str, parameters: dict | None = None) -> dict:
     return {
         "report": report_file,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source": "Federal Office of Public Health (FOPH) surveillance exports: one data.csv and metadata.json per dataset",
-        "data_retrieved": data_retrieved(),
+        "source": (f"Uploaded table {UPLOAD}, supplied by the reader; not built from the FOPH exports by this "
+                   "pipeline. Quality checks are the upload checks." if UPLOAD else
+                   "Federal Office of Public Health (FOPH) surveillance exports: one data.csv and metadata.json per dataset"),
+        "data_retrieved": ({"earliest": "unknown", "latest": "unknown", "basis": "uploaded table"}
+                           if UPLOAD else data_retrieved()),
         "report_parameters": {**(parameters or {}), **selected_topics()},
         "input": {
-            "file": "results/harmonised.csv",
+            "file": UPLOAD or "results/harmonised.csv",
             "sha256": sha256(cleaned),
             "bytes": cleaned.stat().st_size,
             "modified": datetime.fromtimestamp(cleaned.stat().st_mtime, timezone.utc).isoformat(timespec="seconds"),
-            "produced_by": "backend/harmonise.py",
+            "produced_by": "the reader" if UPLOAD else "scripts/health_pipeline/harmonise.py",
         },
         "raw_snapshot": {"snapshot_id": snapshot["snapshot_id"], "raw_files": len(snapshot["files"])},
         "datasets": [
@@ -136,7 +144,8 @@ def section(report_file: str, parameters: dict | None = None) -> str:
     retrieved = got["earliest"] if got["earliest"] == got["latest"] else f"{got['earliest']} to {got['latest']}"
     facts = [
         ("Source", p["source"]),
-        ("Source publication dates", f"{dates[0]} to {dates[-1]}"),
+        ("Uploaded (UTC)" if UPLOAD else "Source publication dates",
+         dates[0] if dates[0] == dates[-1] else f"{dates[0]} to {dates[-1]}"),
         ("Data retrieved", f"{retrieved} ({got['basis']})"),
         ("Datasets ingested", f"{len(p['datasets'])} ({p['raw_files_skipped_as_duplicates']} duplicate raw files skipped)"),
         ("Cleaned input", f"`{p['input']['file']}`, {p['input']['bytes']:,} bytes, produced by `{p['input']['produced_by']}`"),

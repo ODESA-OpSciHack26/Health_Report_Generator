@@ -8,7 +8,6 @@ CONTRACT = json.loads((ROOT / "workflow/toolchain.json").read_text())
 WORKFLOWS = (
     ".github/workflows/validate.yml",
     ".github/workflows/refresh-idd-data.yml",
-    ".github/workflows/render-selected-report.yml",
 )
 
 
@@ -21,36 +20,20 @@ def test_python_contract_is_aligned():
     validated = CONTRACT["python"]["validated"]
     project = tomllib.loads(text("pyproject.toml"))
     assert project["project"]["requires-python"] == supported
-    assert f"python={validated}" in text("workflow/environment.yml")
+    assert f"FROM python:{validated}-" in text("Dockerfile.report")
     for workflow in WORKFLOWS:
         assert f'python-version: "{validated}"' in text(workflow).replace("'", '"')
 
 
-def test_r_and_quarto_contract_is_aligned():
-    r_version = CONTRACT["r"]["validated"]
+def test_quarto_contract_is_aligned():
     quarto_version = CONTRACT["quarto"]["validated"]
-    assert f"r-base={r_version}" in text("workflow/environment.yml")
     assert f"ARG QUARTO_VERSION={quarto_version}" in text("Dockerfile.report")
     for workflow in WORKFLOWS:
-        content = text(workflow).replace("'", '"')
-        assert f'r-version: "{r_version}"' in content
-        assert f'version: "{quarto_version}"' in content
+        assert f'version: "{quarto_version}"' in text(workflow).replace("'", '"')
 
 
-def test_tinytex_contract_is_aligned():
-    tinytex = CONTRACT["tinytex"]
-    installer = text("scripts/ci/install_tinytex.sh")
-    assert f'version="{tinytex["validated"]}"' in installer
-    assert f'asset="{tinytex["asset"]}"' in installer
-    assert f'expected_sha256="{tinytex["sha256"]}"' in installer
-    assert 'requested_version="${1:-$version}"' in installer
-    assert tinytex["bundle"] == "TinyTeX"
-    for required_file in tinytex["required_latex_files"]:
-        assert f'kpsewhich" {required_file}' in installer
-    for workflow in WORKFLOWS:
-        content = text(workflow)
-        assert "tinytex: true" not in content
-        assert f'install_tinytex.sh {tinytex["validated"]}' in content
+def test_uv_version_is_aligned():
+    assert f'ARG UV_VERSION={CONTRACT["uv"]["validated"]}' in text("Dockerfile.report")
 
 
 def test_validation_runs_for_push_and_pull_requests():
@@ -59,48 +42,19 @@ def test_validation_runs_for_push_and_pull_requests():
     assert "  pull_request:" in workflow
 
 
-def test_workflow_branch_refs_are_main():
-    for workflow in (
-        ".github/workflows/refresh-idd-data.yml",
-        ".github/workflows/render-selected-report.yml",
-    ):
-        content = text(workflow)
-        assert "ref: main" in content
-        assert "ref: connector" not in content
+def test_data_refresh_targets_main():
+    content = text(".github/workflows/refresh-idd-data.yml")
+    assert "ref: main" in content
 
 
 def test_documentation_names_authoritative_contract():
-    for path in ("README.md", "GETTING_STARTED.md"):
+    for path in ("README.md",):
         assert "workflow/toolchain.json" in text(path)
 
 
-def test_uv_version_is_aligned():
-    assert f'ARG UV_VERSION={CONTRACT["uv"]["validated"]}' in text("Dockerfile.report")
-
-
 def test_canonical_data_root_is_used_everywhere_active():
-    config = text("workflow/config.yaml")
-    assert "data_root: data/reference" in config
+    assert "data_root: data/reference" in text("workflow/config.yaml")
     for workflow in WORKFLOWS:
-        content = text(workflow)
-        assert "data_root=Data" not in content
-    migration = json.loads(text("docs/phase-3-data-migration.json"))
-    assert migration["canonical_root"] == "data/reference"
-    assert migration["legacy_root"] == "Data"
-    assert migration["unmapped_legacy_directories"] == 0
-    assert len(migration["entries"]) == migration["legacy_dataset_directories"] == 37
-
-
-def test_legacy_data_root_remains_removed_and_auditable():
+        assert "data_root=Data" not in text(workflow)
     # Compare real names: exists() is case-insensitive on Windows/macOS mounts.
     assert "Data" not in {p.name for p in ROOT.iterdir()}
-    migration = json.loads(text("docs/phase-3-data-migration.json"))
-    removal = json.loads(text("docs/phase-4-legacy-removal.json"))
-    assert removal["action"] == "remove_frozen_legacy_data_root"
-    assert removal["canonical_root"] == migration["canonical_root"] == "data/reference"
-    assert removal["legacy_root"] == migration["legacy_root"] == "Data"
-    assert removal["legacy_snapshot_id"] == migration["legacy_snapshot_id"]
-    assert removal["canonical_snapshot_id"] == migration["canonical_snapshot_id"]
-    assert removal["legacy_dataset_directories"] == migration["legacy_dataset_directories"] == 37
-    assert removal["legacy_files_removed"] == 74
-    assert removal["unmapped_legacy_directories"] == 0

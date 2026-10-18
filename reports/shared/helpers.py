@@ -51,6 +51,18 @@ if _unknown:
 # The reports iterate DISEASES, so restricting it here restricts every section at once.
 DISEASES = {t: ALL_DISEASES[t] for t in SELECTED} if SELECTED else ALL_DISEASES
 
+# A render can also be limited to a span of years, HEALTH_YEARS="2019-2025". It applies to
+# the sections that show history (coverage, trends, recent series, seasonality, age, cantons).
+# The current status always uses the latest data and its full comparison window, because a
+# comparison needs the previous 5 to 10 years. Unset or empty means every year.
+_years = os.environ.get("HEALTH_YEARS", "").strip()
+try:
+    FIRST_YEAR, LAST_YEAR = (int(y) for y in _years.split("-")) if _years else (None, None)
+except ValueError:
+    raise SystemExit(f"HEALTH_YEARS must look like 2019-2025, not {_years!r}") from None
+if FIRST_YEAR is not None and FIRST_YEAR > LAST_YEAR:
+    raise SystemExit(f"HEALTH_YEARS starts after it ends: {_years}")
+
 CANTONS = {
     "AG": "Aargau", "AI": "Appenzell I.Rh.", "AR": "Appenzell A.Rh.", "BE": "Bern", "BL": "Basel-Landschaft",
     "BS": "Basel-Stadt", "FR": "Fribourg", "GE": "Geneva", "GL": "Glarus", "GR": "Graubünden", "JU": "Jura",
@@ -96,6 +108,35 @@ def covered(topics) -> list:
     filtered out and fails on an empty frame.
     """
     return [t for t in topics if t in DISEASES]
+
+
+def window(frame: pd.DataFrame) -> pd.DataFrame:
+    """Rows of a table (with a `year` column) inside the chosen years; see HEALTH_YEARS."""
+    return frame if FIRST_YEAR is None else frame[frame.year.between(FIRST_YEAR, LAST_YEAR)]
+
+
+def within(s):
+    """Entries of a period-indexed series or frame inside the chosen years; see HEALTH_YEARS."""
+    if FIRST_YEAR is None:
+        return s
+    kept = s[[FIRST_YEAR <= split(p)[0] <= LAST_YEAR for p in s.index]]
+    kept.attrs = s.attrs
+    return kept
+
+
+def selection_note() -> str:
+    """Lines for the top of a report about an uploaded table and the chosen years ('' for neither)."""
+    notes = []
+    upload = os.environ.get("HEALTH_UPLOAD", "")
+    if upload:
+        notes.append(f"**Data: uploaded table `{upload}`.** It was supplied by the reader, not built from the "
+                     "FOPH exports by this pipeline; the quality checks are the upload checks.")
+    if FIRST_YEAR is not None:
+        span = str(FIRST_YEAR) if FIRST_YEAR == LAST_YEAR else f"{FIRST_YEAR}-{LAST_YEAR}"
+        notes.append(f"**Years shown: {span}.** Charts and tables over time are limited to these years. "
+                     "The current status of each disease always uses the latest data, compared with the "
+                     "same week or month in the previous 5 to 10 years.")
+    return "\n\n".join(notes)
 
 
 def load() -> pd.DataFrame:
@@ -241,7 +282,7 @@ def versus_usual(ratio: float | None) -> str:
 
 def regional(d: pd.DataFrame, topic: str) -> tuple[pd.DataFrame, str]:
     """Cases and incidence per canton: latest full year, or the last 4 weeks for weekly diseases."""
-    t = totals(d[(d.topic == topic) & (d.place_type == "canton") & (d.place != "unknown")])
+    t = totals(window(d[(d.topic == topic) & (d.place_type == "canton") & (d.place != "unknown")]))
     t = t[t.measure == "cases"].dropna(subset=["value"])
     if t.empty:
         return t, ""
@@ -265,11 +306,14 @@ def by_age(d: pd.DataFrame, topic: str) -> tuple[pd.DataFrame, str]:
           & d.place.isin(["CHFL", "CH"]) & d.place_type.isin(["CHFL", "country"])
           & (d.breakdown.isna() | (d.breakdown == "testResult=positive"))].dropna(subset=["incValue"])
     counts = n[n.measure.isin(["cases", "consultations"])]
+    # The newest year in the data is still running; a chosen span that ends earlier ends on a full year.
+    running = counts.year.max()
+    n, counts = window(n), window(counts)
     if (counts.period_type == "year").any():
         rows, basis = counts[counts.period_type == "year"], "reported"
         rows = rows[rows.period == rows.period.max()]
     elif len(counts):
-        full_year = counts.year.max() - 1
+        full_year = min(running - 1, counts.year.max())
         rows, basis = counts[(counts.year == full_year) & counts.period_type.isin(["iso_week", "week"])], "sum of weekly incidence"
     else:
         rows, basis = n[n.measure.str.endswith("_mean") & (n.period_type == "year")], "FOPH long-term mean"
@@ -285,6 +329,9 @@ def by_age(d: pd.DataFrame, topic: str) -> tuple[pd.DataFrame, str]:
 def trend_figure(s: pd.DataFrame, points: int | None = None, height: int = 300) -> go.Figure:
     """One series against its historical min-max band and median."""
     points = points or {"iso_week": 104, "week": 104, "month": 48, "year": 20}[s.attrs["period_type"]]
+    s = within(s)
+    if s.empty:
+        return _no_data(f"No {label(s.attrs['topic'])} data in the chosen years")
     attrs = s.attrs
     s = s.iloc[-points:].rename(index=short_label)
     s.attrs = attrs
@@ -445,7 +492,9 @@ def _no_data(message: str) -> go.Figure:
 
 def season_heatmap(d: pd.DataFrame, topic: str) -> go.Figure:
     """Month-by-year heatmap of monthly cases: one hue, light to dark."""
-    s = series(d, topic, "month")
+    s = within(series(d, topic, "month"))
+    if s.empty:
+        return _no_data(f"No {label(topic)} data in the chosen years")
     frame = pd.DataFrame({"year": [split(p)[0] for p in s.index], "month": [int(split(p)[1][1:]) for p in s.index],
                           "value": s.value.values})
     grid = frame.pivot(index="year", columns="month", values="value").sort_index(ascending=False)

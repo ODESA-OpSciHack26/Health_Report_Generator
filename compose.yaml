@@ -1,4 +1,5 @@
 services:
+  # Builds both reports into results/site/: `docker compose run --rm report`.
   report:
     image: health-report:local
     build:
@@ -13,11 +14,11 @@ services:
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp/health-report-config
       XDG_CACHE_HOME: /tmp/health-report-cache
-      HEALTH_REPORT_R_LIBRARY: /opt/health-report-r-library
-      R_LIBS_USER: /opt/health-report-r-library
     command: ["snakemake", "--cores", "2"]
 
+  # Downloads the latest FOPH exports into data/reference/.
   sync:
+    image: health-report:local
     build:
       context: .
       dockerfile: Dockerfile.report
@@ -31,6 +32,7 @@ services:
       XDG_CACHE_HOME: /tmp/health-report-cache
     command: ["python", "src/sync_idd_exports.py"]
 
+  # Web page: pick a report and diseases, get one HTML file. http://localhost:8501
   app:
     image: health-report:local
     build:
@@ -48,12 +50,11 @@ services:
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp/health-report-config
       XDG_CACHE_HOME: /tmp/health-report-cache
-      HEALTH_REPORT_R_LIBRARY: /opt/health-report-r-library
-      R_LIBS_USER: /opt/health-report-r-library
     command:
       - streamlit
       - run
       - src/app.py
       - --server.address=0.0.0.0
       - --server.port=8501
+      - --server.maxUploadSize=500  # MB; a full harmonised.csv is about 230 MB
       - --browser.gatherUsageStats=false

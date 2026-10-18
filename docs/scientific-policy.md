@@ -1,25 +1,26 @@
 # Scientific policy and data contract
 
-Rules that decide which data enter a report and how numbers are calculated. Audience wording never changes these; see [audiences](audiences.md).
+Rules that decide which data enter a report and how numbers are calculated.
 
-## Quality and selection policy
+## Quality rules (harmonise.py, checks.py)
 
 - A subgroup is never inferred to be a total because it has one distinct value.
-- Missing/malformed metadata and undescribed columns are quarantined; quarantine blocks the release until resolved.
+- Missing or malformed metadata and undescribed columns are quarantined; quarantine blocks the build until resolved.
 - Deduplication requires identical data **and metadata** bytes. Same data with conflicting metadata is a blocking conflict.
 - Counts must be numeric, finite, nonnegative and uniquely keyed. Year/month reconciliation uses a documented 2% tolerance only for complete compatible count series. Canton checks require exactly 26 Swiss cantons and a **CH** national total, never CHFL; tolerance is 5%. Nonapplicable checks are `SKIP`, not `PASS`.
-- Every selected series requires the reference year, index base year, and every requested reporting year, confirmed `dataComplete`, and a positive population denominator. An annual total is preferred; otherwise exactly 12 distinct months and one consistent denominator are required.
-- Duplicate candidate exports for the same disease/source are rejected, not summed. Different systems follow the explicit `source_priority`; every choice is recorded.
 - Geography is explicit (`CH` or `CHFL`); the workflow never silently substitutes one for the other.
-- Group membership is fixed across all displayed years. Groups sum mandatory case notifications only by default, excluding sentinel estimates. COVID-19 and AIDS are excluded from group sums; AIDS is a disease stage related to HIV. Influenza exclusion is a separate sensitivity comparison. These are editable, documented analytic policies, not hidden harmonisation rules.
-- The COVID-19 positive-test case definition is an explicit, reasoned dimension filter. COVID-19 still lacks a 2019 baseline, so it is excluded from this default complete-baseline comparison. To study it, use an appropriate later reference period rather than substituting zero.
-- Rates are calculated from the exported counts and population, and can differ slightly from a publisher's rate calculated using unrounded figures. Relative changes are descriptive, not significance tests or causal claims.
-- `checks.py` exits nonzero on critical failures. Analysis verifies a content-bound success marker; rendering verifies the analysis bundle. Editing an input or output cannot silently reuse an old validation result.
+- `checks.py` exits nonzero on critical failures and writes a success marker bound to the content it checked. Editing an input or output cannot silently reuse an old validation result, and no report is rendered from a table that has not passed.
 
-The strict defaults may exclude more series than the previous prototype. Inspect `selection.csv` before interpreting a report. The default input release produces 12 eligible disease series; CH-only sentinel series and COVID-19 without a 2019 baseline are among the exclusions.
+## Report rules (reports/shared/helpers.py)
 
-## Stakeholders and data contract
+- **National series.** All ages, both sexes, no sub-type split. Switzerland plus Liechtenstein (CHFL) where published, otherwise Switzerland (CH). The COVID-19 case series counts laboratory-confirmed (positive-test) cases.
+- **Period.** The finest published: weekly for respiratory series, monthly for most others, yearly for AIDS.
+- **Comparison window.** Minimum, median and maximum of the same week or month in previous years: FOPH's published 5- or 10-year values where available, otherwise the previous 5 years of the series, requiring at least 3.
+- **Level.** Record high: latest value at or above the window maximum. Above normal: at least 20% and at least 3 cases above the window median. Low: at or below the window minimum. Otherwise normal.
+- **Recent change.** Weekly series: last 4 weeks against the previous 4. Monthly and yearly series: against the same period one year earlier.
+- **Cantons.** Cases per 100,000 for the last full year, or the last 4 weeks for weekly series; cantons with fewer than 5 cases are not shaded.
+- **Selections.** A reader can limit a report to some diseases and years. The years apply to the sections over time; the status and its comparison window always use the full data. Both choices are recorded in the report's Provenance.
 
-Copy a stakeholder JSON, set a unique `id`, and add the filename stem to `workflow/config.yaml`. Filename stem and ID must match. `public_health_expert.json` is retained as the analytic base profile for the on-demand selected-report workflow (`render_selected.py`); it is no longer part of the default build. Only supported settings pass `workflow/config.schema.json`; unsupported geographies, periods, classes, sections, and unknown keys fail clearly. Change presentation sections with `outputs`. Arbitrary new analyses require code plus tests, not an ignored configuration field.
+Changing a rule means changing `helpers.py` with a matching update to the report's Methods section; do not describe descriptive changes as causal effects or statistical significance.
 
-See [SCHEMA.md](../scripts/health_pipeline/SCHEMA.md) for table keys, types and calculation lineage. `pathogen_class.csv` remains a curated lookup: review classifications and the note column before adding topics. Unclassified datasets are explicitly excluded, never relabelled as syndromic. The current classifications were supplied by the team; no scientific reviewer approval is invented.
+See [SCHEMA.md](../scripts/health_pipeline/SCHEMA.md) for the cleaned table's columns and types.

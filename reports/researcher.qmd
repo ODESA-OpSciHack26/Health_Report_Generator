@@ -215,6 +215,8 @@ d = h.load()
 st = h.status(d)
 above = st[st.level.isin(["high", "elevated"])]
 record = st[st.level == "high"]
+if h.selection_note():
+    display(Markdown(h.selection_note()))
 
 
 LEVEL_COLORS = {
@@ -350,7 +352,7 @@ display(Markdown(
 ## Data coverage
 
 ```{python}
-coverage = (d.groupby(["topic", "source_system"])
+coverage = (h.window(d).groupby(["topic", "source_system"])
             .agg(rows=("value", "size"),
                  first_year=("year", "min"), last_period=("period", "max"),
                  periods=("period_type", lambda s: ", ".join(sorted(set(s)))),
@@ -407,6 +409,7 @@ display(Markdown(
 - **Recent change.** Weekly series: last 4 weeks against the previous 4. Monthly and yearly series: against the same period one year earlier.
 - **Year to date.** Sum from the first period of the current year to the latest, against the same span of the previous year.
 - **Incidence.** FOPH's published rate per 100,000, not recomputed.
+- **Years.** A report can be limited to chosen years. That limits the coverage table, trends, recent series, seasonality, age and canton figures; the current status and its comparison window always use the full data. The chosen years are recorded under Provenance.
 
 ## Current status of every series
 
@@ -448,7 +451,7 @@ Annual reported case or consultation rate per 100,000, from the first published 
 ```{python}
 annual = {}
 for topic in h.DISEASES:
-    annual[h.label(topic)] = h.series(d, topic, "year").incValue.rename(index=int)
+    annual[h.label(topic)] = h.within(h.series(d, topic, "year").incValue).rename(index=int)
 neutral(h.small_multiples(annual, "Cases or consultations per 100,000 per year")).show()
 ```
 
