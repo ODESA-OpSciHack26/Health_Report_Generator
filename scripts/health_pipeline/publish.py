@@ -125,6 +125,7 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
         env = os.environ.copy()
         project = HERE.parents[1]
         env['HEALTH_REPORT_PROJECT'] = str(project)
+        env['HEALTH_RESULTS'] = str(Path(bundle).resolve().parents[2])
         env['R_PROFILE_USER'] = str(project / '.Rprofile')
         for document in ['report','methods']:
             command = [quarto,'render',f'{document}.qmd','--to',fmt]

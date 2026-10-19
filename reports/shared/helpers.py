@@ -140,7 +140,14 @@ def selection_note() -> str:
 
 
 def load() -> pd.DataFrame:
-    frame = pd.read_csv(RESULTS / "harmonised.csv", usecols=COLUMNS, low_memory=False)
+    csv = RESULTS / "harmonised.csv"
+    parquet = RESULTS / "harmonised.parquet"
+    if csv.is_file():
+        frame = pd.read_csv(csv, usecols=COLUMNS, low_memory=False)
+    elif parquet.is_file():
+        frame = pd.read_parquet(parquet, columns=COLUMNS)
+    else:
+        raise FileNotFoundError(f"Neither {csv} nor {parquet} exists")
     # Non-disease topics (lab tests, wastewater) are kept: sections that use them are not
     # part of the disease selection.
     return frame[frame.topic.isin(DISEASES) | ~frame.topic.isin(ALL_DISEASES)] if SELECTED else frame
