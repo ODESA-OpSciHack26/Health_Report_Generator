@@ -134,6 +134,30 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             if document == 'methods':
                 command += ['-P', 'download_prefix:data/']
             subprocess.run(command,cwd=tmp,check=True,env=env)
+        # Audience templates must retain the primary workflow provenance.
+        if fmt == 'html' and provenance is not None:
+            payload = json.dumps(provenance, ensure_ascii=False).replace("<", "\\u003c")
+            marker = '<script type="application/json" id="report-provenance">'
+            for document in ['report', 'methods']:
+                html_path = Path(tmp) / f'{document}.html'
+                html = html_path.read_text(encoding='utf-8')
+                # Reuse the shared table controls for pandas-generated tables.
+                if 'table-filter' not in html:
+                    table_script = subprocess.check_output(
+                        ['Rscript', '-e',
+                         "source('report_helpers.R'); cat(interactive_tables_script())"],
+                        cwd=tmp, text=True,
+                    ).replace('table.report-table', 'table')
+                    if '</body>' not in html:
+                        raise ValueError(f'{document}.html: missing closing body tag')
+                    html = html.replace('</body>', table_script + '\n</body>', 1)
+                    html_path.write_text(html, encoding='utf-8')
+                if marker not in html:
+                    if '</body>' not in html:
+                        raise ValueError(f'{document}.html: missing closing body tag')
+                    embedded = marker + payload + '</script>\n'
+                    html = html.replace('</body>', embedded + '</body>', 1)
+                    html_path.write_text(html, encoding='utf-8')
         # Publish the pair only after both have rendered successfully.
         shutil.copyfile(Path(tmp)/f'report.{fmt}',output)
         shutil.copyfile(Path(tmp)/f'methods.{fmt}',output.parent/f'methods.{fmt}')

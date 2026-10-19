@@ -66,3 +66,32 @@ tested IDD workflow, CSV reporting, and researcher browser-upload journey.
 This is a tested local integration-fix candidate, not a complete V2
 validation or a release-ready approval. Original failure logs and
 incremental test evidence are retained outside the repository.
+
+## Follow-up: CI output-contract fixes
+
+The first GitHub validation exposed missing embedded primary provenance
+in the researcher and health-institution HTML reports. After correcting
+that locally, output validation exposed missing interactive-table scripts.
+
+Changes in scripts/health_pipeline/publish.py:
+- Embed the primary workflow provenance in HTML documents when absent.
+- Reuse the existing shared filtering/sorting script for pandas-generated
+  tables, adapting its selector to those tables.
+
+Validation:
+- An initial container build completed 17/17 steps, then failed the
+  interactive-table check.
+- After both additions, the incremental container rebuild completed all
+  11 scheduled steps.
+- check_outputs.py passed: audience outputs and provenance verified.
+- verify_release.py passed: release hashes, provenance and rendered links
+  verified.
+- Output directory: reproduced/provenance-review.
+- Browser filtering/sorting behaviour has not yet been confirmed.
+- GitHub Actions must rerun on the follow-up commit before CI success
+  can be claimed.
+
+Limitations:
+- Table-control injection currently requires a supplied provenance record.
+- Previously documented provenance-metadata and reporting-design issues
+  remain outside the scope of these fixes.
