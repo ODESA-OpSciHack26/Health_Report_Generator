@@ -144,7 +144,7 @@ if __name__=='__main__':
     ap=argparse.ArgumentParser(); ap.add_argument('action',choices=['package','html','pdf']); ap.add_argument('--bundle',required=True); ap.add_argument('--output',required=True); ap.add_argument('--quarto',default='quarto')
     ap.add_argument('--provenance',help='Write a machine-readable provenance sidecar here and embed it in HTML')
     ap.add_argument('--data-root',help='Canonical input root recorded in provenance')
-    ap.add_argument('--topics',default='',help='Comma-separated IDD disease topics to include')
+    ap.add_argument('--topics',nargs='?',const='',default='',help='Comma-separated IDD disease topics to include')
     ap.add_argument('--workflow-config',help='Workflow configuration file recorded in provenance')
     a=ap.parse_args()
     if a.action=='package': package(a.bundle,a.output)
