@@ -347,7 +347,12 @@ def by_age(d: pd.DataFrame, topic: str) -> tuple[pd.DataFrame, str]:
 # ------------------------------------------------------------------ charts
 def trend_figure(s: pd.DataFrame, points: int | None = None, height: int = 300) -> go.Figure:
     """One series against its historical min-max band and median."""
-    points = points or {"iso_week": 104, "week": 104, "month": 48, "year": 20}[s.attrs["period_type"]]
+    if s.empty:
+        return _no_data(f"No {label(s.attrs['topic'])} data in the chosen years")
+    period_type = s.attrs.get("period_type")
+    if period_type not in {"iso_week", "week", "month", "year"}:
+        return _no_data(f"No usable time series is available for {label(s.attrs['topic'])}")
+    points = points or {"iso_week": 104, "week": 104, "month": 48, "year": 20}[period_type]
     s = within(s)
     if s.empty:
         return _no_data(f"No {label(s.attrs['topic'])} data in the chosen years")

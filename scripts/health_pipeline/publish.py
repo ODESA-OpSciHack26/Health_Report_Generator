@@ -114,7 +114,7 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
     if extra: record['request']=extra
     return record
 
-def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None):
+def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None,topics=''):
     output=Path(output).resolve(); output.parent.mkdir(parents=True,exist_ok=True)
     # Each format gets a separate build directory so concurrent rendering cannot race.
     with tempfile.TemporaryDirectory(prefix='health-report-') as tmp:
@@ -126,6 +126,8 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
         project = HERE.parents[1]
         env['HEALTH_REPORT_PROJECT'] = str(project)
         env['HEALTH_RESULTS'] = str(Path(bundle).resolve().parents[2])
+        if topics:
+            env['HEALTH_TOPICS'] = topics
         env['R_PROFILE_USER'] = str(project / '.Rprofile')
         for document in ['report','methods']:
             command = [quarto,'render',f'{document}.qmd','--to',fmt]
@@ -142,6 +144,7 @@ if __name__=='__main__':
     ap=argparse.ArgumentParser(); ap.add_argument('action',choices=['package','html','pdf']); ap.add_argument('--bundle',required=True); ap.add_argument('--output',required=True); ap.add_argument('--quarto',default='quarto')
     ap.add_argument('--provenance',help='Write a machine-readable provenance sidecar here and embed it in HTML')
     ap.add_argument('--data-root',help='Canonical input root recorded in provenance')
+    ap.add_argument('--topics',default='',help='Comma-separated IDD disease topics to include')
     ap.add_argument('--workflow-config',help='Workflow configuration file recorded in provenance')
     a=ap.parse_args()
     if a.action=='package': package(a.bundle,a.output)
@@ -152,4 +155,4 @@ if __name__=='__main__':
             if a.workflow_config and Path(a.workflow_config).is_file():
                 wf={'path':a.workflow_config,'sha256':digest(a.workflow_config)}
             record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,wf)
-        render(a.bundle,a.output,a.action,a.quarto,record,a.provenance)
+        render(a.bundle,a.output,a.action,a.quarto,record,a.provenance,a.topics)

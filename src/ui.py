@@ -30,11 +30,22 @@ def _(mo):
         options={"Local IDD dataset": "idd", "Upload CSV/TSV": "upload"},
         value="Local IDD dataset", label="Data source",
     )
+    disease_type = mo.ui.multiselect(
+        options={
+            "Influenza": "influenza", "Flu-like illness": "influenza-like_illness",
+            "COVID-19": "covid19", "Acute respiratory infection": "acute_respiratory_infection",
+            "Campylobacter": "campylobacteriosis", "EHEC": "ehec", "Shigellosis": "shigellosis",
+            "Hepatitis A": "hepatitis_a", "Hepatitis E": "hepatitis_e", "Chlamydia": "chlamydiosis",
+            "Gonorrhoea": "gonorrhea", "HIV": "hiv", "AIDS": "aids",
+            "Hepatitis B": "hepatitis_b", "Hepatitis C": "hepatitis_c", "Lyme disease": "lyme_borreliosis",
+        }, label="Disease type",
+    )
     mo.vstack([
         mo.md("# Local health report generator\n\nGenerate a report locally from the IDD dataset or an uploaded CSV/TSV file."),
         mo.hstack([audience, source]),
+        disease_type if source.value == "idd" else mo.md(""),
     ])
-    return audience, source
+    return audience, disease_type, source
 
 
 @app.cell
@@ -55,7 +66,7 @@ def _(mo, source):
 
 
 @app.cell
-def _(audience, csv_button, datetime, idd_button, io, mo, pathlib, pd, restart, source, subprocess, sys, timezone, upload):
+def _(audience, csv_button, datetime, disease_type, idd_button, io, mo, pathlib, pd, restart, source, subprocess, sys, timezone, upload):
     if restart.value:
         result = mo.md("Analysis reset. Choose an audience and data source to begin.")
     elif source.value == "idd":
@@ -65,7 +76,8 @@ def _(audience, csv_button, datetime, idd_button, io, mo, pathlib, pd, restart, 
             run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             output_root = f"results/runs/idd/{run_id}"
             completed = subprocess.run(
-                ["snakemake", "--cores", "2", "--config", f"out={output_root}", f"stakeholder={audience.value}"],
+                ["snakemake", "--cores", "2", "--config", f"out={output_root}", f"stakeholder={audience.value}",
+                 f"topics={','.join(disease_type.value)}"],
                 capture_output=True, text=True, check=False,
             )
             if completed.returncode == 0:

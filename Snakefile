@@ -11,6 +11,7 @@ STAKEHOLDERS = config['stakeholders']
 # Interactive callers may request one audience while the normal workflow
 # continues to build every configured audience.
 REQUESTED_STAKEHOLDER = config.get('stakeholder')
+TOPICS = config.get('topics', '')
 TARGET_STAKEHOLDERS = ([REQUESTED_STAKEHOLDER] if REQUESTED_STAKEHOLDER else STAKEHOLDERS)
 if REQUESTED_STAKEHOLDER and REQUESTED_STAKEHOLDER not in STAKEHOLDERS:
     raise ValueError(f"Unknown stakeholder {REQUESTED_STAKEHOLDER!r}; choose one of {STAKEHOLDERS}")
@@ -93,13 +94,13 @@ rule render_html:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
     output: report=OUT+'/reports/{s}/report.html', methods=OUT+'/reports/{s}/methods.html', provenance=OUT+'/reports/{s}/provenance.json'
     params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest')
-    shell: '{PYTHON:q} {P}/publish.py html --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml'
+    shell: '{PYTHON:q} {P}/publish.py html --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml --topics {TOPICS:q}'
 
 rule render_pdf:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
     output: report=OUT+'/reports/{s}/report.pdf', methods=OUT+'/reports/{s}/methods.pdf', provenance=OUT+'/reports/{s}/provenance.pdf.json'
     params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest')
-    shell: '{PYTHON:q} {P}/publish.py pdf --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml'
+    shell: '{PYTHON:q} {P}/publish.py pdf --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml --topics {TOPICS:q}'
 
 rule package_shiny:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
