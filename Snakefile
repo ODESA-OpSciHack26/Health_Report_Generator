@@ -29,7 +29,10 @@ PDF = expand(OUT+'/reports/{s}/{doc}.pdf',s=TARGET_STAKEHOLDERS,doc=['report','m
 APPS = expand(OUT+'/reports/{s}/app/package.json',s=TARGET_STAKEHOLDERS)
 # Every audience is rendered from this one shared template; audiences differ only by stakeholder JSON.
 SHARED_TEMPLATE = f'{P}/report_public_health_expert.qmd'
-PRESENTATION_CODE = [f'{P}/publish.py', f'{P}/common.py', SHARED_TEMPLATE, f'{P}/templates/report_helpers.R',
+PRESENTATION_CODE = [f'{P}/publish.py', f'{P}/common.py', SHARED_TEMPLATE,
+                     'reports/researcher.qmd', 'reports/public_health.qmd',
+                     'reports/shared/helpers.py', 'reports/shared/provenance.py',
+                     'reports/assets/swiss_cantons.geojson', f'{P}/templates/report_helpers.R',
                      f'{P}/templates/audience_reports.R', f'{P}/templates/app.R', f'{P}/templates/dashboard.css',
                      f'{P}/templates/methods.qmd']
 PROVENANCE = expand(OUT+'/reports/{s}/{name}',s=TARGET_STAKEHOLDERS,name=['provenance.json','provenance.pdf.json'])
