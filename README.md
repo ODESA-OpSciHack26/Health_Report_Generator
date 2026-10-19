@@ -44,17 +44,25 @@ Everything runs inside Docker, so you do not install Python or Quarto yourself.
    Wait for `You can now view your Streamlit app in your browser.`
 3. Open **http://localhost:8501** in Chrome or Edge (or in VS Code: **Ctrl+Shift+P -> Simple Browser: Show**).
 4. Make your choices:
-   1. **Stakeholder.** Click **Choose** on a card:
+   1. **Data.** Select **🏥 FOPH dataset** (the project's data) or **📂 Upload your CSV** (see *Your own data* below).
+   2. **Stakeholder.** Click **Choose** on a card:
       - 🔬 *Researcher*: methods, quality checks, trends, seasonality, age groups, cantons and provenance.
       - 🏥 *Public health officials*: what needs attention now, and where.
-   2. **Years.** Drag the two ends of the slider, for example 2019 to 2025. Charts and tables over time show only these years. The current status of each disease always uses the newest data, because it is compared with the previous 5 to 10 years.
-   3. **Diseases.** Click a tile to select or deselect it. **Select all** and **Clear** change all of them at once.
+   3. **Years.** Drag the two ends of the slider, for example 2019 to 2025. Charts and tables over time show only these years. The current status of each disease always uses the newest data, because it is compared with the previous 5 to 10 years.
+   4. **Diseases.** Click a tile to select or deselect it. **Select all** and **Clear** change all of them at once.
 5. Click **📄 Generate report**. The report opens in a **new tab**. If your browser blocks it, click **Open report in new tab** (or allow pop-ups for `localhost`). **Download report** and **Download provenance** save the files; they are also kept in `results/app/`.
 6. To stop: press **Ctrl+C** in the terminal, then `docker compose down`.
 
 **How long it takes.** When the page starts, it prepares both full reports in the background (seconds if nothing changed, about a minute after new data); the first click waits for that. Then: all diseases and all years about 2 seconds, a new choice about 30 seconds, the same choice again about 1 second. The page builds one report at a time.
 
-**Optional: your own data.** Open **📂 Use your own data (optional)** and switch on *Use my own cleaned table*. Upload a `harmonised.csv` or `harmonised.parquet` made by this pipeline (or with the same columns; the page lists them), up to 500 MB. It is checked first and refused if it fails (missing columns, numbers that cannot be read, negative counts, no known disease). It is used only for your reports and the project's data is not changed. Only the diseases and years in your file are offered, and the report says at the top and in its Provenance that it was made from your file.
+**Your own data.** In step 1 select **📂 Upload your CSV** and upload any CSV, TSV or Parquet file, up to 500 MB. Its report is made at once with the default choices and shown under the upload; change the steps below and press **Generate report** for another version. It is used only for your reports and the project's data is not changed; the report says at the top and in its Provenance that it was made from your file.
+
+- **A table made by this pipeline** (`harmonised.csv` or `harmonised.parquet`, or any table with the same columns; the page lists them) gets the full Researcher and Public health reports. It is checked first and refused if it fails (numbers that cannot be read, negative counts, no known disease). Only the diseases and years in your file are offered.
+- **Any other table**, for example `year,country,news_records`, gets a **general report** (`reports/general.qmd`). `scripts/health_pipeline/general_table.py` reads each column once: a year or date column becomes the time axis, number columns become the values (added up, or averaged when the name says rate, percent, share, average, ...), and text columns become groups. The page then offers the two stakeholders, the file's years and its main groups. Every report starts with an *Automatic visual summary* chosen from what the table holds (as in the `develop/v2.0.0` CSV route): date or year + number → time trend; category + number → ranked bars; category only → frequency bars (rows counted); two numbers → scatter; one number → distribution. Then, per number column, charts over time (total and per group), the latest period against the one before and tables by group.
+  - *Researcher* view: how each column was read, data checks, all summary statistics, time structure (coverage and gaps), a table by group and period, data preview, methods and Provenance.
+  - *Public health officials* view: key points first (latest value and change, largest rise and fall, largest group), main numeric findings, what is in the file, data preview, an important limitation and Provenance.
+
+  Besides the report and its provenance, the page offers the rows used (`_data.csv`) and the summary statistics (`_summary.csv`) for download; all are kept in `results/app/`. The report is descriptive only: it adds no populations, rates or disease comparisons that the file does not contain. Only an empty file is refused; a file without a date or year column is shown as a snapshot.
 
 ## Without the web page
 
