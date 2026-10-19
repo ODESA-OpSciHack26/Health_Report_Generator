@@ -1,3 +1,4 @@
+options(renv.config.install.verbose = TRUE)
 # Explicit setup only. Runtime builds never install R dependencies.
 bootstrap <- file.path(getwd(),'.r-bootstrap')
 dir.create(bootstrap,showWarnings=FALSE)
