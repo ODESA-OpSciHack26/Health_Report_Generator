@@ -28,19 +28,23 @@ SOURCE = PROJECT / "reports"
 SHARED = [Path("shared/helpers.py"), Path("shared/provenance.py"),
           Path("assets/swiss_cantons.geojson")]
 REQUIRED_INPUTS = ["harmonised.csv", "harmonised_snapshot.json", "datasets.csv", "checks.csv"]
+# reports/general.qmd reads any table, as prepared by general_table.py.
+GENERAL_INPUTS = ["table.csv", "profile.json", "checks.csv", "upload.json"]
 
 
 def reports():
     return sorted(p.stem for p in SOURCE.glob("*.qmd"))
 
 
-def render(report, results, output, quarto="quarto", data_root=None, topics=None, years=None):
+def render(report, results, output, quarto="quarto", data_root=None, topics=None, years=None, groups=None,
+           audience=None):
     results = Path(results).resolve()
     output = Path(output).resolve()
     document = SOURCE / f"{report}.qmd"
     if not document.exists():
         raise SystemExit(f"no such report: {document} (available: {', '.join(reports())})")
-    missing = [n for n in REQUIRED_INPUTS if not (results / n).exists()]
+    missing = [n for n in (GENERAL_INPUTS if report == "general" else REQUIRED_INPUTS)
+               if not (results / n).exists()]
     if missing:
         raise SystemExit(f"missing pipeline outputs in {results}: {', '.join(missing)}")
 
@@ -65,6 +69,12 @@ def render(report, results, output, quarto="quarto", data_root=None, topics=None
         # Limits the sections over time to these years, e.g. (2019, 2025); see helpers.FIRST_YEAR.
         if years:
             env["HEALTH_YEARS"] = f"{years[0]}-{years[1]}"
+        # The general report only: values of the table's main group column to keep.
+        if groups:
+            env["HEALTH_GROUPS"] = json.dumps(list(groups))
+        # The general report only: which view to write (researcher or public_health).
+        if audience:
+            env["HEALTH_AUDIENCE"] = audience
         # A reader's own table (upload_table.py): the report names it instead of the FOPH sources.
         upload = results / "upload.json"
         if upload.is_file():
@@ -78,6 +88,10 @@ def render(report, results, output, quarto="quarto", data_root=None, topics=None
         provenance = build / f"provenance_{report}.json"
         if provenance.exists():
             shutil.copyfile(provenance, output.parent / f"provenance_{output.stem}.json")
+        # The general report also leaves the rows it used and its summary statistics.
+        for extra in ["data.csv", "summary.csv"]:
+            if (build / extra).exists():
+                shutil.copyfile(build / extra, output.parent / f"{output.stem}_{extra}")
     print(f"rendered {output}")
 
 
