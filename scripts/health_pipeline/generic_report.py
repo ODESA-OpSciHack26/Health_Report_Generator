@@ -165,7 +165,10 @@ This report was generated locally from **{source.name}**. It is a descriptive su
 
 '''
     if chart_html:
-        qmd += chart_html + "\n"
+        fence = "```"
+        while fence in chart_html:
+            fence += "`"
+        qmd += f"\n\n{fence}{{=html}}\n{chart_html}\n{fence}\n\n"
     qmd += "\n## Data preview\n\n" + frame.head(20).to_markdown(index=False) + "\n"
     qmd += "\n## Reproducibility note\n\nThe input table, generated summary, provenance record, chart asset, and this editable Quarto source are stored together. This CSV report is descriptive and does not apply IDD-specific classifications.\n"
     (out / "report.qmd").write_text(qmd, encoding="utf-8")

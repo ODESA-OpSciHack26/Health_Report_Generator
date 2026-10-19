@@ -90,7 +90,14 @@ def git() -> dict:
 
 
 def build(report_file: str, parameters: dict | None = None) -> dict:
+    rendered_template = HERE / "report.qmd"
+    if not rendered_template.is_file():
+        rendered_template = HERE / report_file
     cleaned = RESULTS / "harmonised.csv"
+    if not cleaned.is_file():
+        cleaned = RESULTS / "harmonised.parquet"
+    if not cleaned.is_file():
+        raise FileNotFoundError(f"No harmonised CSV or Parquet in {RESULTS}")
     snapshot = json.loads((RESULTS / "harmonised_snapshot.json").read_text(encoding="utf-8"))
     registry = pd.read_csv(RESULTS / "datasets.csv")
     used = registry[registry.status == "ok"].sort_values(["topic", "source_system"])
@@ -105,7 +112,7 @@ def build(report_file: str, parameters: dict | None = None) -> dict:
                            if UPLOAD else data_retrieved()),
         "report_parameters": {**(parameters or {}), **selected_topics()},
         "input": {
-            "file": UPLOAD or "results/harmonised.csv",
+            "file": UPLOAD or str(cleaned),
             "sha256": sha256(cleaned),
             "bytes": cleaned.stat().st_size,
             "modified": datetime.fromtimestamp(cleaned.stat().st_mtime, timezone.utc).isoformat(timespec="seconds"),
@@ -118,7 +125,8 @@ def build(report_file: str, parameters: dict | None = None) -> dict:
             for r in used.itertuples()],
         "raw_files_skipped_as_duplicates": int((registry.status == "duplicate_skipped").sum()),
         "quality_checks": {k: int(v) for k, v in checks.status.value_counts().items()},
-        "code": {name: sha256(HERE / name) for name in [report_file, "helpers.py", "provenance.py"]},
+        "rendered_template": rendered_template.name,
+        "code": {name: sha256(HERE / name) for name in [rendered_template.name, "helpers.py", "provenance.py"]},
         "git": git(),
         "environment": {"python": platform.python_version(), "pandas": pd.__version__, "plotly": plotly.__version__,
                         "quarto": _run(["quarto", "--version"]), "platform": platform.platform()},

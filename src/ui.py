@@ -40,12 +40,17 @@ def _(mo):
             "Hepatitis B": "hepatitis_b", "Hepatitis C": "hepatitis_c", "Lyme disease": "lyme_borreliosis",
         }, label="Disease type",
     )
+    return audience, disease_type, source
+
+
+@app.cell
+def _(audience, disease_type, mo, source):
     mo.vstack([
         mo.md("# Local health report generator\n\nGenerate a report locally from the IDD dataset or an uploaded CSV/TSV file."),
         mo.hstack([audience, source]),
         disease_type if source.value == "idd" else mo.md(""),
     ])
-    return audience, disease_type, source
+    return
 
 
 @app.cell

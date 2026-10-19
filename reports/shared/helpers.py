@@ -90,7 +90,7 @@ def asset(name: str) -> Path:
     interface imports this module directly.
     """
     here = Path(__file__).resolve().parent
-    for candidate in (here / name, here.parent / "assets" / name):
+    for candidate in (here / name, here / "assets" / name, here.parent / "assets" / name):
         if candidate.exists():
             return candidate
     raise FileNotFoundError(f"report asset not found: {name}")
