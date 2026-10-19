@@ -202,6 +202,11 @@ def series(d: pd.DataFrame, topic: str, period_type: str | None = None) -> pd.Da
     nat = national(d[d.topic == topic])
     measure = count_measure(nat)
     counts = nat[nat.measure == measure]
+    if counts.empty:
+        empty = pd.DataFrame(columns=["value", "incValue", "min", "median", "max"])
+        empty.attrs.update(topic=topic, measure=measure, period_type=period_type,
+                           baseline="unavailable", geography="unknown", source="unknown")
+        return empty
     period_type = period_type or next(t for t in FINEST if (counts.period_type == t).any())
     s = (counts[counts.period_type == period_type].dropna(subset=["value"])
          .drop_duplicates("period").sort_values("period").set_index("period")[["value", "incValue"]])
@@ -248,6 +253,13 @@ def status(d: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for topic, (name, group) in DISEASES.items():
         s = series(d, topic)
+        if s.empty:
+            rows.append(dict(topic=topic, disease=name, group=group, measure=s.attrs["measure"],
+                             geography="unknown", period=None, period_label="Unavailable", frequency=None,
+                             value=None, incidence=None, min=None, median=None, max=None, ratio=None,
+                             level="unknown", baseline="unavailable", change_pct=None,
+                             change_basis="no usable series", ytd=None, ytd_prev=None, ytd_pct=None))
+            continue
         latest, last = s.index[-1], s.iloc[-1]
         year, sub = split(latest)
         if sub.startswith("W"):
