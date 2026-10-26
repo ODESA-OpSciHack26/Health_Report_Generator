@@ -71,6 +71,17 @@ def fake_release(tmp_path):
     rec = {'analysis_bundle': {'files': {n: digest(folder / 'data' / n) for n in ['metrics.csv', 'stakeholder.json']}},
            'output': {'shared_template_sha256': digest(HERE / TEMPLATE)},
            'stakeholder': {'parameters_sha256': digest(folder / 'data/stakeholder.json')}}
+    # Keep synthetic claims consistent with the saved parameter file.
+    cfg = json.loads((folder / 'data/stakeholder.json').read_text())
+    rec['effective_parameters'] = cfg
+    rec['filters'] = {}
+    rec['stakeholder'].update({
+        'id': cfg['id'],
+        'title': None,
+        'question': None,
+        'presentation': None,
+        'outputs': None,
+    })
     for side in ['provenance.json', 'provenance.pdf.json']:
         (folder / side).write_text(json.dumps(rec))
     embed = '<script type="application/json" id="report-provenance">' + json.dumps(rec) + '</script>'
@@ -115,3 +126,16 @@ def test_verify_release_rejects_damage(tmp_path, damage, message):
         m = folder / 'methods.html'
         m.write_text(m.read_text().replace('"parameters_sha256"', '"parameters_sha256_x"'))
     assert any(message in e for e in verify(out)), verify(out)
+
+
+def test_pinned_python_jobs_use_compatible_runner():
+    jobs = workflow("validate.yml")["jobs"]
+    for name in ("fast", "full"):
+        job = jobs[name]
+        assert job["runs-on"] == "ubuntu-22.04"
+        setup = [
+            step for step in job["steps"]
+            if step.get("uses", "").startswith("actions/setup-python@")
+        ]
+        assert len(setup) == 1
+        assert setup[0]["with"]["python-version"] == "3.11.6"

@@ -1,0 +1,28 @@
+===== ODESA M1 SUMMARY =====
+recorded_utc=2026-10-26T19:28:15Z
+commit=ff962eb901a2e7bcda21da0a6290c0547cdd5ecf
+branch=m1/provenance-baseline-guards
+worktree_dirty_files=0
+host=Linux 6.18.54.1-microsoft-standard-WSL2 x86_64
+os=Ubuntu 26.04.1 LTS
+docker=Docker version 29.8.1, build 4a63305
+compose=Docker Compose version v5.5.1
+image_id=sha256:5680057966c2ddb6bb8684f024d217c795bfcebb5ce56e827e3451fc1feae609
+base_digest=rocker/r-ver@sha256:4e32addfc4da3e660f6e0d05ce5e43d3eceb9db58a60b9a142e0dde9a654ead1
+python=Python 3.11.6
+R=R version 4.3.2 (2023-10-31) -- "Eye Holes"
+quarto=1.3.353
+snakemake=8.30.0
+PASS  docker_build (2s)
+PASS  full_pytest (20s)
+PASS  full_build (98s)
+PASS  check_outputs (1s)
+PASS  verify_release (1s)
+PASS  shiny_smoke (6s)
+PASS  dashboard_smoke (3s)
+PASS  baseline_presentation (1s)
+PASS  noop_rebuild (5s)
+PASS  compare_hashes (1s)
+artifacts_hashed=18
+mismatches: none
+===== END M1 SUMMARY =====
