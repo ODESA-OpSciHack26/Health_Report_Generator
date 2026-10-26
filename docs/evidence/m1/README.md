@@ -42,7 +42,33 @@ uses an in-memory modification of a real verified bundle. The real-output
 compatibility check uses M0 artifacts generated at `963d19f`, not fresh M1
 outputs. It does not relabel their provenance as M1.
 
-Committed-checkout validation, fresh M1 workflow evidence, and
-remote CI remain pending. No scientific policy, canonical data, analysis
+The subsequent committed-checkout capture completed both the fresh M1
+workflow and committed-checkout validation; see below. Remote CI remains pending. No scientific policy, canonical data, analysis
 formula, dependency lock file, authorship metadata, or release reference
 was changed by this repair.
+
+## Successful committed-checkout container run
+
+Tested commit: `ff962eb901a2e7bcda21da0a6290c0547cdd5ecf`.
+Run start recorded as `2026-10-26T19:28:15Z`; working tree clean.
+
+All ten capture stages passed, including 153 Python tests, fresh report
+generation, release verification, Shiny/dashboard smoke tests, the R baseline
+presentation test, a no-op rebuild, and baseline analytical hash comparisons.
+Selected report/provenance artifacts hashed: 18. Analytical mismatches: none.
+
+The supplied run summary is preserved in `container-summary.txt`.
+`container-run.json` records environment details and hashes of the local
+supporting evidence, including the temporary capture harness. These hashes
+identify evidence; they do not make the underlying local files available.
+
+The original `validation-record.json` remains an unchanged record of the
+earlier uncommitted-checkout tests. This documentation follow-up does not
+retroactively change the tested commit of either record.
+
+The container run used an isolated Docker client configuration to avoid the
+WSL Windows credential-helper failure. The normal Docker configuration and
+tracked M0 capture script were unchanged. Output directories were fresh,
+but dependency layers could be cached. No cold-cache claim is made.
+
+Remote CI and PR review are separate remaining gates.
