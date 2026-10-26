@@ -126,3 +126,16 @@ def test_verify_release_rejects_damage(tmp_path, damage, message):
         m = folder / 'methods.html'
         m.write_text(m.read_text().replace('"parameters_sha256"', '"parameters_sha256_x"'))
     assert any(message in e for e in verify(out)), verify(out)
+
+
+def test_pinned_python_jobs_use_compatible_runner():
+    jobs = workflow("validate.yml")["jobs"]
+    for name in ("fast", "full"):
+        job = jobs[name]
+        assert job["runs-on"] == "ubuntu-22.04"
+        setup = [
+            step for step in job["steps"]
+            if step.get("uses", "").startswith("actions/setup-python@")
+        ]
+        assert len(setup) == 1
+        assert setup[0]["with"]["python-version"] == "3.11.6"
