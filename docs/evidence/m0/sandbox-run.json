@@ -1,0 +1,111 @@
+{
+  "schema": "odesa-m0-evidence/1",
+  "recorded_utc": "2026-10-26T09:12:55+00:00",
+  "repository": "ODESA-OpSciHack26/Health_Report_Generator",
+  "baseline_commit": "7253baebde65c21d350ab392fe55264585391822",
+  "worktree_clean_before_run": true,
+  "environment": {
+    "where": "Perplexity Computer sandbox (Linux x86_64), not a reference platform",
+    "os": "Linux-6.1.155-x86_64-with-glibc2.43",
+    "python": "3.11.6",
+    "uv": "uv 0.13.4 (x86_64-unknown-linux-gnu)",
+    "snakemake": "8.30.0",
+    "ruff": "ruff 0.14.0",
+    "python_lock": "scripts/health_pipeline/requirements.lock.txt",
+    "python_lock_sha256": "2eb3cd36d8cc316f94eb2935205e4d5f89595d95cebec2346ec98fe7c042a7c1",
+    "docker": "not available",
+    "R": "not available",
+    "quarto": "not available"
+  },
+  "snapshot_id": "d0709708a8057815801497701bfaa145017979f1ecace4508ae46237438573ee",
+  "snapshot_files": 168,
+  "intermediate_sha256": {
+    "harmonised.parquet": "466ae5d44d331bf82e814de32c9479e9f3018a9650934b81a13d7d680a49a8dd",
+    "datasets.csv": "9c64fe39dfe037e157f34f6801b9e169964757eac71110645d6577a567d7ba2a",
+    "checks.csv": "f1e2344016fbb5003dc620b6c6ef622c4e41f850c42ee7d52d1048dbd9f5c08b",
+    "role_log.csv": "9daa62a20a7621b78f779f7498813272d6686bc20a29c9db5fde041b5a6b1274"
+  },
+  "bundle_sha256": {
+    "researcher": {
+      "series.csv": "8ed503bee5bc41a60200456c9263c6d7f22f8d1d507d6520daac4b88635a611a",
+      "metrics.csv": "e4e37ba8162c5c911b30741f065e37a62c4f7dbf6970e2e4deb51a11d862555f",
+      "lineage.csv": "12c19309697dd259f1cea1f2ccf4cdd9902e22f93141f0db40c80f1a06d3fd57",
+      "selection.csv": "126ccc4409ab933f5584d5d13bf194db76b33f7db3cfb3c2dd43a458965f9af9",
+      "sources.csv": "9e6f2a0f7ff8a3182cc94dd11c8839fb9a582bc0a6c1e5bd78196fca6fa75851",
+      "checks.csv": "f1e2344016fbb5003dc620b6c6ef622c4e41f850c42ee7d52d1048dbd9f5c08b",
+      "pathogen_class.csv": "92ce809b1483fc92feba1f4cd9cc79e5cc2fc003a1be930b814c151610a2fb1d",
+      "bundle.json": "787e6fcc5861daae8e70408933b00a99ce1d91e226d01d15e55402405a29bb9b"
+    },
+    "health_institution": {
+      "series.csv": "8ed503bee5bc41a60200456c9263c6d7f22f8d1d507d6520daac4b88635a611a",
+      "metrics.csv": "e4e37ba8162c5c911b30741f065e37a62c4f7dbf6970e2e4deb51a11d862555f",
+      "lineage.csv": "12c19309697dd259f1cea1f2ccf4cdd9902e22f93141f0db40c80f1a06d3fd57",
+      "selection.csv": "126ccc4409ab933f5584d5d13bf194db76b33f7db3cfb3c2dd43a458965f9af9",
+      "sources.csv": "9e6f2a0f7ff8a3182cc94dd11c8839fb9a582bc0a6c1e5bd78196fca6fa75851",
+      "checks.csv": "f1e2344016fbb5003dc620b6c6ef622c4e41f850c42ee7d52d1048dbd9f5c08b",
+      "pathogen_class.csv": "92ce809b1483fc92feba1f4cd9cc79e5cc2fc003a1be930b814c151610a2fb1d",
+      "bundle.json": "cc0a30f7dfc870138a08af22d36b7610e7e517d776d63c918accb7faddb32865"
+    },
+    "public": {
+      "series.csv": "8ed503bee5bc41a60200456c9263c6d7f22f8d1d507d6520daac4b88635a611a",
+      "metrics.csv": "e4e37ba8162c5c911b30741f065e37a62c4f7dbf6970e2e4deb51a11d862555f",
+      "lineage.csv": "12c19309697dd259f1cea1f2ccf4cdd9902e22f93141f0db40c80f1a06d3fd57",
+      "selection.csv": "126ccc4409ab933f5584d5d13bf194db76b33f7db3cfb3c2dd43a458965f9af9",
+      "sources.csv": "9e6f2a0f7ff8a3182cc94dd11c8839fb9a582bc0a6c1e5bd78196fca6fa75851",
+      "checks.csv": "f1e2344016fbb5003dc620b6c6ef622c4e41f850c42ee7d52d1048dbd9f5c08b",
+      "pathogen_class.csv": "92ce809b1483fc92feba1f4cd9cc79e5cc2fc003a1be930b814c151610a2fb1d",
+      "bundle.json": "4afbd02ea5a807d38e70e9619ace74b3303a717476e5aad2ddcefaa8ab46d869"
+    }
+  },
+  "checks_status_counts": {
+    "PASS": 774,
+    "SKIP": 76,
+    "WARN": 3
+  },
+  "results": [
+    {
+      "check": "ruff check .",
+      "status": "passed",
+      "detail": "All checks passed"
+    },
+    {
+      "check": "python -m pytest -q",
+      "status": "passed",
+      "detail": "131 passed, 0 skipped"
+    },
+    {
+      "check": "snakemake --dry-run (full target)",
+      "status": "passed",
+      "detail": "17 jobs planned"
+    },
+    {
+      "check": "snakemake tables (inventory, harmonise, validate, analyse x3)",
+      "status": "passed",
+      "detail": "7/7 steps"
+    },
+    {
+      "check": "rerun into second fresh folder: byte-identical intermediates and bundles",
+      "status": "passed"
+    },
+    {
+      "check": "metrics.csv identical across the three audiences",
+      "status": "passed",
+      "detail": "296 metrics each"
+    },
+    {
+      "check": "HTML/PDF render, Shiny package, release.json",
+      "status": "environment-blocked",
+      "detail": "no Docker/R/Quarto in sandbox; run scripts/evidence/m0_capture.sh"
+    },
+    {
+      "check": "check_outputs.py, verify_release.py, shiny/dashboard smoke, no-op rebuild",
+      "status": "environment-blocked",
+      "detail": "depends on full render"
+    },
+    {
+      "check": "secret scan (gitleaks)",
+      "status": "not run",
+      "detail": "CI job; not part of M0 gate"
+    }
+  ]
+}
