@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from common import digest
+from publish import FILTER_KEYS
 
 HERE = Path(__file__).resolve().parent
 EMBED = re.compile(r'<script type="application/json" id="report-provenance">(.*?)</script>', re.S)
@@ -72,6 +73,21 @@ def check_provenance(folder):
     errors = []
     name = folder.name
     template = HERE / 'report_public_health_expert.qmd'
+    try:
+        cfg = json.loads((folder / 'data/stakeholder.json').read_text())
+        if not isinstance(cfg, dict):
+            raise ValueError('Stakeholder parameters must be an object')
+    except (OSError, ValueError) as e:
+        errors.append(f'{name}: unreadable stakeholder parameters ({type(e).__name__})')
+        return errors
+    expected_filters = {key: cfg[key] for key in FILTER_KEYS if key in cfg}
+    expected_stakeholder = {
+        'id': cfg.get('id'),
+        'title': cfg.get('title'),
+        'question': cfg.get('question'),
+        'presentation': cfg.get('presentation'),
+        'outputs': cfg.get('outputs'),
+    }
     for side in ['provenance.json', 'provenance.pdf.json']:
         try:
             rec = json.loads((folder / side).read_text())
@@ -79,6 +95,16 @@ def check_provenance(folder):
         except (OSError, ValueError, KeyError, TypeError) as e:
             errors.append(f'{name}/{side}: unreadable or incomplete provenance ({type(e).__name__})')
             continue
+        if rec.get('effective_parameters') != cfg:
+            errors.append(f'{name}/{side}: effective parameters differ from stakeholder.json')
+        if rec.get('filters') != expected_filters:
+            errors.append(f'{name}/{side}: filters differ from stakeholder.json')
+        claimed_stakeholder = rec.get('stakeholder')
+        if not isinstance(claimed_stakeholder, dict) or any(
+            claimed_stakeholder.get(key) != expected
+            for key, expected in expected_stakeholder.items()
+        ):
+            errors.append(f'{name}/{side}: stakeholder metadata differs from stakeholder.json')
         for f, expected in rec['analysis_bundle']['files'].items():
             p = folder / 'data' / f
             if not p.is_file() or digest(p) != expected:

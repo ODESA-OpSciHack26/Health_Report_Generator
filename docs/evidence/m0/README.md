@@ -55,23 +55,51 @@ The three standard audiences currently share identical analytical settings
 (years 2021–2025, reference and index base year 2019, geography CHFL), so
 identical metrics are expected here; this does not yet test differing requests.
 
-## Run 2: container on the maintainer machine (pending)
+## Run 2: container on the maintainer machine (passed)
+
+Maintainer-supplied capture summary, recorded at
+`2026-10-26T14:38:32Z`, tested commit
+`963d19fecd84d4190046965f9edf19611deb7a6c`, with zero dirty files.
+This was the M0 feature checkout, not the later integration merge commit.
+
+All eight stages passed: `docker_build`, `full_build`, `check_outputs`,
+`verify_release`, `shiny_smoke`, `dashboard_smoke`, `noop_rebuild`,
+and `compare_hashes`. Selected report/provenance artifacts hashed: 18.
+Analytical hash mismatches: none.
+
+Environment: Ubuntu 26.04.1 LTS under WSL2 x86_64; Docker 29.8.1;
+Compose v5.5.1; Python 3.11.6; R 4.3.2; Quarto 1.3.353;
+Snakemake 8.30.0.
+
+The successful report image was
+`sha256:2b50112cbdcd898e8791b12d908074a48c616f6bdbfdfc36d722daf5d44884ef`.
+Base image:
+`rocker/r-ver@sha256:4e32addfc4da3e660f6e0d05ce5e43d3eceb9db58a60b9a142e0dde9a654ead1`.
+
+Reproduction command:
 
 ```sh
 bash scripts/evidence/m0_capture.sh
 ```
 
-The script builds `Dockerfile.report` for linux/amd64, runs the full workflow
-into the fresh, git-ignored folder `reproduced/m0-container/`, runs the
-output, release, Shiny and no-op checks, and compares the snapshot id,
-intermediate tables and every bundle table with the hashes in
-`sandbox-run.json`. It writes logs, environment details, the base-image
-digest, `release.json` and rendered-artifact hashes to
-`reproduced/m0-container/evidence/` and prints a summary block. It refuses
-to run if the output folder already exists and never touches `results/`.
+Requires working Docker access and a fresh `reproduced/m0-container`.
+Generated release artifacts are in `reproduced/m0-container/artifacts/`;
+logs, summary, copied release manifest and selected artifact hashes are
+in `reproduced/m0-container/evidence/`.
 
-The M0 gate is met only after Run 2 reports all steps passing, or after any
-failure is recorded here as failed or environment-blocked with its log.
+A Windows Docker credential helper could not execute in WSL. The successful
+run used a temporary isolated Docker client configuration; the normal
+configuration was unchanged. This workaround is not built into the script.
+
+An earlier capture inventoried changing evidence logs as release artifacts.
+The capture-directory repair separated them without weakening verification.
+Earlier failed runs were preserved separately.
+
+These results were supplied by the maintainer, not independently rerun when
+this documentation was prepared. The underlying generated evidence remains
+local and git-ignored, not attached here. This is not evidence of a cold-cache
+dependency rebuild, byte-identical HTML/PDF output, or independent scientific
+validation. The original sandbox record remains unchanged.
 
 ## Observations for later milestones
 

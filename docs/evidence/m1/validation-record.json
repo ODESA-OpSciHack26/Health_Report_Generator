@@ -1,0 +1,68 @@
+{
+  "schema": "odesa-m1-validation-record/1.0",
+  "record_generated_at_utc": "2026-10-26T19:13:32.751729+00:00",
+  "timestamp_meaning": "record creation time, not test execution time",
+  "starting_commit": "7e34cc8e95856bb0b7fa2a8adf909e30e69ae1c3",
+  "head_at_record_creation": "7e34cc8e95856bb0b7fa2a8adf909e30e69ae1c3",
+  "branch": "m1/provenance-baseline-guards",
+  "validation_checkout": "uncommitted M1 changes on starting commit",
+  "executor": "maintainer local Docker environment",
+  "evidence_basis": "local logs checked for expected summaries",
+  "source_sha256": {
+    "scripts/health_pipeline/verify_release.py": "94cba0e79c22058d60030952f8326ddbccb9affe4c6d35edb6245e472d9c849e",
+    "tests/test_ci_contract.py": "1ffab5e68d2bf8db5542f978416b08f624e03e64a88991a7dfbecebf1fe8093e",
+    "tests/test_m1_guards.py": "4150db0a9b38026a8e85c10ae649acfa0eae7ec32f46682b351db78dab7a09de",
+    "tests/m1_baseline_presentation.R": "eca7e23afedf1962daac9e75fbf3bbbdbbb62de573ca82929d0c28611fd59c12"
+  },
+  "checks": {
+    "focused_before_fix": {
+      "status": "expected_failures",
+      "expected_summary_observed": "9 failed, 10 passed",
+      "log_path": "reproduced/m1-probes/evidence/before-fix.log",
+      "log_sha256": "a5be9cff18fe3fe90a00f2c4fd40e93a9672f91c4af21a75aba863f7dd29a67e"
+    },
+    "focused_after_fix": {
+      "status": "passed",
+      "expected_summary_observed": "19 passed",
+      "log_path": "reproduced/m1-probes/evidence/after-fix.log",
+      "log_sha256": "4a0b01bb0c4b9f38c29981fdd741dfaa820fc7740f78ab720df0617c4e61f582"
+    },
+    "extended_python_suite": {
+      "status": "passed",
+      "expected_summary_observed": "153 passed",
+      "log_path": "reproduced/m1-probes/evidence/full-pytest-extended.log",
+      "log_sha256": "49be1fe05089817f27f7df1e6fc5840380d8a133988e74716fd3bb809f30b8b5"
+    },
+    "r_presentation": {
+      "status": "passed",
+      "expected_summary_observed": "PASS: institution table labels a zero-reference percentage as Not available.",
+      "log_path": "reproduced/m1-probes/evidence/r-baseline-presentation.log",
+      "log_sha256": "27c4027e59500379715fad03c74bb8af8c5c28d2c702740cb39a2eec96124b90"
+    },
+    "lint_before_extended_tests": {
+      "status": "passed",
+      "expected_summary_observed": "All checks passed!",
+      "log_path": "reproduced/m1-probes/evidence/ruff.log",
+      "log_sha256": "b984849aa7fb96ad5937db24621cdd6d25d37d8493365926bb730e1963d122d7"
+    },
+    "existing_m0_release_verification": {
+      "status": "passed",
+      "expected_summary_observed": "Release hashes, provenance and rendered links verified",
+      "log_path": "reproduced/m1-probes/evidence/verify-existing-m0.log",
+      "log_sha256": "66e616fc1f548568610a6c77c9e0fe72c49c5b7bcbd7d12c408c6153585166a1"
+    },
+    "final_lint": {
+      "status": "passed",
+      "expected_summary_observed": "All checks passed!",
+      "log_path": "reproduced/m1-probes/evidence/ruff-final.log",
+      "log_sha256": "27a2c6dd98c14f02a7ae28e50640c4b2f1f5f1bad0c6bc265aff5bac04299a43"
+    }
+  },
+  "limitations": [
+    "Log summary matching is not independent test re-execution.",
+    "Logs remain local and git-ignored.",
+    "Existing M0 artifacts were reverified; no fresh M1 render yet.",
+    "Final committed-checkout validation and remote CI remain pending.",
+    "Synthetic R bundle changes were in memory, not saved scientific results."
+  ]
+}

@@ -71,6 +71,17 @@ def fake_release(tmp_path):
     rec = {'analysis_bundle': {'files': {n: digest(folder / 'data' / n) for n in ['metrics.csv', 'stakeholder.json']}},
            'output': {'shared_template_sha256': digest(HERE / TEMPLATE)},
            'stakeholder': {'parameters_sha256': digest(folder / 'data/stakeholder.json')}}
+    # Keep synthetic claims consistent with the saved parameter file.
+    cfg = json.loads((folder / 'data/stakeholder.json').read_text())
+    rec['effective_parameters'] = cfg
+    rec['filters'] = {}
+    rec['stakeholder'].update({
+        'id': cfg['id'],
+        'title': None,
+        'question': None,
+        'presentation': None,
+        'outputs': None,
+    })
     for side in ['provenance.json', 'provenance.pdf.json']:
         (folder / side).write_text(json.dumps(rec))
     embed = '<script type="application/json" id="report-provenance">' + json.dumps(rec) + '</script>'
