@@ -10,11 +10,12 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-OUT=reproduced/m0-container
-EV="$OUT/evidence"
+RUN_ROOT=reproduced/m0-container
+OUT="$RUN_ROOT/artifacts"
+EV="$RUN_ROOT/evidence"
 IMAGE=health-report:m0
-if [ -e "$OUT" ]; then
-  echo "Stop: $OUT already exists. Move or delete it, then rerun." >&2
+if [ -e "$RUN_ROOT" ]; then
+  echo "Stop: $RUN_ROOT already exists. Move or delete it, then rerun." >&2
   exit 2
 fi
 mkdir -p "$EV"
