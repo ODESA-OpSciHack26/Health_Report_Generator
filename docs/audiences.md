@@ -2,7 +2,7 @@
 
 One shared Quarto source is rendered once per audience. This document is the full reference; the README has the summary.
 
-The single command `snakemake --cores 2` (or `bash scripts/health_pipeline/run_all.sh`) renders one shared Quarto source (`scripts/health_pipeline/report_public_health_expert.qmd`, a generic template despite its historical filename) once per stakeholder listed in `workflow/config.yaml`. Audiences differ only through their parameter files in `scripts/health_pipeline/config/stakeholders/`; no template is copied per audience.
+The single command `snakemake --cores 2` (or `bash scripts/health_pipeline/run_all.sh`) renders one shared Quarto source (`scripts/health_pipeline/report_shared.qmd`, shared by all audiences) once per stakeholder listed in `workflow/config.yaml`. Audiences differ only through their parameter files in `scripts/health_pipeline/config/stakeholders/`; no template is copied per audience.
 
 | Stakeholder id | Audience | Presentation (`layout` / `detail_level`) | What it emphasises |
 |---|---|---|---|

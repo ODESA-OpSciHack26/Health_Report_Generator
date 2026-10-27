@@ -21,7 +21,7 @@ HTML = expand(OUT+'/reports/{s}/{doc}.html',s=STAKEHOLDERS,doc=['report','method
 PDF = expand(OUT+'/reports/{s}/{doc}.pdf',s=STAKEHOLDERS,doc=['report','methods'])
 APPS = expand(OUT+'/reports/{s}/app/package.json',s=STAKEHOLDERS)
 # Every audience is rendered from this one shared template; audiences differ only by stakeholder JSON.
-SHARED_TEMPLATE = f'{P}/report_public_health_expert.qmd'
+SHARED_TEMPLATE = f'{P}/report_shared.qmd'
 PRESENTATION_CODE = [f'{P}/publish.py', f'{P}/common.py', SHARED_TEMPLATE, f'{P}/templates/report_helpers.R',
                      f'{P}/templates/audience_reports.R', f'{P}/templates/app.R', f'{P}/templates/dashboard.css',
                      f'{P}/templates/methods.qmd']

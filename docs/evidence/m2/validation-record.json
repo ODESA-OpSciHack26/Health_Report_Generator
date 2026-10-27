@@ -1,0 +1,65 @@
+{
+  "schema": "odesa-m2-validation-record/1.0",
+  "record_generated_at_utc": "2026-10-27T00:00:01.755726+00:00",
+  "timestamp_meaning": "record creation, not test execution",
+  "starting_commit": "98828adeb610665a3548e4c58592a61c54fbe90b",
+  "branch": "m2/repository-contract-cleanup",
+  "validation_checkout": "uncommitted M2 changes on starting commit",
+  "executor": "maintainer local Docker environment",
+  "checks": {
+    "python_suite": {
+      "status": "passed",
+      "summary_observed": "162 passed",
+      "log_path": "reproduced/m2-probes/evidence/pytest-dependency-parser-fix.log",
+      "log_sha256": "44a67ef6c9a656a0ce24962e838d3a6305dd71d757fe8e0a854b3c63a330e4bb"
+    },
+    "lint": {
+      "status": "passed",
+      "summary_observed": "All checks passed!",
+      "log_path": "reproduced/m2-probes/evidence/ruff-implementation.log",
+      "log_sha256": "273f13aedee05449d01f52e7002391917beed0fc815fbc8887b3f1365166b5cd"
+    }
+  },
+  "source_sha256": {
+    ".github/workflows/refresh-idd-data.yml": "6bca5a794e8c6f63d44af19d076bfef9dc8528912bb9fb504474addaea4981bd",
+    ".github/workflows/render-selected-report.yml": "c7eded21c5dca33e8aa06b9252908b10762cedfeafb64d33236df2c284a2b1e5",
+    "README.md": "08c2b575a3c5bb88d202202ba081621176ceef891b88f7475b9eaeb5ce881315",
+    "Snakefile": "3a2d986ef695a6d033cfadf23bca885b697e92ef6c98bcc007bff0796b24bfe5",
+    "docs/architecture.md": "f1f513b8ec023409affaaa333152b486c5d2b5a04a2053ee0eb83403cb9aff7c",
+    "docs/audiences.md": "7cb246132fbf0acb4c605c2e8ed3a4c12fe460cbdee40d43790afa50849f6258",
+    "docs/dependency-ownership.md": "b2c18b60030dd37a929d0577e1668ea5bb4e5636e30d5bdfb70fd86fbe5b0924",
+    "scripts/health_pipeline/README.md": "077776558b549400e1251a5fbafd2a7ed7ad2afdfcdd2761ce3b1bda029f7738",
+    "scripts/health_pipeline/publish.py": "ab234eeb7559f0242947c910eee9a5a14beb024bb7063f9455530adf2490d167",
+    "scripts/health_pipeline/report_shared.qmd": "ff5a768554dcd88f3bd90780ff42a3de37281e7c654714fc2820afd92fa98111",
+    "scripts/health_pipeline/verify_release.py": "8f65e60b17cc03fa459ceb8fa540106b2b909681f51a662a63fade03f45c93da",
+    "tests/test_audiences.py": "7a02a16a7684c2c214b5a79bd8235bc017d2e3f55654156106cb3d9e09bccd06",
+    "tests/test_ci_contract.py": "37b52fae3f492e2b4e032757dabfe9f92b7e2c2ce3804ac41706f1b483d8eec6",
+    "tests/test_dependency_ownership.py": "13faebd8858620a1eb58a2a2393b2702ee7152e0d609622ff19ba324d3d462c2",
+    "tests/test_release_docs.py": "d19686d9500175d36894afcaed8153ce1fce711e04bc4156981c377910d61b3d"
+  },
+  "protected_files_sha256": {
+    "scripts/health_pipeline/requirements.lock.txt": "2eb3cd36d8cc316f94eb2935205e4d5f89595d95cebec2346ec98fe7c042a7c1",
+    "scripts/health_pipeline/requirements.ui.lock.txt": "965c29ae5e1e3ade047335f2905c28d34651daf41259c0d6627407a2a180060f",
+    "scripts/health_pipeline/requirements.ui.in": "e90326e6c34e1c47cd0fec1c6ff1adc8f0a2a26ddd87cfab450771a56d819a8d",
+    "uv.lock": "d48a52140dce9db1bcc7c932fe4094a44551b9f55b36259364f3b72ca13d9052",
+    "pyproject.toml": "b2b52548ddd5f895e474584177e0f38c13d823bacd1a5fe6d89e5c9e5362bed9",
+    "renv.lock": "8c876366ce71349ac50e902d26fc0727a98bc4dcb0beecd01f511eef38281e6f",
+    "workflow/toolchain.json": "b65b06fbc572d920bf55c5d43b57fadd394cd75d904b6f93d40c31b128d6fc9b",
+    "Dockerfile": "72c3ef2bbd5c7e2c7b8fe7f9d7a0f8a1104bf42821f692de2b2606180aa0215e",
+    "Dockerfile.report": "212f2bf156149fad9243e0f81a4ca575006f0103d962e4c14a7da8bff91a89d4"
+  },
+  "template_rename": {
+    "from": "scripts/health_pipeline/report_public_health_expert.qmd",
+    "to": "scripts/health_pipeline/report_shared.qmd",
+    "bytes_unchanged": true,
+    "sha256": "ff5a768554dcd88f3bd90780ff42a3de37281e7c654714fc2820afd92fa98111"
+  },
+  "limitations": [
+    "Summary matching is not independent test re-execution.",
+    "Supporting logs remain local and git-ignored.",
+    "Fresh committed-checkout M2 rendering remains pending.",
+    "Auxiliary workflow declarations were tested, not dispatched.",
+    "Historical outputs and evidence retain their original identities.",
+    "Remote CI and review remain pending."
+  ]
+}

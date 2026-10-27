@@ -84,3 +84,12 @@ def test_run_all_is_a_snakemake_wrapper_without_retired_paths(tmp_path):
     assert out.returncode == 0, out.stderr[-500:]
     for sid in yaml.safe_load((ROOT / 'workflow/config.yaml').read_text())['stakeholders']:
         assert f'results/reports/{sid}/report.html' in out.stdout
+
+
+def test_readme_clone_command_targets_current_repository():
+    readme = (ROOT / "README.md").read_text()
+    quick_start = readme.split("## Quick start", 1)[1].split("\n## ", 1)[0]
+    commands = re.findall(r"^git clone (.+)$", quick_start, re.MULTILINE)
+    assert commands == [
+        "https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git"
+    ]

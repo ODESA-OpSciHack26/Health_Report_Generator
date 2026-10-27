@@ -11,7 +11,7 @@ You do not need a GitHub token, fork, GitHub Actions, or host installations
 of Python, R, Quarto, or TinyTeX to generate reports this way.
 
 ```sh
-git clone [https://github.com/LarsEBaumann/Health_Report_Generator.git](https://github.com/LarsEBaumann/Health_Report_Generator.git)
+git clone https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git
 cd Health_Report_Generator
 export LOCAL_UID="$(id -u)"
 export LOCAL_GID="$(id -g)"
@@ -126,7 +126,7 @@ The reports describe officially notified cases, not all infections. They are des
 
 Citing this work: see [CITATION.cff](CITATION.cff).
 
-## Tests and release discipline
+Dependency ownership and environment boundaries: [docs/dependency-ownership.md](docs/dependency-ownership.md).\n\n## Tests and release discipline
 
 ```sh
 ruff check .
