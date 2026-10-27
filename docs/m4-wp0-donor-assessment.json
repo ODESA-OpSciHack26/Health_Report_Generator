@@ -1,0 +1,128 @@
+{
+  "schema": "odesa-m4-wp0-donor-assessment/1.0",
+  "generated_at_utc": "2026-10-27T12:28:02.836923+00:00",
+  "integration_base_commit": "8cb279457da92737719f5b52284e3c39b85554e9",
+  "status": "donor-runtime-investigation-complete",
+  "donor_commits": {
+    "v2": "6cbe222eb7edefe353d7370168c974c43b1a5350",
+    "nisha": "a1cba89bbb5e37b20b48e2df8b334aa4ba7d250b"
+  },
+  "test_counts": {
+    "v2_tests": 128,
+    "nisha_tests": 62
+  },
+  "probe_results": {
+    "original_v2": {
+      "snapshot": "PASS",
+      "timeseries": "PASS",
+      "malformed-rejection": "PASS"
+    },
+    "original_nisha": {
+      "snapshot": "PASS",
+      "timeseries": "FAIL",
+      "malformed-rejection": "PASS"
+    },
+    "adapted_nisha": {
+      "snapshot": "PASS",
+      "timeseries": "PASS",
+      "malformed-rejection": "PASS"
+    },
+    "cross_nisha": {
+      "snapshot": "PASS",
+      "timeseries": "PASS",
+      "malformed-rejection": "PASS"
+    }
+  },
+  "adaptation": {
+    "parent_commit": "a1cba89bbb5e37b20b48e2df8b334aa4ba7d250b",
+    "image_id": "sha256:72c19843981085cd13864005d7bb473baee6c3e664b566416a1b48b0734c4d1d",
+    "created_at_utc": "2026-10-27T12:01:55.980529+00:00",
+    "adaptation": "Distinguish numeric-year encoding from annual granularity.",
+    "original_template_sha256": "cd5e6270611c32403d7daf536769e05d7e71d1172cd73e3c7bd20a238be56ef7",
+    "adapted_template_sha256": "09d3e951dd1eb525e538084501b07222b370f4e6d5262750369a7326d4aa184a",
+    "probe_sha256": "4c9ddbf27c287d88bb3aebb749a7da605847fe37b4137d6d7f43771a209f6efe",
+    "limitation": "Exported source has no Git metadata; not Git-provenance acceptance."
+  },
+  "cross_runtime": {
+    "schema": "odesa-m4-wp0-cross-runtime/1.0",
+    "created_at_utc": "2026-10-27T12:11:14.827381+00:00",
+    "report_donor_commit": "a1cba89bbb5e37b20b48e2df8b334aa4ba7d250b",
+    "adapted_template_sha256": "09d3e951dd1eb525e538084501b07222b370f4e6d5262750369a7326d4aa184a",
+    "probe_sha256": "4c9ddbf27c287d88bb3aebb749a7da605847fe37b4137d6d7f43771a209f6efe",
+    "runtime_donor_commit": "6cbe222eb7edefe353d7370168c974c43b1a5350",
+    "runtime_image_id": "sha256:2e4afb7892ef39923366471654416fd376e20c971c95e3715889d2d4360537c2",
+    "expected_quarto": "1.3.353",
+    "limitations": [
+      "Cross-donor environment, not exact integration-image acceptance.",
+      "Exported report source has no Git metadata.",
+      "No browser, upload-security or complete provenance acceptance."
+    ]
+  },
+  "decision": {
+    "reuse": "Selective component adaptation, not a donor merge.",
+    "preserve": [
+      "Single shared report source and three default audiences.",
+      "Canonical workflow and dependency ownership.",
+      "Provenance, validation, cache and release-verification gates."
+    ],
+    "first_slice": "Isolated CSV validation and temporal-normalization helpers with permanent tests; no default-workflow or UI change."
+  },
+  "not_established": [
+    "Exact integration-image compatibility.",
+    "End-to-end rendering of numeric-year/monthly/daily fixtures.",
+    "Complete or embedded provenance correctness.",
+    "Upload-security, browser, offline or accessibility acceptance.",
+    "Final audience-communication adequacy."
+  ],
+  "evidence": {
+    "v2_tests": {
+      "path": "reproduced/m4-wp0/evidence/donor-runtime/v2-repair-pytest.log",
+      "sha256": "954016233e7ee6d65f9f656937ac47403fc4e78e0e030434ebf3ac31ab0af8a0"
+    },
+    "nisha_tests": {
+      "path": "reproduced/m4-wp0/evidence/donor-runtime/nisha-retry-01/pytest.log",
+      "sha256": "a2b2e70a0df64ac4545f180a773ccdbfef7e7d82c317fa1fa0ecd42fce00bde6"
+    },
+    "original_v2": {
+      "path": "reproduced/m4-wp0/evidence/csv-render-probes/v2/summary.json",
+      "sha256": "c6bddc3f156a8f05659a4481e72975f4ba7c77c34f8da3aff415b60d5038068a"
+    },
+    "original_nisha": {
+      "path": "reproduced/m4-wp0/evidence/csv-render-probes/nisha/summary.json",
+      "sha256": "8432fce58353a28827ceb793a27e2b80cab08c58b88b3d19a1cc2d9dd008878d"
+    },
+    "adaptation": {
+      "path": "reproduced/m4-wp0/evidence/nisha-temporal-adaptation-01/adaptation.json",
+      "sha256": "8ef9c7787ecd4bce1625f834b6103c47df7f15b18f5d6dac291c0d315bce9240"
+    },
+    "patch": {
+      "path": "reproduced/m4-wp0/evidence/nisha-temporal-adaptation-01/adaptation.patch",
+      "sha256": "f3383828b90878369de2b8437d725dd32d96d895d504378946fa28009e34ec05"
+    },
+    "adapted_normalization": {
+      "path": "reproduced/m4-wp0/evidence/nisha-temporal-adaptation-01/normalization-summary.json",
+      "sha256": "42e2868c87d243ad69f780b938c6c84a8ae3eeb46eb14f781ba8ffb183e1166b"
+    },
+    "adapted_nisha": {
+      "path": "reproduced/m4-wp0/evidence/nisha-temporal-adaptation-01/nisha/summary.json",
+      "sha256": "8bdac8c6f0732f6ac74f0e0706e9053de5435e007195c6af92da454839492047"
+    },
+    "cross_manifest": {
+      "path": "reproduced/m4-wp0/evidence/nisha-cross-runtime-01/manifest.json",
+      "sha256": "cbff3040eea84a3ea9ba8270ef93e85c1f6d05058eb04181b174fe4d48d4aeec"
+    },
+    "cross_normalization": {
+      "path": "reproduced/m4-wp0/evidence/nisha-cross-runtime-01/normalization-summary.json",
+      "sha256": "42e2868c87d243ad69f780b938c6c84a8ae3eeb46eb14f781ba8ffb183e1166b"
+    },
+    "cross_nisha": {
+      "path": "reproduced/m4-wp0/evidence/nisha-cross-runtime-01/nisha/summary.json",
+      "sha256": "97bcecc61819956a7080b3b39ff9f5e3a557d40641c7eaf78ea188b34c5194e8"
+    },
+    "cross_versions": {
+      "path": "reproduced/m4-wp0/evidence/nisha-cross-runtime-01/versions.log",
+      "sha256": "2775e6f5a95786eadde13f2a06ab7c33bb0a3cf30ea2e28fd1234631961a8dd3"
+    }
+  },
+  "evidence_availability": "Supporting evidence is local under reproduced/. Hashes identify it but do not make it available from a clone."
+}
