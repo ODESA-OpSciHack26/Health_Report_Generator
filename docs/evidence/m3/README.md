@@ -35,3 +35,34 @@ The adapter lock coordinates adapter submissions only. The interface is
 for a trusted local Linux/WSL session, not a public multi-user service.
 Visual readability, lint, fresh committed-checkout validation, final
 secret scanning and remote CI remain separate gates.
+
+## Completed committed-checkout validation
+
+Tested implementation: `cbc856ca9c5367d47b55e6836493bbe259af8e22`.
+
+The standard-release capture began at
+`2026-10-27T01:36:24Z` with a clean worktree.
+All eleven stages passed, including lint, 187 Python tests, fresh standard
+report generation, output/release verification, app smoke tests, no-op
+rebuild, analytical baseline comparison, and shared-template identity.
+
+Eighteen selected artifacts were hashed; analytical mismatches: none.
+All six provenance sidecars and all three packaged templates matched the
+shared source.
+
+The committed adapter capture rendered public-health-expert requests for
+2022–2024 and 2023–2024. The first request missed, its identical repeat hit
+with four matching output files, and the changed request missed with a
+different key. Non-request cache components matched. Commit, snapshot,
+parameters, template identity and embedded provenance checks passed.
+
+`container-summary.txt`, `template-identity.txt`, `adapter-capture.json`
+and `committed-validation.json` preserve the completed capture records.
+Supporting logs and outputs remain local; recorded hashes do not provide
+access to those files.
+
+The earlier pre-commit evidence remains historical and is not relabelled
+as a committed browser run. The pending-gate statements above describe
+the earlier evidence state; lint and committed-checkout captures are now
+complete. Final secret scanning, remote CI, PR review, visual readability,
+and independent scientific validation are not established by this record.
