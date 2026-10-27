@@ -23,7 +23,7 @@ APPS = expand(OUT+'/reports/{s}/app/package.json',s=STAKEHOLDERS)
 # Every audience is rendered from this one shared template; audiences differ only by stakeholder JSON.
 SHARED_TEMPLATE = f'{P}/report_shared.qmd'
 PRESENTATION_CODE = [f'{P}/publish.py', f'{P}/common.py', SHARED_TEMPLATE, f'{P}/templates/report_helpers.R',
-                     f'{P}/templates/audience_reports.R', f'{P}/templates/app.R', f'{P}/templates/dashboard.css',
+                     f'{P}/templates/audience_reports.R', f'{P}/templates/tabular_report.R', f'{P}/templates/app.R', f'{P}/templates/dashboard.css',
                      f'{P}/templates/methods.qmd']
 PROVENANCE = expand(OUT+'/reports/{s}/{name}',s=STAKEHOLDERS,name=['provenance.json','provenance.pdf.json'])
 DATA_ROOT = config['data_root'] if not config.get('snapshot_manifest') else ''
@@ -97,7 +97,7 @@ rule render_pdf:
 
 rule package_shiny:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
-    output: manifest=OUT+'/reports/{s}/app/package.json', files=[OUT+'/reports/{s}/app/'+n for n in BUNDLE_NAMES+['report.qmd','report_helpers.R','audience_reports.R','app.R','dashboard.css','methods.qmd']]
+    output: manifest=OUT+'/reports/{s}/app/package.json', files=[OUT+'/reports/{s}/app/'+n for n in BUNDLE_NAMES+['report.qmd','report_helpers.R','audience_reports.R','tabular_report.R','app.R','dashboard.css','methods.qmd']]
     params: bundle=lambda w:f'{OUT}/reports/{w.s}/data',dest=lambda w:f'{OUT}/reports/{w.s}/app'
     shell: '{PYTHON:q} {P}/publish.py package --bundle {params.bundle:q} --output {params.dest:q}'
 
