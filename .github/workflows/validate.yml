@@ -29,8 +29,9 @@ jobs:
       - run: pip install -r scripts/health_pipeline/requirements.lock.txt -r scripts/ci/requirements-lint.txt
       - name: Lint Python (Ruff)
         run: ruff check --output-format=github .
-      - name: Unit, schema and contract tests
-        run: python -m pytest -q
+      - name: Python unit, schema and contract tests
+        # R presentation tests run with the complete suite in the report container.
+        run: python -m pytest -q --ignore=tests/test_tabular_presentation.py
       - name: Snakemake dry run
         run: snakemake --dry-run --cores 1
 
@@ -59,6 +60,15 @@ jobs:
 
       - name: Build report container
         run: docker build --file Dockerfile.report --tag health-report:reports-ci .
+
+      - name: Full test suite including R presentation regressions
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
+            --volume "$PWD:/app" \
+            health-report:reports-ci \
+            sh -ec 'command -v Rscript >/dev/null; python -m pytest -q'
 
       - name: Build all audiences inside report container
         run: |
