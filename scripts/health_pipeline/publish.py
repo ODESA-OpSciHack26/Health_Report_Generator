@@ -12,7 +12,7 @@ from pathlib import Path
 from common import digest, write_json
 HERE=Path(__file__).resolve().parent
 PROJECT=HERE.parents[1]
-TEMPLATE='report_public_health_expert.qmd'
+TEMPLATE='report_shared.qmd'
 PROVENANCE_SCHEMA='health-report-provenance/1.0'
 FILTER_KEYS=['period_type','years','reference_year','index_base_year','geography','measures_preferred','compare_by',
              'classes_in_main_comparison','exclude_from_group_totals','sensitivity_exclude','source_priority',
@@ -29,7 +29,7 @@ def package(bundle,dest):
     dest.mkdir(parents=True,exist_ok=True)
     for n in [*m['files'],'bundle.json']:
         shutil.copyfile(bundle/n,dest/n)
-    shutil.copyfile(HERE/'report_public_health_expert.qmd',dest/'report.qmd')
+    shutil.copyfile(HERE/TEMPLATE,dest/'report.qmd')
     for n in ['report_helpers.R','audience_reports.R','app.R','dashboard.css','methods.qmd']:
         shutil.copyfile(HERE/'templates'/n,dest/n)
     write_json(dest/'package.json',{'schema_version':'2.0','files':{p.name:digest(p) for p in sorted(dest.iterdir()) if p.is_file() and p.name!='package.json'}})

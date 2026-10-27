@@ -61,9 +61,9 @@ def test_audiences_share_identical_analytic_parameters():
 
 def test_single_shared_report_source():
     reports = sorted(p.name for p in P.rglob('*.qmd') if 'example_output' not in p.parts)
-    assert reports == ['methods.qmd', 'report_public_health_expert.qmd']
+    assert reports == ['methods.qmd', 'report_shared.qmd']
     snakefile = (ROOT / 'Snakefile').read_text()
-    assert snakefile.count('report_public_health_expert.qmd') == 1  # declared once as SHARED_TEMPLATE
+    assert snakefile.count('report_shared.qmd') == 1  # declared once as SHARED_TEMPLATE
     assert 'SHARED_TEMPLATE' in snakefile.split('PRESENTATION_CODE =')[1].split(']')[0]
     assert "{s}" not in re.search(r"SHARED_TEMPLATE = (.*)", snakefile).group(1)
 
@@ -71,7 +71,7 @@ def test_single_shared_report_source():
 def test_shared_template_is_packaged_for_every_audience(project, tmp_path):  # noqa: F811
     bundle = run(project)
     package(bundle, tmp_path / 'app')
-    assert (tmp_path / 'app/report.qmd').read_bytes() == (P / 'report_public_health_expert.qmd').read_bytes()
+    assert (tmp_path / 'app/report.qmd').read_bytes() == (P / 'report_shared.qmd').read_bytes()
     assert (tmp_path / 'app/audience_reports.R').is_file()
 
 
@@ -88,7 +88,7 @@ def test_every_audience_has_provenance_wired_in():
         body = snakefile.split(f'rule {rule}:')[1].split('\nrule ')[0]
         assert name in body and '--provenance' in body and '--data-root' in body
     assert 'PROVENANCE' in snakefile.split('rule all:')[1].split('\n')[1]
-    for template in [P / 'report_public_health_expert.qmd', P / 'templates/methods.qmd']:
+    for template in [P / 'report_shared.qmd', P / 'templates/methods.qmd']:
         assert 'provenance_script()' in template.read_text()
 
 
@@ -104,7 +104,7 @@ def test_provenance_record_contents(project):  # noqa: F811
     assert rec['data']['canonical_root'] == 'data/reference'
     assert rec['data']['snapshot_id'] == json.loads((bundle / 'bundle.json').read_text())['snapshot_id']
     assert rec['data']['datasets_used'] == 2
-    assert rec['output']['shared_template'].endswith('report_public_health_expert.qmd')
+    assert rec['output']['shared_template'].endswith('report_shared.qmd')
     assert rec['rendered_at_utc'] and rec['software']['python']
     assert 'git_commit' in rec['code']
     json.dumps(rec, allow_nan=False)
@@ -117,3 +117,20 @@ def test_selected_report_lineage_prefers_researcher_then_legacy(tmp_path):
         (d / 'series.csv').write_text('x\n')
         (d / 'selection.csv').write_text('x\n')
         assert render_selected.lineage_bundle(tmp_path) == d
+
+
+def test_template_path_rename_changes_cache_code_identity(tmp_path):
+    from request_cache import code_files, hash_files
+
+    pipeline = tmp_path / "scripts/health_pipeline"
+    pipeline.mkdir(parents=True)
+    before = pipeline / "before.qmd"
+    before.write_bytes(b"Shared template content\\n")
+    old_hash = hash_files(code_files(tmp_path), tmp_path)
+
+    after = pipeline / "report_shared.qmd"
+    before.rename(after)
+
+    assert code_files(tmp_path) == [after]
+    assert hash_files(code_files(tmp_path), tmp_path) != old_hash
+    assert after.read_bytes() == b"Shared template content\\n"

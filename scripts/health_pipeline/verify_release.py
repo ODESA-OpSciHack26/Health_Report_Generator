@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from common import digest
-from publish import FILTER_KEYS
+from publish import FILTER_KEYS, TEMPLATE
 
 HERE = Path(__file__).resolve().parent
 EMBED = re.compile(r'<script type="application/json" id="report-provenance">(.*?)</script>', re.S)
@@ -72,7 +72,7 @@ def check_release(out):
 def check_provenance(folder):
     errors = []
     name = folder.name
-    template = HERE / 'report_public_health_expert.qmd'
+    template = HERE / TEMPLATE
     try:
         cfg = json.loads((folder / 'data/stakeholder.json').read_text())
         if not isinstance(cfg, dict):

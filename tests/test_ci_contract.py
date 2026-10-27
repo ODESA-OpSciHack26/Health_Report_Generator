@@ -139,3 +139,21 @@ def test_pinned_python_jobs_use_compatible_runner():
         ]
         assert len(setup) == 1
         assert setup[0]["with"]["python-version"] == "3.11.6"
+
+
+@pytest.mark.parametrize(
+    "filename,job_name",
+    [
+        ("refresh-idd-data.yml", "refresh"),
+        ("render-selected-report.yml", "render"),
+    ],
+)
+def test_auxiliary_python_jobs_use_compatible_runner(filename, job_name):
+    job = workflow(filename)["jobs"][job_name]
+    assert job["runs-on"] == "ubuntu-22.04"
+    setup = [
+        step for step in job["steps"]
+        if step.get("uses", "").startswith("actions/setup-python@")
+    ]
+    assert len(setup) == 1
+    assert setup[0]["with"]["python-version"] == "3.11.6"
