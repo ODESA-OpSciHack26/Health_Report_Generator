@@ -38,3 +38,15 @@ def test_setup_distinguishes_the_two_optional_interfaces():
     assert "docs/local-interface.md" in text
     assert "CONNECTOR_SETUP.md" in text
     assert "Neither interface is required" in text
+
+
+def test_release_checklist_clone_is_a_plain_shell_command():
+    import shlex
+
+    text = (ROOT / "docs/release-checklist.md").read_text()
+    commands = re.findall(r"^git clone .+$", text, re.MULTILINE)
+    assert len(commands) == 1
+    assert shlex.split(commands[0]) == [
+        "git", "clone", "--branch", "integration/steward-ready-v1",
+        "https://" + "github.com/ODESA-OpSciHack26/Health_Report_Generator.git",
+    ]

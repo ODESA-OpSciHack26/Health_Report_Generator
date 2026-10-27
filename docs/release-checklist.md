@@ -15,7 +15,7 @@ head's green checks as a new test of a later merge commit.
 Clone the current repository and select the integration line:
 
 ```sh
-git clone --branch integration/steward-ready-v1 [https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git](https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git)
+git clone --branch integration/steward-ready-v1 https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git
 cd Health_Report_Generator
 git rev-parse HEAD
 git status --short
