@@ -1,6 +1,6 @@
 # Reproduction guide
 
-How to set up the toolchain, build all audience reports, and reproduce an archived release exactly. The README has the short version; this is the full detail.
+How to set up the toolchain, build all audience reports, and reproduce an archived release from recorded inputs and settings. This does not promise byte-identical rendered HTML or PDF files. The README has the short version; this is the full detail.
 
 ## Setup and run
 
@@ -89,7 +89,7 @@ snakemake --cores 2 --config \
 
 This mode verifies and reads only that archived snapshot, without requiring the live `data/reference/` tree or any API. Retain the snapshot **and** code/config/environment versions with the report. Hashes cannot recover deleted data. Paths inside a snapshot and its lineage are relative, so the archive can move between computers. Original source record numbers count CSV records (header = 1), not physical lines in multiline CSV fields.
 
-For an update, place a new release in `data/reference/` and run the ordinary workflow. It creates a new content-addressed archive rather than replacing the old snapshot. Building never contacts the network. Acquisition from the public IDD API is a separate step: `src/sync_idd_exports.py` (run weekly by `.github/workflows/refresh-idd-data.yml`, or manually) downloads each export into `data/reference/<DATASET>/` together with a `retrieval.json` recording the source URLs, retrieval time and hashes; changes are committed so every release is a reviewable change to `data/reference/`.
+For an update, place a new release in `data/reference/` and run the ordinary workflow. It creates a new content-addressed archive rather than replacing the old snapshot. The analysis uses the selected local inputs rather than acquiring new IDD data. This is not evidence of network isolation; software setup requires downloads. Acquisition from the public IDD API is a separate step: `src/sync_idd_exports.py` (run weekly by `.github/workflows/refresh-idd-data.yml`, or manually) downloads each export into `data/reference/<DATASET>/` together with a `retrieval.json` recording the source URLs, retrieval time and hashes; changes are committed so every release is a reviewable change to `data/reference/`.
 
 ## Verify a build
 
@@ -100,3 +100,11 @@ python -m pytest -q
 ```
 
 `check_outputs.py` confirms exactly one HTML report per configured audience, embedded and sidecar provenance, and distinct presentations. Compare `results/release.json` (artifact and code hashes, Git state, runtime versions) with the one you expect.
+
+## Integration handover and optional local form
+
+See [handover](handover.md) for the recorded integration baseline,
+validation identities, retained evidence and remaining acceptance limits.
+The [local browser form](local-interface.md) uses the separate locked UI
+environment on the host and invokes the Docker report service.
+It does not replace the standard three-audience release build.

@@ -160,3 +160,11 @@ CI is split into gated jobs (`docs/phase-6-ci-hardening.md`): `fast` (Ruff, test
 The production Python lock at `scripts/health_pipeline/requirements.lock.txt` pins the Snakemake/report pipeline; `uv.lock` pins the optional Marimo/connector environment from `pyproject.toml`; `renv.lock` records R dependencies. `workflow/toolchain.json` is the machine-readable source of runtime version policy. `workflow/environment.yml` is an alternative convenience environment, not an additional authoritative lock.
 
 See [GETTING_STARTED.md](GETTING_STARTED.md) for setup and reproduction instructions.
+
+## Steward handover
+
+See [the integration handover](docs/handover.md) for recorded M0–M3 evidence,
+tested commit identities, supported reporting paths and remaining acceptance
+limits. Integration acceptance is separate from release publication;
+follow the [release checklist](docs/release-checklist.md) before any new
+release decision.

@@ -7,11 +7,16 @@ The committed source data are under `data/reference/`, not `Data/`.
 ## 1. Clone and record the starting commit
 
 ```bash
-git clone [https://github.com/LarsEBaumann/Health_Report_Generator.git](https://github.com/LarsEBaumann/Health_Report_Generator.git)
+git clone https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git
 cd Health_Report_Generator
+git switch integration/steward-ready-v1
 git rev-parse HEAD
 git status --short --branch
 ```
+
+The checkout above selects the steward-ready integration line, not an
+immutable release. For exact reproduction, select the recorded commit
+after cloning and confirm that the worktree is clean.
 
 For an existing checkout, preserve local changes before updating.
 For comparison, use the same commit, data snapshot, and audience parameters.
@@ -175,9 +180,14 @@ Local builds use the committed snapshot, not a live API request.
 Remote API acquisition is implemented separately by the IDD data-update
 workflow. A successful update can change the committed data and later findings.
 
-The optional Marimo interface downloads a GitHub workflow artifact and
-requests selected reports from a configured repository.
-See `CONNECTOR_SETUP.md`; it is not required for local reporting.
+Two optional interfaces are separate:
+
+- [Local browser form](docs/local-interface.md): host-side Marimo invokes
+  the Docker report service and custom-report cache without GitHub credentials.
+- [GitHub-backed connector](CONNECTOR_SETUP.md): downloads workflow artifacts
+  and dispatches selected-report requests using a configured repository/token.
+
+Neither interface is required for the standard three-report build.
 
 ## 9. Troubleshooting and evidence
 
