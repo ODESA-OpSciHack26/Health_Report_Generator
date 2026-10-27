@@ -30,7 +30,7 @@ def _hash(path):
 
 def _sources():
     paths = [HERE / "report_shared.qmd", Path(__file__),
-             HERE / "tabular_bundle.py", HERE / "tabular_prepare.py", HERE / "tabular_input.py"]
+             HERE / "tabular_bundle.py", HERE / "tabular_prepare.py", HERE / "tabular_input.py", HERE / "tabular_run.py"]
     paths += [HERE / "templates" / name for name in HELPERS]
     paths += [HERE / "config/stakeholders" / f"{audience}.json" for audience in AUDIENCES]
     return {path.relative_to(PROJECT).as_posix(): _hash(path) for path in paths}
