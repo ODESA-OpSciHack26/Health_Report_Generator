@@ -1,75 +1,29 @@
-# Steward-ready integration handover
+# Baseline acceptance and remaining combined integration
 
-## Recorded baseline and scope
+## Current planning authority
 
-This document starts from the M3 integration merge:
-`c599ecda95fbaa462605949f8ff3668f11a5d0e4`.
-It is a recorded baseline, not a claim that every later commit has been tested.
+The current candidate is an accepted foundation, not completion of the combined donor product. Follow [the combined integration plan](integration-plan.md), [steward workspace](steward-workspace.md), [contracts](integration-contracts.md) and [acceptance gates](integration-acceptance.md). M4 integrates existing v2 IDD/CSV/UI functionality, Nisha's report design and configuration-driven stakeholders. M5 adds full surveillance capabilities. This replaces the earlier implication that artifact packaging was the only remaining work and supersedes the uncommitted M4/M5/M6 split.
 
-The working integration line is `integration/steward-ready-v1`.
-The original `release/v1.0.0` reference remains separate.
-This handover does not authorize promotion to `main`, a new tag or deployment.
+## Historical baseline and evidence
 
-## Work completed and evidence
+| Record | Scope |
+|---|---|
+| [M0](evidence/m0/README.md) | Preserve and reproduce V1 |
+| [M1](evidence/m1/) | Provenance/baseline guards |
+| [M2](evidence/m2/README.md) | Shared-template and dependency ownership |
+| [M3](evidence/m3/README.md) | Local form/adapter, cache checks and date-consistent wording |
 
-| Work package | Purpose | Evidence |
-|---|---|---|
-| M0 | Preserve and reproduce the V1 baseline | [M0 record](evidence/m0/README.md) |
-| M1 | Provenance and baseline guards | [M1 evidence](evidence/m1/) |
-| M2 | Shared-template naming and dependency ownership | [M2 record](evidence/m2/README.md) |
-| M3 | Local account-free audience form, backend reuse and date-consistent wording | [M3 record](evidence/m3/README.md) |
-
-The M3 implementation tested by committed local captures is
-`cbc856ca9c5367d47b55e6836493bbe259af8e22`.
-Its final published feature head, including evidence and scanner review, is
-`8b0a08b90bad800e4ad9731fd1d3221abbf018c5`.
-These identities must not be replaced with the later integration merge SHA.
-
-The maintainer-reported M3 standard capture passed eleven stages, including
-lint, 187 Python tests, fresh rendering, release verification, app smoke tests,
-no-op rebuild, analytical baseline comparison and template identity.
-Analytical mismatches: none. Six sidecars and three packaged templates
-matched the shared source.
-
-The committed adapter capture passed miss/hit/changed-request checks,
-parameter and provenance checks, and unchanged-cache-component comparisons.
-A real browser check is recorded separately as pre-commit evidence.
-
-At handover preparation, GitHub returned successful `fast`, `secrets`,
-`container` and `full` check runs for PR #4. This is PR validation, not a
+M3 tested implementation: `cbc856ca9c5367d47b55e6836493bbe259af8e22`. Final feature head including evidence/scanner review: `8b0a08b90bad800e4ad9731fd1d3221abbf018c5`. The earlier M3 capture included 187 Python tests. Its actual browser check is pre-commit evidence. PR #4's successful remote checks were PR validation, not a
 new execution against the integration merge commit.
 
-The final local M3 feature-history scan covered 231 commits and reported
-no leaks with seven reviewed exact-fingerprint cache-digest exceptions.
-See [review record](evidence/m3/secret-scan-review.json).
-Later commits require their own final scan.
+The later accepted integration candidate is `fe5fb8ed1ab5f4bf94cc10da1637b82b539692ec`. The maintainer supplied a clean fresh-checkout capture with eleven passing stages, unchanged analytical hashes, 18 selected artifacts and matching template identities. The user subsequently reported all three reports, navigation/downloads and PDFs visually passed. Retain this as baseline-only reported acceptance; the redesigned product needs new review. See [acceptance](integration-acceptance.md) for scope and limitations.
 
-## Supported reporting paths
+## Existing behaviour versus target
 
-- Standard release: three audience reports from the shared template; see
-  [setup](../GETTING_STARTED.md) and [reproduction](reproduction.md).
-- Custom request CLI: existing validated requests and content-addressed cache;
-  see the [README](../README.md).
-- [Local browser form](local-interface.md): trusted Linux/WSL host, four
-  existing audience parameter sets, years within 2021–2025, CHFL geography,
-  and existing 2019 comparison/index baselines.
-- [GitHub connector](../CONNECTOR_SETUP.md): separate credential-backed
-  artifact/Actions route, not required for local reports.
+The baseline supports the standard three IDD reports, a custom-request CLI and a local form with four fixed profile choices. CSV upload and donor redesign are not integrated into that baseline. The GitHub connector is a separate optional path. Current commands remain in [setup](../GETTING_STARTED.md), [local interface](local-interface.md) and [reproduction](reproduction.md). New planning documents must not be used as executable setup instructions until implemented.
 
-The local form does not add canton or disease selection. Its lock coordinates
-adapter submissions only; it is not a public multi-user service.
+## Preservation and distribution
 
-## Evidence limits and remaining acceptance
+Keep historical phase/evidence records as history, not active forward plans. Local artifact/log hashes do not make those files transferable; preserve actual inputs, snapshots, code/environment specifications, configs and complete report folders when distributing a reproducible bundle. Visual acceptance is not independent scientific validation, cold-cache proof, network isolation or byte-identical rendering.
 
-Committed records identify local logs/reports by hashes; those files remain
-local and git-ignored unless separately distributed. A complete handover must
-include any artifacts needed by another person, not only their hashes.
-
-Fresh outputs do not establish cold software caches, network isolation or
-byte-identical rendered documents. Automated checks do not establish visual
-readability or independent scientific validity. These must not be marked
-complete without actual review.
-
-Complete the [release checklist](release-checklist.md) for the chosen candidate.
-Keep code, data snapshot, configurations, environment details and verified
-outputs together, and record outstanding issues rather than hiding them.
+Work remains on `integration/steward-ready-v1`; main and original release references are unchanged. New tags, deployment and release publication require a separate maintainer decision under the [release checklist](release-checklist.md).

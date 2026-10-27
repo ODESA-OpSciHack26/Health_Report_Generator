@@ -1,49 +1,33 @@
-# Repository map
+# Repository and planned workspace map
 
-This map distinguishes the supported production workflow from optional, experimental, and historical material.
+## Planning authority
 
-## Production path
+The [documentation index](README.md) links the authoritative [combined integration plan](integration-plan.md), [steward workspace](steward-workspace.md), [contracts](integration-contracts.md) and [acceptance](integration-acceptance.md). The plan is target behaviour, not a statement that CSV/design integration is already implemented.
 
-| Path | Role | Status |
-|---|---|---|
-| `Snakefile` | Orchestrates snapshotting, harmonisation, validation, analysis, rendering, packaging, and release metadata. | Active |
-| `workflow/config.yaml` | Selects the data root, output root, renderer, stakeholder list, and optional archived snapshot. | Active |
-| `workflow/config.schema.json` | Validates stakeholder configuration. | Active |
-| `data/reference/` | Canonical IDD source-data release and publisher metadata. | Active; sole source-data root |
-| `scripts/health_pipeline/` | Core Python pipeline, report source, R helpers, and configuration. | Active, pending package consolidation |
-| `scripts/health_pipeline/config/stakeholders/` | Scientific and reporting parameters for the default stakeholder build. | Active |
-| `scripts/health_pipeline/templates/` | Shared presentation helpers, methods report, Shiny app, and styles. | Active |
-| `tests/` | Python pipeline tests and R rendering/application smoke tests. | Active |
-| `.github/workflows/validate.yml` | Full test and report build in CI. | Active |
-| `.github/workflows/refresh-idd-data.yml` | Scheduled/manual IDD synchronization and versioned artifact build. | Active |
-| `scripts/health_pipeline/run_all.sh` | One-command wrapper around `snakemake` (defaults from `workflow/config.yaml`). | Active |
-| `docs/architecture.md`, `docs/limitations.md`, `docs/demo.md`, `docs/audiences.md`, `docs/reproduction.md`, `docs/scientific-policy.md` | Final documentation set linked from the README. | Active |
-| `docs/phase-7-release.md` | Scope and decisions of the release-polish phase. | Active |
-| `CITATION.cff`, `RELEASE_NOTES.md`, `docs/release-checklist.md` | Citation metadata and release process. | Active |
+## Existing supported foundation
 
-## Optional interfaces
+| Path | Role |
+|---|---|
+| `Snakefile`, `workflow/` | Orchestration, configurations/schemas and version contracts |
+| `data/reference/` | Canonical committed IDD inputs and publisher metadata |
+| `scripts/health_pipeline/` | Verified analysis, shared report source, helpers, publishing, cache and checks |
+| `scripts/health_pipeline/config/stakeholders/` | Existing stakeholder configurations |
+| `src/local_ui.py`, `src/local_report.py` | Accepted host-side local form/adapter; fixed profile options pending M4 integration |
+| `src/ui.py`, `src/artifact_download.py`, `CONNECTOR_SETUP.md` | Separate optional GitHub-backed connector |
+| `Dockerfile.report`, `Dockerfile`, `compose.yaml`, lockfiles | Existing environment boundaries; changes require documented compatibility evidence |
+| `tests/`, `.github/workflows/` | Regression, container, release and CI gates |
+| `docs/evidence/` | Historical machine/human validation records; preserve tested identities |
 
-| Path | Role | Status |
-|---|---|---|
-| `src/ui.py` | Marimo interface that dispatches selected audience/dataset reports through GitHub Actions. | Optional interface |
-| `src/artifact_download.py` | Downloads the versioned source artifact used by the Marimo interface. | Optional interface |
-| `.github/workflows/render-selected-report.yml` | Renders a selected report from an exact lineage artifact. | Optional but supported |
-| `src/sync_idd_exports.py` | IDD acquisition and synchronization utilities. | Active connector utilities |
-| `Dockerfile`, `compose.yaml` | Container environment for the Marimo/connector path. | Experimental |
+## Proposed additions, not yet implemented
 
-## Historical material
+The portable `report-vault/` layout is specified in [workspace](steward-workspace.md). It contains steward-owned catalogues, inputs, recipes, runs, reviews, caches and exports; it is not a second source-code tree. Application-side schema, registry, adapter and component locations are selected in WP1 ADRs rather than pretending a new package layout is already installed. Retain adapters for current paths until tested migrations are accepted. Private vault contents are not automatically added to Git.
 
-| Path | Role | Status |
-|---|---|---|
-| `scripts/health_pipeline/example_output/` | Outputs from an earlier prototype. | Historical; not release evidence |
-| `Health_Report_Generator-test/quarto/` | Standalone audience-report prototype with committed rendered files. | Historical prototype; not part of Snakemake |
-| `design/report-mockups.html` | Alternate editorial design exploration. | Historical design reference |
-| `configs/report.yml` | Small dataset-selection configuration from an earlier path. | Legacy; not consumed by the main Snakefile |
-| `docs/phase-3-data-migration.json` | Path-level hashes and scientific comparison for the retired `Data/` release. | Historical machine-readable audit record |
-| `docs/phase-4-legacy-removal.json` | Removal gate and deletion commit for the retired root. | Active audit record |
+Donor modules are pinned and tracked in the plan. Integration must select/adapt them rather than copying whole alternative workflows or losing attribution.
 
-Historical material must not be cited as proof that the current workflow built successfully. Supported release evidence is a successful current workflow run and its matching `results/release.json`.
+## Historical and superseded material
 
-## Canonical-data status
+`docs/phase-*.md` and migration/removal JSON files are historical implementation/audit records, not the active roadmap. `docs/phase-7-release.md` records its original licence/setup context; it does not override today's MIT LICENSE or current release checklist. `docs/handover.md` records accepted baseline scope, not final product completion.
 
-Phase 3 established `data/reference/` as the canonical source and validated it in push and pull-request CI. Phase 4 removed the frozen `Data/` tree in a separate reversible commit. Regression tests reject restoration of that ambiguous root and continue to verify the Phase 3 migration manifest.
+`Health_Report_Generator-test/`, `scripts/health_pipeline/example_output/`, `design/report-mockups.html` and `configs/report.yml` are historical/prototype/reference material unless a donor manifest explicitly selects a component. They are not evidence of a successful current render.
+
+No committed file containing the discarded conversational design-only/CSV-later M4-M6 sequence was found in the inspected documentation inventory. Replace conflicting active guidance; do not delete scientific policy, historical provenance, licences, audit manifests or validated evidence merely to remove old plans.
