@@ -15,13 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import tabular_bundle as bundles
+from tabular_describe import describe, normalize_report_options
 
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parents[1]
 AUDIENCES = ("researcher", "health_institution", "public")
 SCHEMA = "health-report/tabular-render/1"
 EMBED = re.compile(r'<script type="application/json" id="report-provenance">(.*?)</script>', re.S)
-HELPERS = ("report_helpers.R", "audience_reports.R", "tabular_report.R", "dashboard.css")
+HELPERS = ("report_helpers.R", "audience_reports.R", "tabular_report.R", "tabular_charts.R", "dashboard.css")
 
 
 def _hash(path):
@@ -30,7 +31,7 @@ def _hash(path):
 
 def _sources():
     paths = [HERE / "report_shared.qmd", Path(__file__),
-             HERE / "tabular_bundle.py", HERE / "tabular_prepare.py", HERE / "tabular_input.py", HERE / "tabular_run.py"]
+             HERE / "tabular_bundle.py", HERE / "tabular_prepare.py", HERE / "tabular_input.py", HERE / "tabular_run.py", HERE / "tabular_describe.py"]
     paths += [HERE / "templates" / name for name in HELPERS]
     paths += [HERE / "config/stakeholders" / f"{audience}.json" for audience in AUDIENCES]
     return {path.relative_to(PROJECT).as_posix(): _hash(path) for path in paths}
@@ -100,6 +101,30 @@ def _record(prepared, snapshot, audience, profile, software, code):
                             "No upload-security, browser or external source-authenticity acceptance."]}
 
 
+
+_context_base = _context
+
+def _context(prepared, profile, report_options=None):
+    context = _context_base(prepared, profile)
+    context["analysis"] = describe(prepared, report_options)
+    return context
+
+
+_record_base = _record
+
+def _record(prepared, snapshot, audience, profile, software, code, report_options=None):
+    record = _record_base(prepared, snapshot, audience, profile, software, code)
+    analysis = describe(prepared, report_options)
+    record["descriptive_analysis"] = {
+        "schema": analysis["schema"], "path": "../analysis.json",
+        "sha256": hashlib.sha256(bundles._json_bytes(analysis)).hexdigest(),
+        "policy": analysis["policy"],
+    }
+    record["effective_parameters"]["report"] = analysis["parameters"]
+    record["limitations"][0] = "No cross-category totals or category-period pooling; descriptive comparisons are not causal or clinical conclusions."
+    return record
+
+
 def verify_tabular_reports(destination):
     """Check exact artifacts, hashes, reproduced bundle and HTML provenance.
 
@@ -122,7 +147,7 @@ def verify_tabular_reports(destination):
     sources = names & {"bundle/source.csv", "bundle/source.tsv"}
     if len(sources) != 1:
         raise ValueError("Expected one captured source.")
-    expected = {"render_manifest.json", "bundle/manifest.json", "bundle/table.json",
+    expected = {"render_manifest.json", "analysis.json", "bundle/manifest.json", "bundle/table.json",
                 "bundle/provenance.json", *sources}
     expected |= {f"{audience}/{name}" for audience in AUDIENCES
                  for name in ("report.html", "methods.html", "provenance.json")}
@@ -145,6 +170,12 @@ def verify_tabular_reports(destination):
             raise ValueError("Rendered artifact hash or size mismatch.")
     prepared = bundles.verify_prepared_bundle(root / "bundle")
     snapshot = root / "bundle"
+    saved_analysis = bundles._json_load(captured["analysis.json"])
+    if not isinstance(saved_analysis, dict):
+        raise ValueError("Invalid descriptive result object.")
+    report_options = normalize_report_options(saved_analysis.get("parameters"))
+    if captured["analysis.json"] != bundles._json_bytes(describe(prepared, report_options)):
+        raise ValueError("Saved descriptive results differ from independently reproduced analysis.")
     code = _sources()
     for audience in AUDIENCES:
         record = bundles._json_load(captured[f"{audience}/provenance.json"])
@@ -157,7 +188,7 @@ def verify_tabular_reports(destination):
                     or software["python"] != platform.python_version()
                     or any(not isinstance(value, str) or not value for value in software.values())):
                 raise ValueError("Invalid recorded renderer software.")
-            expected_record = _record(prepared, snapshot, audience, _profile(audience), software, code)
+            expected_record = _record(prepared, snapshot, audience, _profile(audience), software, code, report_options)
             expected_record["rendered_at_utc"] = record["rendered_at_utc"]
         except (KeyError, TypeError) as exc:
             raise ValueError("Invalid render provenance.") from exc
@@ -174,9 +205,11 @@ def verify_tabular_reports(destination):
     return manifest
 
 
-def render_tabular_reports(bundle, destination, *, quarto="quarto"):
+def render_tabular_reports(bundle, destination, *, quarto="quarto", report_options=None):
     """Verify before Quarto, stage all three audiences, then publish as one set."""
     prepared = bundles.verify_prepared_bundle(bundle)
+    report_options = normalize_report_options(report_options)
+    analysis = describe(prepared, report_options)
     destination = bundles._safe_path(destination)
     if not destination.name or not destination.parent.is_dir():
         raise ValueError("A named output and existing parent are required.")
@@ -190,11 +223,12 @@ def render_tabular_reports(bundle, destination, *, quarto="quarto"):
     stage = Path(tempfile.mkdtemp(prefix=f".{destination.name}.staging-", dir=destination.parent))
     try:
         snapshot = bundles.publish_prepared_bundle(prepared, stage / "bundle")
+        (stage / "analysis.json").write_bytes(bundles._json_bytes(analysis))
         for audience in AUDIENCES:
             profile = profiles[audience]
             folder = stage / audience
             folder.mkdir()
-            record = _record(prepared, snapshot, audience, profile, software, code)
+            record = _record(prepared, snapshot, audience, profile, software, code, report_options)
             (folder / "provenance.json").write_bytes(bundles._json_bytes(record))
             with tempfile.TemporaryDirectory(prefix="health-tabular-render-") as work:
                 work = Path(work)
@@ -202,7 +236,7 @@ def render_tabular_reports(bundle, destination, *, quarto="quarto"):
                 for name in HELPERS:
                     shutil.copyfile(HERE / "templates" / name, work / name)
                 (work / "provenance.json").write_bytes(bundles._json_bytes(record))
-                context = _context(prepared, profile)
+                context = _context(prepared, profile, report_options)
                 context["audience"] = audience
                 (work / "tabular_context.json").write_bytes(bundles._json_bytes(context))
                 env = os.environ.copy()
@@ -215,7 +249,7 @@ def render_tabular_reports(bundle, destination, *, quarto="quarto"):
                     subprocess.run([
                         quarto, "render", "report.qmd", "--to", "html",
                         "--execute-params", "params.yml", "--output", f"{document}.html",
-                        "-M", "title:Uploaded table | " + profile["display_name"],
+                        "-M", "title:" + report_options["title"] + " | " + profile["display_name"],
                     ], cwd=work, env=env, check=True)
                     result = work / f"{document}.html"
                     if not result.is_file() or result.stat().st_size == 0:

@@ -33,9 +33,9 @@ independent attestation of the historical render environment.
 
 Every audience receives all observations in original data-record order, with
 missing values visible and filter/sort interactivity. Missingness counts come
-from preparation provenance, not presentation recalculation. No sums, averages,
-percentage changes, rates, disease classifications, thresholds or inferred
-geographies are introduced. Public wording is plain language; institutional
+from preparation provenance, not presentation recalculation. No cross-category sums, rates, disease classifications, alert thresholds or inferred
+geographies are introduced. The descriptive extension records within-category row
+statistics and explicitly requested reference comparisons in analysis.json. Public wording is plain language; institutional
 wording cautions against operational inference; technical views include mapping
 and reproduction detail. Row filtering/sorting changes the view, not saved data.
 
@@ -51,3 +51,5 @@ Unit tests mock Quarto; they do not establish real rendering. Run real snapshot
 and annual-ISO synthetic fixtures for all three audiences, verify those reports,
 and rerun canonical output/release checks and smoke tests after the source change.
 Preserve the earlier canonical baseline rather than overwriting it.
+
+The descriptive extension and its explicit calculation policy are documented in [descriptive visuals](m4-tabular-descriptive-visuals.md).

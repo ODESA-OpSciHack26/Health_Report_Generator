@@ -23,7 +23,7 @@ docker compose run --rm --no-deps report python scripts/health_pipeline/tabular_
 The command creates a missing output parent after validation. It never replaces
 an existing output. Pick a new output name for a repeat demonstration. The initial
 example has three rows, including one missing date and one missing numeric value.
-All observations are retained; no sums, averages or percentage changes are computed.
+All observations are retained. Row descriptives are saved separately; no cross-category sums are inferred. Explicit reference comparisons require a version-2 request.
 
 Expected output beneath reproduced/tabular-example:
 
@@ -112,3 +112,5 @@ It does not build a new image, push Git history or perform browser review.
 The archive source_commit identifies the clean archiver checkout, not a claim that
 all included historical runs were generated from that commit. Preserve each run's
 original provenance and generation revision; never relabel older evidence.
+
+For the rendered statistical/graphical extension, see [descriptive visuals](m4-tabular-descriptive-visuals.md).

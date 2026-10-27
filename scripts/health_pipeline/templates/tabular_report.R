@@ -71,3 +71,7 @@ print(verified.table)</code></pre>',
       'consistency, not authentication of the intended source.</p>')), '</div>')
   paste(parts, collapse='\n')
 }
+
+# Descriptive enrichment uses saved Python results.
+source('tabular_charts.R')
+tabular_document_html <- tabular_enriched_html

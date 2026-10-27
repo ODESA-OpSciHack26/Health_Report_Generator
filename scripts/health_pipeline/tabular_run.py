@@ -12,6 +12,7 @@ from pathlib import Path
 import tabular_bundle as bundles
 from tabular_prepare import _parameters, prepare_payload
 from tabular_render import render_tabular_reports, verify_tabular_reports
+from tabular_describe import normalize_report_options
 
 REQUEST_SCHEMA = "health-report/tabular-request/1"
 
@@ -19,14 +20,20 @@ REQUEST_SCHEMA = "health-report/tabular-request/1"
 def load_request(path):
     request = bundles._json_load(Path(path).read_bytes())
     expected = {"schema", "source_sha256", "mapping", "mode", "period"}
+    if isinstance(request, dict) and request.get("schema") == "health-report/tabular-request/2":
+        expected.add("report")
     if not isinstance(request, dict) or set(request) != expected:
         raise ValueError("Request has missing or unexpected fields.")
-    if request["schema"] != REQUEST_SCHEMA:
+    if request["schema"] not in (REQUEST_SCHEMA, "health-report/tabular-request/2"):
         raise ValueError("Unsupported request schema.")
     digest = request["source_sha256"]
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
         raise ValueError("Request requires a lowercase SHA-256 source identity.")
     _parameters(request["mapping"], request["mode"], request["period"])
+    if "report" in request:
+        if not isinstance(request["report"], dict):
+            raise ValueError("Version-2 report options must be an object.")
+        request["report"] = normalize_report_options(request["report"])
     return request
 
 
@@ -52,7 +59,7 @@ def run_tabular(source, request, destination, *, quarto="quarto"):
     scratch = Path(tempfile.mkdtemp(prefix=f".{destination.name}.run-", dir=destination.parent))
     try:
         bundle = bundles.publish_prepared_bundle(prepared, scratch / "input-bundle")
-        reports = render_tabular_reports(bundle, scratch / "reports", quarto=quarto)
+        reports = render_tabular_reports(bundle, scratch / "reports", quarto=quarto, report_options=request.get("report"))
         verify_tabular_reports(reports)
         bundles._rename_no_replace(reports, destination)
     finally:
