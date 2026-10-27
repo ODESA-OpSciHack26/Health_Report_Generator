@@ -29,7 +29,7 @@ def save(frame, tmp_path, name="mine.csv"):
 
 
 def test_required_columns_match_what_the_reports_read():
-    tree = ast.parse((ROOT / "reports/shared/helpers.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "reports/utils/helpers.py").read_text(encoding="utf-8"))
     columns = next(ast.literal_eval(n.value) for n in tree.body
                    if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "COLUMNS")
     assert upload_table.REQUIRED == columns
@@ -43,7 +43,7 @@ def test_good_table_gets_a_complete_results_folder(tmp_path):
         assert (folder / name).is_file(), name
     checks = pd.read_csv(folder / "checks.csv")
     assert set(checks.status) == {"PASS"}
-    snapshot = json.loads((folder / "harmonised_snapshot.json").read_text())
+    snapshot = json.loads((folder / "harmonised_snapshot.json").read_text(encoding="utf-8"))
     assert snapshot["snapshot_id"] == f"upload-{info['sha256'][:12]}"
     assert pd.read_csv(folder / "datasets.csv").source_file.tolist() == ["mine.csv"]
 

@@ -13,10 +13,10 @@ PYTHON = sys.executable
 SITE = OUT + '/site'
 REPORTS = list(config['reports'])
 DATA_ROOT = config['data_root'] if not config.get('snapshot_manifest') else ''
-ENVIRONMENT = [f'{P}/requirements.lock.txt', 'reports/requirements.txt']
-# Everything a report reads besides its own .qmd; render_quarto.py copies these next to it.
-REPORT_CODE = ['reports/shared/helpers.py', 'reports/shared/provenance.py',
-               'reports/assets/swiss_cantons.geojson', f'{P}/render_quarto.py']
+ENVIRONMENT = [f'{P}/requirements.lock.txt', 'reports/utils/requirements.txt']
+# Everything a report reads besides its own .qmd; render_quarto.py copies reports/utils next to it.
+REPORT_CODE = sorted(str(p) for p in Path('reports/utils').iterdir()
+                     if p.is_file() and p.name not in ('index.html', 'requirements.txt')) + [f'{P}/render_quarto.py']
 
 for name in REPORTS:
     if not Path(f'reports/{name}.qmd').exists():
@@ -80,7 +80,7 @@ rule report:
 
 # The landing page links to the reports by file name, so it is published only once they all exist.
 rule landing:
-    input: page='reports/assets/index.html', reports=HTML
+    input: page='reports/utils/index.html', reports=HTML
     output: SITE+'/index.html'
     run:
         shutil.copyfile(input.page, output[0])

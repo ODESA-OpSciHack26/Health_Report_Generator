@@ -16,46 +16,37 @@ Everything runs inside Docker, so you do not install Python or Quarto yourself.
 | Internet | Only for the first build |
 | About 4 GB free disk | The image is about 2.6 GB |
 
-## First time only
+## Start
 
-1. **Start Docker Desktop** from the Start menu and wait until it says **"Engine running"** (1-2 minutes).
-2. **Open the project** in VS Code: **File -> Open Folder...** -> `Health_Report_Generator`.
-3. **Open a terminal**: **Ctrl+`** (the key above Tab). PowerShell is fine.
-4. **Check Docker**: `docker info` should print details. `failed to connect to the docker API` means Docker Desktop is not running yet.
-5. **Set two variables** (needed in every new terminal window):
-   ```
-   $env:LOCAL_UID=1000; $env:LOCAL_GID=1000          # Windows PowerShell
-   export LOCAL_UID=1000 LOCAL_GID=1000                # Windows Git Bash
-   export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"   # macOS and Linux Terminal
-   ```
-6. **Build the image** (about 3 minutes, once):
-   ```
-   docker compose build app
-   ```
-   Wait for `Image health-report:local Built`.
+1. **Start Docker Desktop** and wait until it says **"Engine running"** (1-2 minutes).
+2. **Start the page:**
+
+   | Computer | How |
+   |---|---|
+   | Windows | Double-click **`start.bat`** in the project folder |
+   | macOS, Linux | In a terminal in the project folder: `./start.sh` |
+
+   The home page opens in your browser at **http://localhost:8501**. The first start builds the image (about 3 minutes, once); later starts take a few seconds.
+3. **To stop:** double-click **`stop.bat`** (Windows) or run `./stop.sh` (macOS, Linux).
+
+Without the scripts: `docker compose up -d app`, open http://localhost:8501, and `docker compose down` to stop. On Linux, first run `export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"` in that terminal.
 
 ## Make a report on the home page
 
-1. Start Docker Desktop and set the two variables (step 5).
-2. Start the page and leave the terminal open:
-   ```
-   docker compose up app
-   ```
-   Wait for `You can now view your Streamlit app in your browser.`
-3. Open **http://localhost:8501** in Chrome or Edge (or in VS Code: **Ctrl+Shift+P -> Simple Browser: Show**).
-4. Make your choices:
+1. Start the page (see *Start*).
+2. Make your choices:
    1. **Data.** Select **🏥 FOPH dataset** (the project's data) or **📂 Upload your CSV** (see *Your own data* below).
    2. **Stakeholder.** Click **Choose** on a card:
       - 🔬 *Researcher*: methods, quality checks, trends, seasonality, age groups, cantons and provenance.
       - 🏥 *Public health officials*: what needs attention now, and where.
    3. **Years.** Drag the two ends of the slider, for example 2019 to 2025. Charts and tables over time show only these years. The current status of each disease always uses the newest data, because it is compared with the previous 5 to 10 years.
    4. **Diseases.** Click a tile to select or deselect it. **Select all** and **Clear** change all of them at once.
-5. Click **📄 Generate report**. The report opens in a **new tab**. If your browser blocks it, click **Open report in new tab** (or allow pop-ups for `localhost`). **Download report** and **Download provenance** save the files; they are also kept in `results/app/`.
-6. To stop: press **Ctrl+C** in the terminal, then `docker compose down`.
+3. Click **📄 Generate report**. The report opens in a **new tab**. If your browser blocks it, click **Open report in new tab** (or allow pop-ups for `localhost`). **Download report** and **Download provenance** save the files; they are also kept in `results/app/`.
+4. To stop: double-click `stop.bat` (Windows) or run `./stop.sh` (macOS, Linux).
 
 **How long it takes.** When the page starts, it prepares both full reports in the background (seconds if nothing changed, about a minute after new data); the first click waits for that. Then: all diseases and all years about 2 seconds, a new choice about 30 seconds, the same choice again about 1 second. The page builds one report at a time.
 
-**Your own data.** In step 1 select **📂 Upload your CSV** and upload any CSV, TSV or Parquet file, up to 500 MB. Its report is made at once with the default choices and shown under the upload; change the steps below and press **Generate report** for another version. It is used only for your reports and the project's data is not changed; the report says at the top and in its Provenance that it was made from your file.
+**Your own data.** In step 2, under **Data**, select **📂 Upload your CSV** and upload any CSV, TSV or Parquet file, up to 500 MB. Its report is made at once with the default choices and shown under the upload; change the steps below and press **Generate report** for another version. It is used only for your reports and the project's data is not changed; the report says at the top and in its Provenance that it was made from your file.
 
 - **A table made by this pipeline** (`harmonised.csv` or `harmonised.parquet`, or any table with the same columns; the page lists them) gets the full Researcher and Public health reports. It is checked first and refused if it fails (numbers that cannot be read, negative counts, no known disease). Only the diseases and years in your file are offered.
 - **Any other table**, for example `year,country,news_records`, gets a **general report** (`reports/general.qmd`). `scripts/health_pipeline/general_table.py` reads each column once: a year or date column becomes the time axis, number columns become the values (added up, or averaged when the name says rate, percent, share, average, ...), and text columns become groups. The page then offers the two stakeholders, the file's years and its main groups. Every report starts with an *Automatic visual summary* chosen from what the table holds (as in the `develop/v2.0.0` CSV route): date or year + number → time trend; category + number → ranked bars; category only → frequency bars (rows counted); two numbers → scatter; one number → distribution. Then, per number column, charts over time (total and per group), the latest period against the one before and tables by group.
@@ -82,7 +73,7 @@ This builds both full reports (all diseases, all years) into `results/site/`: `r
 | Check nothing is left to rebuild | `docker compose run --rm report snakemake --dry-run --cores 1` |
 | Rebuild the image after changing `Dockerfile.report` or a requirements file | `docker compose build app` |
 
-Editing `src/app.py` or anything in `reports/` needs no rebuild: the project folder is shared with the container, so refresh the browser page.
+To change what a report says or shows, edit its template in `reports/`; [reports/README.md](reports/README.md) explains which file does what. Editing `src/app.py` or anything in `reports/` needs no rebuild: the project folder is shared with the container, so refresh the browser page.
 
 ## What you get
 
@@ -133,12 +124,12 @@ The reports describe officially notified cases, not all infections. They are des
 
 | Problem | Fix |
 |---|---|
-| `failed to connect to the docker API` | Docker Desktop is not running. Start it and wait for "Engine running". |
+| `failed to connect to the docker API` or "Docker is not running" | Docker Desktop is not running. Start it and wait for "Engine running". |
 | Docker Desktop stuck on "Starting" | Run `wsl --update`, then `wsl --shutdown`, then start Docker Desktop again. Make sure virtualization is on in BIOS and "Use the WSL 2 based engine" is ticked in Docker settings. |
 | `Kernel died`, `DeadKernelError` or the render stops | The report's Python ran out of memory. Give Docker at least 4 GB (Docker Desktop -> Settings -> Resources) and close other heavy programs. |
 | `Kernel didn't respond` or very slow, on a Mac | The image was made for another processor. Rebuild it on the Mac: `docker compose build --no-cache app`. Antivirus or VPN software that blocks local connections can cause the same error on any computer. |
 | Port 8501 or 8502 already in use | In `compose.yaml` change the left number of `"8501:8501"` (page) or `"8502:8502"` (report viewer; also change `VIEWER_PORT` in `src/app.py`). |
-| Permission errors writing to `results/` | Set the two variables (step 5) first. |
+| Permission errors writing to `results/` | Start with `start.bat` or `./start.sh`. Without the scripts, on Linux run `export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"` first. |
 | **Generate report** is grey | Pick at least one disease; with *Use my own cleaned table* switched on, upload a file that passed the checks. |
 | "This table cannot be used: ..." | The message names the failed check. A `harmonised.csv` from this project's `results/` always works. |
 | "The report could not be built" | Run `docker compose logs app` and read the last lines. |
@@ -158,6 +149,6 @@ The page has **no login**: run it only on your own computer or a trusted network
 
 The tests cover the data steps (subgroups never taken as totals, damaged or conflicting input blocking the quality gate, stale gates, duplicate exports, snapshot relocation and tampering, repeatable output), the CSV export, uploaded tables, the render script, the CI configuration and the toolchain contract. CI (`.github/workflows/validate.yml`) runs `fast` (Ruff, tests, dry run), `container` (builds the image and both reports inside it) and `full` (builds both reports natively, checks a rebuild is a no-op, uploads `results/site/`).
 
-Python packages are locked in `scripts/health_pipeline/requirements.lock.txt` (pipeline and tests) and `reports/requirements.txt` (reports); `scripts/health_pipeline/requirements.txt` installs both. `workflow/toolchain.json` is the machine-readable version policy (Python 3.11.6, Quarto 1.10.19, uv 0.8.14).
+Python packages are locked in `scripts/health_pipeline/requirements.lock.txt` (pipeline and tests) and `reports/utils/requirements.txt` (reports); `scripts/health_pipeline/requirements.txt` installs both. `workflow/toolchain.json` is the machine-readable version policy (Python 3.11.18, Quarto 1.10.19, uv 0.8.14).
 
 Citing this work: see [CITATION.cff](CITATION.cff).

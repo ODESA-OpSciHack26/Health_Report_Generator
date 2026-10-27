@@ -23,7 +23,7 @@ def project(tmp_path):
               'temporalVariables':{'column':'temporal','typeColumn':'temporal_type'},
               'groupingVariables':{'georegion':{'column':'georegion','typeColumn':'georegion_type','allValue':'all'},'sex':{'column':'sex','allValue':'all'}},
               'valueVariables':{'value':{},'pop':{}},'entryVariables':{'dataComplete':{}}}
-        (p/'metadata.json').write_text(json.dumps(meta))
+        (p/'metadata.json').write_text(json.dumps(meta), encoding='utf-8')
         pd.DataFrame([dict(valueCategory='cases',temporal=str(y),temporal_type='year',georegion='CHFL',georegion_type='CHFL',sex='all',value=(y-2009)*scale,pop=100000,dataComplete='TRUE') for y in YEARS]).to_csv(p/'data.csv',index=False)
     return raw,out
 
@@ -51,7 +51,7 @@ def test_bad_input_blocks_gate(project,damage):
     if damage.endswith('metadata'):
         p=raw/'virus/metadata.json'
         if damage=='missing_metadata':p.unlink()
-        else:p.write_text('{"broken":')
+        else:p.write_text('{"broken":', encoding='utf-8')
     else:
         def change(d):
             if damage=='duplicate':return pd.concat([d,d.iloc[:1]])
@@ -69,12 +69,12 @@ def test_failure_removes_old_success_marker(project):
     assert not (out/'validated.json').exists()
 
 def test_stale_gate_is_rejected(project):
-    out=run(project);p=out/'checks.csv';p.write_text(p.read_text()+'\n')
+    out=run(project);p=out/'checks.csv';p.write_text(p.read_text(encoding='utf-8')+'\n')
     with pytest.raises(ValueError,match='stale'):verify_gate(out)
 
 def test_conflicting_metadata_not_deduplicated(project):
     raw,out=project;shutil.copytree(raw/'virus',raw/'copy')
-    p=raw/'copy/metadata.json';m=json.loads(p.read_text());m['metaVariables']['topic']='another';p.write_text(json.dumps(m))
+    p=raw/'copy/metadata.json';m=json.loads(p.read_text(encoding='utf-8'));m['metaVariables']['topic']='another';p.write_text(json.dumps(m), encoding='utf-8')
     harmonise([str(raw),'--out',str(out)])
     with pytest.raises(ValueError,match='blocking'):validate(out)
     assert (pd.read_csv(out/'datasets.csv').status=='ok').sum()==3
@@ -113,14 +113,14 @@ def test_render_refuses_missing_pipeline_outputs(tmp_path):
         render_quarto.render('unknown',tmp_path,tmp_path/'site/unknown.html')
 
 def test_configured_reports_exist():
-    reports=yaml.safe_load((ROOT/'workflow/config.yaml').read_text())['reports']
+    reports=yaml.safe_load((ROOT/'workflow/config.yaml').read_text(encoding='utf-8'))['reports']
     assert reports and all((ROOT/'reports'/f'{name}.qmd').is_file() for name in reports)
     assert set(reports)<=set(render_quarto.reports())
 
 def test_app_disease_list_matches_report_helpers():
     """src/app.py reads the disease list without importing helpers.py; both must agree."""
-    tree=ast.parse((ROOT/'reports/shared/helpers.py').read_text(encoding='utf-8'))
+    tree=ast.parse((ROOT/'reports/utils/helpers.py').read_text(encoding='utf-8'))
     names=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and getattr(n.targets[0],'id','')=='ALL_DISEASES')
     app=(ROOT/'src/app.py').read_text(encoding='utf-8')
-    assert 'ALL_DISEASES' in app and 'reports" / "shared" / "helpers.py' in app
+    assert 'ALL_DISEASES' in app and 'reports" / "utils" / "helpers.py' in app
     assert len(names)>=12

@@ -22,7 +22,7 @@ def test_year_number_and_group_columns_are_found(tmp_path):
     folder = tmp_path / "uploads" / f"general-{info['sha256'][:12]}"
     for name in ["table.csv", "profile.json", "checks.csv", "upload.json"]:
         assert (folder / name).is_file(), name
-    assert json.loads((folder / "profile.json").read_text())["time"] == "year"
+    assert json.loads((folder / "profile.json").read_text(encoding="utf-8"))["time"] == "year"
 
 
 def test_dates_semicolons_and_decimal_commas(tmp_path):

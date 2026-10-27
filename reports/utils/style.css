@@ -1,0 +1,187 @@
+/* Look of the researcher and public health reports: colours, summary cards, status badges, tables. */
+
+:root {
+  --risk-high: #c62828;
+  --risk-high-bg: #fde8e8;
+  --risk-elevated: #e6ac00;
+  --risk-elevated-bg: #fff8d6;
+  --risk-normal: #2e7d32;
+  --risk-normal-bg: #e8f5e9;
+  --neutral-blue: #245b8a;
+  --soft-grey: #f5f7fa;
+  --border-grey: #dde3ea;
+}
+
+body {
+  background: #fbfcfe;
+  color: #263238;
+}
+
+h1, h2, h3 {
+  color: #173f63;
+}
+
+/* Summary cards */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 0.8rem;
+  margin: 0.6rem 0 1.3rem 0;
+}
+.summary-card {
+  border: none;
+  border-radius: 12px;
+  padding: 1rem 1.05rem;
+  box-shadow: 0 3px 10px rgba(30, 55, 80, 0.10);
+  color: white;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(30, 55, 80, 0.14);
+}
+.summary-card .label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: white !important;
+  opacity: 0.95;
+  font-weight: 650;
+}
+.summary-card .value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin-top: 0.25rem;
+  color: white !important;
+}
+
+/* Full-card status colours (no coloured top line) */
+.summary-card.neutral  { background: var(--neutral-blue); }
+.summary-card.normal   { background: var(--risk-normal); }
+.summary-card.elevated { background: var(--risk-elevated); }
+.summary-card.high     { background: var(--risk-high); }
+/* yellow needs dark text */
+.summary-card.elevated .label,
+.summary-card.elevated .value { color: #3d3000 !important; }
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.25;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.status-high {
+  color: #9d1c1c;
+  background: var(--risk-high-bg);
+  border: 1px solid #efb7b7;
+}
+.status-elevated {
+  color: #7a5c00;
+  background: var(--risk-elevated-bg);
+  border: 1px solid #ecd67a;
+}
+.status-normal, .status-low {
+  color: #226b26;
+  background: var(--risk-normal-bg);
+  border: 1px solid #add9b0;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  background: white;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border-grey);
+  border-radius: 10px;
+  overflow: hidden;
+}
+thead th {
+  background: #173f63 !important;
+  color: white !important;
+  font-weight: 650;
+  padding: 0.65rem 0.75rem !important;
+}
+tbody td {
+  padding: 0.58rem 0.75rem !important;
+  border-bottom: 1px solid #edf0f3 !important;
+}
+tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+tbody tr:hover {
+  background: #eef5fb;
+}
+
+.callout-note {
+  border-left-color: var(--neutral-blue) !important;
+}
+
+@media (max-width: 800px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+/* Keep the card and badge colours when the report is printed or saved as PDF */
+@media print {
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .summary-card.neutral {
+    background-color: #245B8A !important;
+    color: white !important;
+  }
+
+  .summary-card.normal {
+    background-color: #2E7D32 !important;
+    color: white !important;
+  }
+
+  .summary-card.elevated {
+    background-color: #E6AC00 !important;
+    color: #2F2500 !important;
+  }
+
+  .summary-card.high {
+    background-color: #C62828 !important;
+    color: white !important;
+  }
+
+  .summary-card .label,
+  .summary-card .value {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .summary-card.neutral .label,
+  .summary-card.neutral .value,
+  .summary-card.normal .label,
+  .summary-card.normal .value,
+  .summary-card.high .label,
+  .summary-card.high .value {
+    color: white !important;
+  }
+
+  .summary-card.elevated .label,
+  .summary-card.elevated .value {
+    color: #2F2500 !important;
+  }
+
+  .status-badge {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

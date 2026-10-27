@@ -4,7 +4,7 @@ from pathlib import Path
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = json.loads((ROOT / "workflow/toolchain.json").read_text())
+CONTRACT = json.loads((ROOT / "workflow/toolchain.json").read_text(encoding="utf-8"))
 WORKFLOWS = (
     ".github/workflows/validate.yml",
     ".github/workflows/refresh-idd-data.yml",
@@ -12,7 +12,7 @@ WORKFLOWS = (
 
 
 def text(path: str) -> str:
-    return (ROOT / path).read_text()
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
 def test_python_contract_is_aligned():

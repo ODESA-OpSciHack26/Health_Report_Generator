@@ -19,12 +19,12 @@ def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + '.tmp')
-    tmp.write_text(json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + '\n')
+    tmp.write_text(json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + '\n', encoding='utf-8')
     tmp.replace(path)
 
 def verify_gate(out):
     out = Path(out)
-    gate = json.loads((out / 'validated.json').read_text())
+    gate = json.loads((out / 'validated.json').read_text(encoding='utf-8'))
     for name, expected in gate['files'].items():
         if digest(out / name) != expected:
             raise ValueError(f'Validation is stale: {name}; rerun checks')

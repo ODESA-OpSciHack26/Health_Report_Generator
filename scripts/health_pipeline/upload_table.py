@@ -23,7 +23,7 @@ from pathlib import Path
 import pandas as pd
 
 PROJECT = Path(__file__).resolve().parents[2]
-# What the reports read (reports/shared/helpers.py COLUMNS); a test keeps the two equal.
+# What the reports read (reports/utils/helpers.py COLUMNS); a test keeps the two equal.
 REQUIRED = ["topic", "source_system", "measure", "period", "period_type", "place", "place_type", "age_group",
             "sex", "breakdown", "value", "pop", "incValue", "is_stat_row", "year"]
 COUNTS = {"cases", "consultations"}
@@ -33,12 +33,12 @@ UPLOAD_INFO = "upload.json"
 
 
 def known_diseases():
-    """Disease ids the reports know, read from reports/shared/helpers.py without importing it."""
-    tree = ast.parse((PROJECT / "reports" / "shared" / "helpers.py").read_text(encoding="utf-8"))
+    """Disease ids the reports know, read from reports/utils/helpers.py without importing it."""
+    tree = ast.parse((PROJECT / "reports" / "utils" / "helpers.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "ALL_DISEASES" for t in node.targets):
             return list(ast.literal_eval(node.value))
-    raise RuntimeError("ALL_DISEASES not found in reports/shared/helpers.py")
+    raise RuntimeError("ALL_DISEASES not found in reports/utils/helpers.py")
 
 
 def read_table(path: Path) -> pd.DataFrame:

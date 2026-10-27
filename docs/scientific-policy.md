@@ -11,7 +11,7 @@ Rules that decide which data enter a report and how numbers are calculated.
 - Geography is explicit (`CH` or `CHFL`); the workflow never silently substitutes one for the other.
 - `checks.py` exits nonzero on critical failures and writes a success marker bound to the content it checked. Editing an input or output cannot silently reuse an old validation result, and no report is rendered from a table that has not passed.
 
-## Report rules (reports/shared/helpers.py)
+## Report rules (reports/utils/helpers.py)
 
 - **National series.** All ages, both sexes, no sub-type split. Switzerland plus Liechtenstein (CHFL) where published, otherwise Switzerland (CH). The COVID-19 case series counts laboratory-confirmed (positive-test) cases.
 - **Period.** The finest published: weekly for respiratory series, monthly for most others, yearly for AIDS.

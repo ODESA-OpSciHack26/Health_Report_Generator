@@ -1,0 +1,13 @@
+/* Look of the general report (any uploaded table). */
+
+body { background: #fbfcfe; color: #263238; }
+h1, h2, h3 { color: #173f63; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.8rem; margin: 0.6rem 0 1.3rem; }
+.summary-card { border-radius: 12px; padding: 0.9rem 1rem; background: #245b8a; color: white;
+                box-shadow: 0 3px 10px rgba(30, 55, 80, 0.10); }
+.summary-card .value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.summary-card .label { font-size: 0.85rem; opacity: 0.9; }
+.view { display: inline-block; background: #e8f0f8; color: #173f63; border-radius: 999px; padding: 0.15rem 0.8rem;
+        font-weight: 600; font-size: 0.9rem; }
+.rule { color: #5f6368; font-style: italic; }
+.limitation { border-left: 4px solid #e6ac00; background: #fff8d6; padding: 0.8rem 1rem; border-radius: 6px; }

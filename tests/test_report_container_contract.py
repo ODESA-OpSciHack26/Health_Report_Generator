@@ -8,27 +8,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_report_image_matches_toolchain_contract():
-    contract = json.loads((ROOT / "workflow/toolchain.json").read_text())
-    dockerfile = (ROOT / "Dockerfile.report").read_text()
+    contract = json.loads((ROOT / "workflow/toolchain.json").read_text(encoding="utf-8"))
+    dockerfile = (ROOT / "Dockerfile.report").read_text(encoding="utf-8")
 
     assert f'FROM python:{contract["python"]["validated"]}-' in dockerfile
     assert f'ARG QUARTO_VERSION={contract["quarto"]["validated"]}' in dockerfile
     assert f'ARG UV_VERSION={contract["uv"]["validated"]}' in dockerfile
     assert "requirements.lock.txt" in dockerfile
-    assert "reports/requirements.txt" in dockerfile
+    assert "reports/utils/requirements.txt" in dockerfile
 
 
 def test_image_builds_natively_on_every_processor():
     """No platform pin: an Apple-chip Mac builds arm64 instead of emulating amd64."""
-    dockerfile = (ROOT / "Dockerfile.report").read_text()
-    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    dockerfile = (ROOT / "Dockerfile.report").read_text(encoding="utf-8")
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))["services"]
     assert not any("platform" in service for service in services.values())
-    assert "ARG TARGETARCH" in dockerfile and "linux-${arch}.tar.gz" in dockerfile
+    assert "ARG TARGETARCH" in dockerfile and "linux-${TARGETARCH}.tar.gz" in dockerfile
     assert "linux-amd64" not in dockerfile
 
 
 def test_services_share_one_image_without_github_credentials():
-    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))["services"]
     assert set(services) == {"report", "sync", "app"}
     assert services["report"]["command"] == ["snakemake", "--cores", "2"]
     for service in services.values():
@@ -39,7 +39,7 @@ def test_services_share_one_image_without_github_credentials():
 
 def test_ci_builds_and_verifies_reports_inside_container():
     workflow = yaml.safe_load(
-        (ROOT / ".github/workflows/validate.yml").read_text()
+        (ROOT / ".github/workflows/validate.yml").read_text(encoding="utf-8")
     )
     steps = workflow["jobs"]["container"]["steps"]
 

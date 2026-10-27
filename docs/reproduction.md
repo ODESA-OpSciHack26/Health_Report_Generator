@@ -5,7 +5,7 @@ How to set up the toolchain, build the reports, and reproduce an archived build 
 ## Setup and run
 
 Run commands from the repository root. The version policy is recorded in
-`workflow/toolchain.json`: Python 3.11.6, Quarto 1.10.19 and uv 0.8.14.
+`workflow/toolchain.json`: Python 3.11.18, Quarto 1.10.19 and uv 0.8.14.
 
 ### Recommended: Docker
 
@@ -30,7 +30,7 @@ Install [Quarto 1.10.19](https://quarto.org/docs/download/) and
 [uv](https://docs.astral.sh/uv/). Then:
 
 ```sh
-uv venv --python 3.11.6 .venv-pipeline
+uv venv --python 3.11.18 .venv-pipeline
 uv pip install --python .venv-pipeline/bin/python -r scripts/health_pipeline/requirements.txt
 .venv-pipeline/bin/python -m snakemake --cores 2
 ```

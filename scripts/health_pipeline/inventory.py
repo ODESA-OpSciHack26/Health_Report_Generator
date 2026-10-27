@@ -35,7 +35,7 @@ def build(root, out):
 
 def verify(manifest_path):
     p = Path(manifest_path)
-    m = json.loads(p.read_text())
+    m = json.loads(p.read_text(encoding="utf-8"))
     root = p.parent / m['snapshot_path'] if p.name == 'snapshot.json' else p.parent
     if object_hash(m['files']) != m['snapshot_id']:
         raise ValueError('Invalid snapshot manifest identity')

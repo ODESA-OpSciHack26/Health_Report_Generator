@@ -1,34 +1,56 @@
+# Report image: Python, the locked packages and Quarto, used by every service in compose.yaml.
+#
+# To change a version, edit the lines marked "EDIT HERE" and the same version in
+# workflow/toolchain.json; tests/test_environment_contract.py checks that they match.
+
+# --- uv, the package installer (only its program is copied in) ---
+# EDIT HERE for a new uv version (also workflow/toolchain.json).
 ARG UV_VERSION=0.8.14
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uvbin
 
-# Python, the locked packages and Quarto: everything the pipeline and the reports need.
-# Builds natively for the computer's processor: amd64 (Windows, Linux, Intel Mac) or
-# arm64 (Apple-chip Mac, ARM Linux), so nothing runs emulated.
-FROM python:3.11.6-slim-bookworm
-
+# --- Quarto: downloaded and unpacked in its own stage, so the archive never lands in the
+# final image. Builds natively for the computer's processor: amd64 (Windows, Linux, Intel
+# Mac) or arm64 (Apple-chip Mac, ARM Linux), so nothing runs emulated. Quarto publishes
+# exactly these two, under the same names Docker uses. ---
+# EDIT HERE for a different base image: keep this line and the FROM below the same.
+FROM python:3.11.18-slim-bookworm AS quarto
+# EDIT HERE for a new Quarto version (also workflow/toolchain.json and both CI workflows).
 ARG QUARTO_VERSION=1.10.19
 # Set by Docker to the processor the image is built for: amd64 or arm64.
 ARG TARGETARCH
+ADD https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/quarto.tar.gz
+RUN mkdir -p /opt/quarto \
+    && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1
+
+# --- Final image ---
+# EDIT HERE for a new Python version or a different base image: the same tag as the Quarto
+# stage above, and the Python version in workflow/toolchain.json and both CI workflows.
+FROM python:3.11.18-slim-bookworm
 
 ENV UV_LINK_MODE=copy \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/health-report-venv/bin:${PATH}"
 
-# git: the reports record the code version in their Provenance section.
+# --- System packages ---
+# git: the reports record the code version in their Provenance section. It is the only
+# system package added; the base image already has ca-certificates.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git \
+    && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
+# --- Python packages, in their own environment ---
 COPY --from=uvbin /uv /uvx /usr/local/bin/
 
 RUN uv venv --python /usr/local/bin/python3.11 /opt/health-report-venv
 
+# Package versions are not set here: edit the two requirement files instead.
 COPY scripts/health_pipeline/requirements.lock.txt /opt/build/requirements.lock.txt
-COPY reports/requirements.txt /opt/build/reports-requirements.txt
+COPY reports/utils/requirements.txt /opt/build/reports-requirements.txt
 
 # Pipeline and tests, the report packages, and the web page (src/app.py), all
 # constrained to the locked versions.
+# EDIT HERE for a new Streamlit version.
 RUN uv pip install \
       --python /opt/health-report-venv/bin/python \
       -c /opt/build/requirements.lock.txt \
@@ -37,31 +59,24 @@ RUN uv pip install \
       "streamlit==1.66.0" \
     && uv pip check --python /opt/health-report-venv/bin/python
 
+# Stops the build if a tool is missing or a key package has the wrong version.
+# EDIT HERE when pandas or plotly change in the lock file.
 RUN for tool in snakemake pytest streamlit; do \
       command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }; \
     done \
     && python -c "import pandas, plotly, ipykernel; assert pandas.__version__ == '2.2.3', pandas.__version__; assert plotly.__version__ == '5.24.1', plotly.__version__"
 
-RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
-      amd64) arch=amd64 ;; \
-      arm64) arch=arm64 ;; \
-      *) echo "unsupported processor: ${TARGETARCH}; Quarto is published for amd64 and arm64" >&2; exit 1 ;; \
-    esac \
-    && curl --fail --show-error --location \
-      --retry 5 --retry-all-errors --retry-delay 3 \
-      --connect-timeout 30 --max-time 600 \
-      "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${arch}.tar.gz" \
-      -o /tmp/quarto.tar.gz \
-    && mkdir -p /opt/quarto \
-    && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1 \
-    && ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto \
-    && rm /tmp/quarto.tar.gz \
+# --- Quarto, copied from its stage ---
+COPY --from=quarto /opt/quarto /opt/quarto
+RUN ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto \
     && quarto --version
 
+# --- Project folder and default command ---
 # The project is mounted at /app and owned by the host user, not the container user; without
 # this git refuses to read it and the reports record the code version as "unavailable".
 RUN git config --system --add safe.directory /app
 
 WORKDIR /app
 
+# Builds both reports; compose.yaml sets the command for each service.
 CMD ["snakemake", "--cores", "2"]

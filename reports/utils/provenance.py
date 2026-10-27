@@ -118,7 +118,7 @@ def build(report_file: str, parameters: dict | None = None) -> dict:
             for r in used.itertuples()],
         "raw_files_skipped_as_duplicates": int((registry.status == "duplicate_skipped").sum()),
         "quality_checks": {k: int(v) for k, v in checks.status.value_counts().items()},
-        "code": {name: sha256(HERE / name) for name in [report_file, "helpers.py", "provenance.py"]},
+        "code": {name: sha256(HERE / name) for name in [report_file, "helpers.py", "provenance.py", "style.css"]},
         "git": git(),
         "environment": {"python": platform.python_version(), "pandas": pd.__version__, "plotly": plotly.__version__,
                         "quarto": _run(["quarto", "--version"]), "platform": platform.platform()},

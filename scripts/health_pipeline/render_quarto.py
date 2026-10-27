@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render one Quarto report (reports/<report>.qmd) from the harmonised results.
 
-The report code lives in reports/: the .qmd documents, shared/helpers.py,
-shared/provenance.py and assets/swiss_cantons.geojson. Rendering happens in a temporary build directory, so a half-written
+The reports are the .qmd documents in reports/; the code, styles and data files they use are
+in reports/utils/. Rendering happens in a temporary build directory, so a half-written
 report is never published and two reports can render at the same time without racing over
 Quarto's intermediate files. The cleaned table stays where it is; the build directory gets
 only the report code, and HEALTH_RESULTS points it at the results directory.
@@ -23,10 +23,9 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
 SOURCE = PROJECT / "reports"
-# Copied flat into every build directory, because the .qmd documents import these by
-# name and helpers.py reads the geojson from its own directory.
-SHARED = [Path("shared/helpers.py"), Path("shared/provenance.py"),
-          Path("assets/swiss_cantons.geojson")]
+# Everything in reports/utils is copied next to the .qmd in the build directory, because the
+# documents import the helpers and read the styles by name.
+UTILS = SOURCE / "utils"
 REQUIRED_INPUTS = ["harmonised.csv", "harmonised_snapshot.json", "datasets.csv", "checks.csv"]
 # reports/general.qmd reads any table, as prepared by general_table.py.
 GENERAL_INPUTS = ["table.csv", "profile.json", "checks.csv", "upload.json"]
@@ -51,8 +50,8 @@ def render(report, results, output, quarto="quarto", data_root=None, topics=None
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f"quarto-{report}-") as tmp:
         build = Path(tmp)
-        for name in SHARED + [Path(document.name)]:
-            shutil.copyfile(SOURCE / name, build / name.name)
+        for source in [*sorted(p for p in UTILS.iterdir() if p.is_file()), document]:
+            shutil.copyfile(source, build / source.name)
         env = os.environ.copy()
         env["HEALTH_RESULTS"] = str(results)
         env["HEALTH_REPORT_PROJECT"] = str(PROJECT)

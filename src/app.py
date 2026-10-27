@@ -82,18 +82,18 @@ h1 { text-align: center; }
 
 
 def load_diseases():
-    """{group: {topic: name}} from reports/shared/helpers.py, in the report's own order.
+    """{group: {topic: name}} from reports/utils/helpers.py, in the report's own order.
 
     Read without importing, so the page does not load plotly just to list them.
     """
-    tree = ast.parse((ROOT / "reports" / "shared" / "helpers.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "reports" / "utils" / "helpers.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "ALL_DISEASES" for t in node.targets):
             groups = {}
             for topic, (name, group) in ast.literal_eval(node.value).items():
                 groups.setdefault(group, {})[topic] = name
             return groups
-    raise RuntimeError("ALL_DISEASES not found in reports/shared/helpers.py")
+    raise RuntimeError("ALL_DISEASES not found in reports/utils/helpers.py")
 
 
 GROUPS = load_diseases()

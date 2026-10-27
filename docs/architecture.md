@@ -9,7 +9,7 @@ flowchart TD
   INV --> HAR["harmonise.py<br/>harmonised.parquet + role log"]
   HAR --> CHK["checks.py<br/>blocking quality gate (validated.json)"]
   CHK --> CSV["export_csv.py<br/>harmonised.csv"]
-  CSV --> REN["render_quarto.py<br/>reports/&lt;report&gt;.qmd + shared/helpers.py + provenance.py"]
+  CSV --> REN["render_quarto.py<br/>reports/&lt;report&gt;.qmd + reports/utils/"]
   SEL["Reader's choice<br/>report, years, diseases"] --> REN
   REN --> OUT["One self-contained HTML report<br/>+ provenance_&lt;report&gt;.json"]
 ```
@@ -22,7 +22,7 @@ A reader can upload their own cleaned table instead. `upload_table.py` checks it
 
 ## How a report is rendered
 
-`render_quarto.py` copies the `.qmd`, `shared/helpers.py`, `shared/provenance.py` and `assets/swiss_cantons.geojson` into a temporary folder and runs `quarto render` there, so a failed render never replaces a good report and two renders cannot collide. It passes the choices as environment variables:
+`render_quarto.py` copies the `.qmd` and every file in `reports/utils/` into a temporary folder and runs `quarto render` there, so a failed render never replaces a good report and two renders cannot collide. It passes the choices as environment variables:
 
 | Variable | Meaning |
 |---|---|
@@ -43,23 +43,25 @@ Quarto runs the Python code blocks in a Jupyter kernel. `helpers.py` loads the c
 | Content-addressed snapshots | The snapshot id is a hash of every input file. An archived snapshot reproduces a report without the live data tree or network. |
 | Provenance as data | Each report records source checksums, snapshot, retrieval dates, code version, tool versions and the chosen diseases and years. |
 | Network separated from building | Builds read only `data/reference/`. Downloading is a separate, committed, reviewable step. |
-| Pinned toolchain | `workflow/toolchain.json` is the version contract; tests check Docker, Conda, CI and `pyproject.toml` against it. |
+| Pinned toolchain | `workflow/toolchain.json` is the version contract; tests check Docker, CI and `pyproject.toml` against it. |
 
 ## Components
 
 | Path | Role |
 |---|---|
-| `reports/researcher.qmd`, `reports/public_health.qmd` | The two reports: text, layout and the code for each section |
-| `reports/shared/helpers.py` | Disease list, data loading, status, comparison windows, years and disease filters, all charts and the map |
-| `reports/shared/provenance.py` | Provenance section and JSON |
-| `reports/assets/` | Canton boundaries (`swiss_cantons.geojson`) and the landing page |
-| `reports/requirements.txt` | Locked Python packages for the reports |
+| `reports/researcher.qmd`, `reports/public_health.qmd`, `reports/general.qmd` | The report templates: text, section order and which table or chart each section shows; see [reports/README.md](../reports/README.md) |
+| `reports/utils/helpers.py` | Disease list, data loading, status, comparison windows, years and disease filters, all charts and the map, table and number formatting |
+| `reports/utils/general_helpers.py` | The general report: the uploaded table, the reader's choices and its charts |
+| `reports/utils/provenance.py` | Provenance section and JSON |
+| `reports/utils/style.css`, `general_style.css` | Colours and layout of the reports |
+| `reports/utils/swiss_cantons.geojson`, `index.html` | Canton boundaries and the landing page |
+| `reports/utils/requirements.txt` | Locked Python packages for the reports |
 | `scripts/health_pipeline/` | Data steps (`inventory.py`, `harmonise.py`, `checks.py`, `common.py`, `export_csv.py`), `render_quarto.py`, pipeline lockfile, `SCHEMA.md` |
 | `Snakefile`, `workflow/` | Orchestration, default configuration, toolchain contract |
 | `src/app.py` | Home page (Streamlit): report, years, diseases; opens the report in a new tab |
 | `src/sync_idd_exports.py` | Downloads the latest FOPH exports into `data/reference/` |
 | `data/reference/` | Committed source data and per-dataset retrieval records |
-| `Dockerfile.report`, `compose.yaml` | One image (Python 3.11.6, Quarto 1.10.19) and its services `report`, `sync`, `app` |
+| `Dockerfile.report`, `compose.yaml` | One image (Python 3.11.18, Quarto 1.10.19) and its services `report`, `sync`, `app` |
 | `tests/` | Data steps, export, render script, CI and toolchain contracts, data sync |
 | `.github/workflows/` | `validate.yml` (tests and builds), `refresh-idd-data.yml` (weekly data update) |
 

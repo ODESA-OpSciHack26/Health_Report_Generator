@@ -1,18 +1,14 @@
-.venv
+# Only the requirement files are copied into the image; keep everything else out of the build.
 .git
 .env
+.venv
+.venv-pipeline
 __pycache__
 *.py[cod]
-data/raw
-data/processed
-outputs
-
-# Local build environments and generated files
-.venv-pipeline
-.venv-report
-.snakemake
 .pytest_cache
+.ruff_cache
 .cache
+.snakemake
 results
 reproduced
 out

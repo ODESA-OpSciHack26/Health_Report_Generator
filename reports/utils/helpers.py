@@ -83,17 +83,8 @@ LAYOUT = dict(template="simple_white", font=dict(family="system-ui, sans-serif",
 
 
 def asset(name: str) -> Path:
-    """Find a report asset.
-
-    A render copies the assets flat into its build directory, next to this file; in the
-    repository they live in reports/assets. Both layouts have to work, because the
-    interface imports this module directly.
-    """
-    here = Path(__file__).resolve().parent
-    for candidate in (here / name, here.parent / "assets" / name):
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(f"report asset not found: {name}")
+    """A file from reports/utils, which a render copies next to this file."""
+    return Path(__file__).resolve().parent / name
 
 
 def label(topic: str) -> str:
@@ -506,3 +497,100 @@ def season_heatmap(d: pd.DataFrame, topic: str) -> go.Figure:
     fig.update_layout(hovermode="closest")
     fig.update_yaxes(type="category")
     return fig
+
+
+# --- Tables, numbers and status colours used in the report text ---
+# The colours match the status badges and summary cards in style.css.
+NEUTRAL = "#245b8a"
+LEVEL_COLORS = {
+    "high": "#c62828",       # red: record/high level
+    "elevated": "#e6ac00",  # yellow: above normal
+    "normal": "#2e7d32",    # green: normal
+    "low": "#2e7d32",       # green: low/non-elevated
+}
+
+LEVEL_CELL_STYLES = {
+    "high": "background-color:#fde8e8;color:#9d1c1c;font-weight:700;",
+    "elevated": "background-color:#fff8d6;color:#7a5c00;font-weight:700;",
+    "normal": "background-color:#e8f5e9;color:#226b26;font-weight:700;",
+    "low": "background-color:#e8f5e9;color:#226b26;font-weight:700;",
+}
+
+
+def risk_color(level):
+    return LEVEL_COLORS.get(str(level).lower(), "#2e7d32")
+
+
+def status_badge(level, label):
+    level = str(level).lower()
+    css_level = level if level in {"high", "elevated", "normal", "low"} else "normal"
+    return f'<span class="status-badge status-{css_level}">{label}</span>'
+
+
+def show(frame, levels=None):
+    """Display a styled table; optionally colour the Level column by internal status level."""
+    from IPython.display import HTML, display
+
+    styler = frame.style.hide(axis="index")
+    styler = styler.set_properties(**{
+        "text-align": "left",
+        "font-size": "0.92rem",
+    })
+
+    if levels is not None and "Level" in frame.columns:
+        level_list = [str(x).lower() for x in list(levels)]
+
+        def colour_level_column(_):
+            return [LEVEL_CELL_STYLES.get(level, LEVEL_CELL_STYLES["normal"])
+                    for level in level_list]
+
+        styler = styler.apply(colour_level_column, subset=["Level"], axis=0)
+
+    display(HTML(styler.to_html()))
+
+
+def colour_current_series(fig, level):
+    """Colour the reported series and its end marker by status; the grey band and the blue median line are left as they are.
+
+    The reported series is the solid line with a visible width (the band edges have width 0).
+    """
+    colour = risk_color(level)
+    for trace in fig.data:
+        mode = str(trace.mode or "")
+        if "markers" in mode:
+            trace.marker.color = colour
+        elif trace.fill in (None, "none") and trace.line.dash is None and (trace.line.width or 0) > 0:
+            trace.line.color = colour
+            trace.line.width = 3
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font=dict(color="#263238"),
+    )
+    return fig
+
+
+def colour_bar_figure(fig, level):
+    fig.update_traces(marker_color=risk_color(level))
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font=dict(color="#263238"),
+    )
+    return fig
+
+
+def neutral(fig):
+    """Single neutral colour for charts that do not encode a status."""
+    fig.update_traces(marker_color=NEUTRAL, selector=dict(type="bar"))
+    fig.update_traces(line_color=NEUTRAL, selector=dict(type="scatter"))
+    fig.update_layout(plot_bgcolor="white", paper_bgcolor="white", font=dict(color="#263238"))
+    return fig
+
+
+def num(x, digits=0):
+    return "-" if pd.isna(x) else f"{x:,.{digits}f}"
+
+
+def pct(x):
+    return "-" if x is None or pd.isna(x) else f"{x:+.0f}%"
