@@ -41,11 +41,20 @@ def inspect_table(path: str | Path) -> TableInspection:
     The returned hash identifies the bytes inspected, not a future reread.
     """
     source = Path(path)
+    if source.suffix.lower() not in {".csv", ".tsv"}:
+        raise ValueError("Input must be a .csv or .tsv file.")
+    return inspect_payload(source.read_bytes(), source_filename=source.name)
+
+
+def inspect_payload(payload: bytes, *, source_filename: str) -> TableInspection:
+    """Inspect captured bytes; never reopen the source file."""
+    if not isinstance(payload, bytes):
+        raise ValueError("Captured input must be bytes.")
+    source = Path(source_filename)
     suffix = source.suffix.lower()
     if suffix not in {".csv", ".tsv"}:
         raise ValueError("Input must be a .csv or .tsv file.")
 
-    payload = source.read_bytes()
     delimiter = "\t" if suffix == ".tsv" else ","
     try:
         text = payload.decode("utf-8-sig")
