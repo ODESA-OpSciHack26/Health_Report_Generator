@@ -63,9 +63,14 @@ def prepare_table(source, *, mapping, mode, period):
     source = Path(source)
     if source.suffix.lower() not in {".csv", ".tsv"}:
         raise ValueError("Input must be a .csv or .tsv file.")
+    return prepare_payload(source.read_bytes(), source_filename=source.name,
+                           mapping=mapping, mode=mode, period=period)
 
-    payload = source.read_bytes()
-    inspected = ti.inspect_payload(payload, source_filename=source.name)
+
+def prepare_payload(payload, *, source_filename, mapping, mode, period):
+    """Prepare captured bytes without reopening or publishing a source file."""
+    mapping = _parameters(mapping, mode, period)
+    inspected = ti.inspect_payload(payload, source_filename=source_filename)
     if any(column not in inspected.columns for column in mapping.values()):
         raise ValueError("A mapped column is absent from the input.")
 
