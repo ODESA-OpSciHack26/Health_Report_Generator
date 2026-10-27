@@ -30,7 +30,7 @@ def package(bundle,dest):
     for n in [*m['files'],'bundle.json']:
         shutil.copyfile(bundle/n,dest/n)
     shutil.copyfile(HERE/TEMPLATE,dest/'report.qmd')
-    for n in ['report_helpers.R','audience_reports.R','app.R','dashboard.css','methods.qmd']:
+    for n in ['report_helpers.R','audience_reports.R','tabular_report.R','tabular_charts.R','app.R','dashboard.css','methods.qmd']:
         shutil.copyfile(HERE/'templates'/n,dest/n)
     write_json(dest/'package.json',{'schema_version':'2.0','files':{p.name:digest(p) for p in sorted(dest.iterdir()) if p.is_file() and p.name!='package.json'}})
 
@@ -75,7 +75,7 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
         'rendered_at_utc':datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'output':{'format':fmt,'documents':[f'report.{fmt}',f'methods.{fmt}'],
                   'shared_template':f'scripts/health_pipeline/{TEMPLATE}','shared_template_sha256':digest(HERE/TEMPLATE),
-                  'presentation_helpers_sha256':{n:digest(HERE/'templates'/n) for n in ['report_helpers.R','audience_reports.R','methods.qmd','dashboard.css']}},
+                  'presentation_helpers_sha256':{n:digest(HERE/'templates'/n) for n in ['report_helpers.R','audience_reports.R','tabular_report.R','tabular_charts.R','methods.qmd','dashboard.css']}},
         'stakeholder':{'id':cfg['id'],'title':cfg['title'],'question':cfg['question'],'presentation':cfg.get('presentation'),
                        'outputs':cfg['outputs'],'parameters_sha256':digest(bundle/'stakeholder.json')},
         'filters':{k:cfg[k] for k in FILTER_KEYS if k in cfg},

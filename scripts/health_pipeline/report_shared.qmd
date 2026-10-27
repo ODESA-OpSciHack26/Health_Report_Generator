@@ -19,19 +19,36 @@ execute:
   message: false
 params:
   data_dir: "."
+  input_kind: "canonical"
+  tabular_document: "report"
 ---
 
 ```{r}
 source('report_helpers.R')
-b <- read_bundle(params$data_dir)
+if(!params$input_kind %in% c('canonical', 'tabular')) stop('Unsupported input kind')
+is_tabular <- identical(params$input_kind, 'tabular')
+if(is_tabular) {
+  if(!knitr::is_html_output()) stop('Tabular reports currently support HTML only')
+  source('tabular_report.R')
+} else {
+  b <- read_bundle(params$data_dir)
+}
 knitr::opts_chunk$set(fig.width=7,fig.height=3.8)
 ```
 
 ```{r}
 #| results: asis
-if(knitr::is_html_output()) cat(findings_html(b))
-if(knitr::is_html_output()) cat(provenance_script(), interactive_tables_script())
-if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial') {
+if(is_tabular) {
+  cat(tabular_document_html(params$tabular_document))
+  cat(provenance_script(), interactive_tables_script())
+}
+```
+
+```{r}
+#| results: asis
+if(!is_tabular && knitr::is_html_output()) cat(findings_html(b))
+if(!is_tabular && knitr::is_html_output()) cat(provenance_script(), interactive_tables_script())
+if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial') {
   p <- presentation_profile(b)
   cat('Audience: **',p$display_name,'**. Presentation: ',p$layout,'.\n\n',sep='')
   cat('Selected diseases: ',paste(label_topic(b,group_topics(b)),collapse=', '),'.\n\n',sep='')
@@ -53,7 +70,7 @@ if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial') {
 
 ```{r}
 #| results: asis
-if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'group_totals')) {
+if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'group_totals')) {
   cat('\n## How many cases were reported?\n\n')
   print(plot_group_totals(b))
   cat('\nSource: FOPH national annual case series, summed over the selected diseases. COVID-19, AIDS and sentinel estimates are excluded from the default group totals. Only configured reporting and reference years are shown.\n\n')
@@ -62,7 +79,7 @@ if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && 
 
 ```{r}
 #| results: asis
-if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'group_index')) {
+if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'group_index')) {
   cat('\n## How have the groups changed?\n\n')
   print(plot_groups(b))
   cat('\nSource: the same selected case series. Each line shows percentage change from its own ',b$cfg$index_base_year,' total; zero means unchanged. This compares trends, not absolute disease burden.\n\n',sep='')
@@ -72,12 +89,12 @@ if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && 
 ```{r}
 #| results: asis
 #| fig-height: 4.7
-if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'small_multiples')) {
+if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'small_multiples')) {
   cat('\n## Which diseases changed most?\n\n')
   print(plot_changes(b))
   cat('\nSource: selected FOPH national case counts. Right of zero means more notifications; left means fewer. Percentages do not indicate severity or statistical significance.\n\n')
 }
-if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'change_table')) {
+if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && show_section(b,'change_table')) {
   cat('\n## Supporting figures\n\n')
   print(knitr::kable(friendly_table(b),row.names=FALSE))
   cat('\nSource: selected FOPH annual national case counts. Change = (latest count − baseline count) ÷ baseline count × 100. Values are rounded for display.\n\n')
@@ -86,7 +103,7 @@ if(knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial' && 
 
 ```{r}
 #| results: asis
-if(knitr::is_latex_output() &&
+if(!is_tabular && knitr::is_latex_output() &&
    presentation_profile(b)$layout != 'editorial') {
   audience_document_pdf(b)
 }

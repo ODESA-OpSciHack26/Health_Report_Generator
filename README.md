@@ -168,3 +168,18 @@ tested commit identities, supported reporting paths and remaining acceptance
 limits. Integration acceptance is separate from release publication;
 follow the [release checklist](docs/release-checklist.md) before any new
 release decision.
+
+
+## Optional supplied-table reports
+
+The default canonical workflow is unchanged. For an explicitly mapped synthetic
+CSV, generate verified reports for researcher, health institution and public with:
+
+```bash
+docker compose run --rm --no-deps report python scripts/health_pipeline/tabular_run.py build --input examples/tabular/observations.csv --request examples/tabular/request.json --output reproduced/tabular-example
+```
+
+See [the supplied-table reproduction guide](docs/m4-tabular-reproduction.md) for
+setup, checksum-pinned parameters, expected outputs, verification and evidence
+handover, and [the browser review checklist](docs/m4-browser-review.md) for checks
+that have not been established by automated tests. No upload UI is enabled.

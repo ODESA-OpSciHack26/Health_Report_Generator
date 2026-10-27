@@ -21,3 +21,7 @@ extend-exclude = [
 [tool.ruff.lint]
 # Syntax errors, undefined names, unused imports/variables and other pyflakes defects.
 select = ["E9", "F"]
+
+[tool.pytest.ini_options]
+# Collect maintained tests, not generated acceptance/donor clones.
+testpaths = ["tests"]
