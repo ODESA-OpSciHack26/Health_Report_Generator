@@ -1,6 +1,7 @@
 # Optional GitHub-backed Marimo interface
 
 This interface is separate from local report generation.
+For the account-free local browser form, see [docs/local-interface.md](docs/local-interface.md).
 For credential-free local reports, follow README.md or GETTING_STARTED.md.
 
 The interface downloads a versioned artifact from a configured GitHub

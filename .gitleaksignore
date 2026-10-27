@@ -10,3 +10,13 @@
 a4f77a02ec7ee8800ff5aa67c2f4148e5ea2c8cb:docs/web-job-system.md:generic-api-key:891
 c9d4879c67c64cad0dca59eefc4efda46743d309:docs/web-job-system.md:generic-api-key:591
 e3c7123acc902a88278110ce20642d08d53d9522:docs/web-job-system.md:generic-api-key:790
+
+# M3 reviewed false positives: content-addressed request digests.
+# Verified against recorded components; exact findings only.
+ef3f2d8b34a867de15db5d58ae5b4585cc387de7:docs/evidence/m3/adapter-capture.json:generic-api-key:18
+ef3f2d8b34a867de15db5d58ae5b4585cc387de7:docs/evidence/m3/adapter-capture.json:generic-api-key:37
+ef3f2d8b34a867de15db5d58ae5b4585cc387de7:docs/evidence/m3/adapter-capture.json:generic-api-key:56
+ef3f2d8b34a867de15db5d58ae5b4585cc387de7:docs/evidence/m3/committed-validation.json:generic-api-key:50
+ef3f2d8b34a867de15db5d58ae5b4585cc387de7:docs/evidence/m3/committed-validation.json:generic-api-key:60
+ef3f2d8b34a867de15db5d58ae5b4585cc387de7:docs/evidence/m3/committed-validation.json:generic-api-key:70
+cbc856ca9c5367d47b55e6836493bbe259af8e22:docs/evidence/m3/precommit-validation.json:generic-api-key:26

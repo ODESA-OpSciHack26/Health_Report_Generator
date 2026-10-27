@@ -1,0 +1,75 @@
+{
+  "schema": "odesa-m3-local-adapter-capture/1.0",
+  "started_at_utc": "2026-10-27T01:40:04.330468+00:00",
+  "finished_at_utc": "2026-10-27T01:41:30.662706+00:00",
+  "tested_commit": "cbc856ca9c5367d47b55e6836493bbe259af8e22",
+  "worktree_clean_at_end": true,
+  "snapshot_id": "d0709708a8057815801497701bfaa145017979f1ecace4508ae46237438573ee",
+  "shared_template_sha256": "ff5a768554dcd88f3bd90780ff42a3de37281e7c654714fc2820afd92fa98111",
+  "cases": [
+    {
+      "name": "first_request",
+      "audience": "public_health_expert",
+      "years": [
+        2022,
+        2024
+      ],
+      "cache_status": "miss",
+      "cache_key": "dac64f6eca0c62486c68a59761cd779949bc99440dd34ca33b4d76c89b2c7292",
+      "output": "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/report",
+      "log": "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/render.log",
+      "rendered_at_utc": "2026-10-27T01:40:32+00:00",
+      "output_sha256": {
+        "report.html": "7f51baafbe39701e9966548e428f08e889de539c52b5501a9fcef221e10bb4f4",
+        "methods.html": "9998543d68b61573080e66f08d88758f93c84046edde326a6a331db51562c7aa",
+        "provenance.json": "ca9fdc389c0175163932e6143eded629c1ef4022cd1e39aab0c95d422172eb6f",
+        "request_provenance.json": "145c9c14a23ea00a9be3389ce12e17505af46883f2d007a4547f87cff507ef1f"
+      }
+    },
+    {
+      "name": "identical_request",
+      "audience": "public_health_expert",
+      "years": [
+        2022,
+        2024
+      ],
+      "cache_status": "hit",
+      "cache_key": "dac64f6eca0c62486c68a59761cd779949bc99440dd34ca33b4d76c89b2c7292",
+      "output": "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/report",
+      "log": "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/render.log",
+      "rendered_at_utc": "2026-10-27T01:40:32+00:00",
+      "output_sha256": {
+        "report.html": "7f51baafbe39701e9966548e428f08e889de539c52b5501a9fcef221e10bb4f4",
+        "methods.html": "9998543d68b61573080e66f08d88758f93c84046edde326a6a331db51562c7aa",
+        "provenance.json": "ca9fdc389c0175163932e6143eded629c1ef4022cd1e39aab0c95d422172eb6f",
+        "request_provenance.json": "145c9c14a23ea00a9be3389ce12e17505af46883f2d007a4547f87cff507ef1f"
+      }
+    },
+    {
+      "name": "changed_years",
+      "audience": "public_health_expert",
+      "years": [
+        2023,
+        2024
+      ],
+      "cache_status": "miss",
+      "cache_key": "e0996abff1e8d8c678d9b4a3318b4480e1d73e2c6242fd0a99b24fff25ed4f63",
+      "output": "results/local-ui/runs/e1b040b2106d44798739501e54629845/report",
+      "log": "results/local-ui/runs/e1b040b2106d44798739501e54629845/render.log",
+      "rendered_at_utc": "2026-10-27T01:41:18+00:00",
+      "output_sha256": {
+        "report.html": "c2ad1336616978b995f5993f319a41286e48364e885ad8ce3e9bbe2c599f3271",
+        "methods.html": "242d99a2144b3b9698b41a33f7d5ee10d95d1276a9756de8213061df15697305",
+        "provenance.json": "cdcdfa5bbc0837a93619b7bdb6e78d67d8573adf5c27f152da56d7f3befa2f52",
+        "request_provenance.json": "45632a9d40a3dc349fdcab25aeb68e65382adcdf77b3c3430060b79c5b012c81"
+      }
+    }
+  ],
+  "limitations": [
+    "Adapter execution, not a new browser interaction test.",
+    "Uses the existing shared custom-report cache; no entries deleted.",
+    "Fresh misses required for the first and changed requests.",
+    "Does not establish network isolation or cold software caches.",
+    "Does not assess visual readability or scientific validity."
+  ]
+}

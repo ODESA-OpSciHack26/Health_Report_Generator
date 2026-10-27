@@ -1,0 +1,124 @@
+{
+  "schema": "odesa-m3-committed-validation/1.0",
+  "record_generated_at_utc": "2026-10-27T01:42:32.726662+00:00",
+  "tested_commit": "cbc856ca9c5367d47b55e6836493bbe259af8e22",
+  "executor": "maintainer local Linux/WSL environment",
+  "environment": {
+    "recorded_utc": "2026-10-27T01:36:24Z",
+    "commit": "cbc856ca9c5367d47b55e6836493bbe259af8e22",
+    "branch": "m3/local-audience-workflow",
+    "worktree_dirty_files": "0",
+    "host": "Linux 6.18.54.1-microsoft-standard-WSL2 x86_64",
+    "os": "Ubuntu 26.04.1 LTS",
+    "docker": "Docker version 29.8.1, build 4a63305",
+    "compose": "Docker Compose version v5.5.1",
+    "image_id": "sha256:4719cdfc96b5bb1824f1cb89882e3b46d2f0da769e510c8b4821ff3752f554e4",
+    "base_digest": "rocker/r-ver@sha256:4e32addfc4da3e660f6e0d05ce5e43d3eceb9db58a60b9a142e0dde9a654ead1",
+    "python": "Python 3.11.6",
+    "quarto": "1.3.353",
+    "snakemake": "8.30.0",
+    "artifacts_hashed": "18"
+  },
+  "standard_release_stages": {
+    "check_outputs": "passed",
+    "compare_hashes": "passed",
+    "dashboard_smoke": "passed",
+    "docker_build": "passed",
+    "full_build": "passed",
+    "full_pytest": "passed",
+    "lint": "passed",
+    "noop_rebuild": "passed",
+    "shiny_smoke": "passed",
+    "template_identity": "passed",
+    "verify_release": "passed"
+  },
+  "python_tests_passed": 187,
+  "selected_artifacts_hashed": 18,
+  "analytical_hash_mismatches": [],
+  "shared_template_sha256": "ff5a768554dcd88f3bd90780ff42a3de37281e7c654714fc2820afd92fa98111",
+  "provenance_sidecars_checked": 6,
+  "packaged_templates_checked": 3,
+  "adapter_case_results": [
+    {
+      "name": "first_request",
+      "audience": "public_health_expert",
+      "years": [
+        2022,
+        2024
+      ],
+      "cache_status": "miss",
+      "cache_key": "dac64f6eca0c62486c68a59761cd779949bc99440dd34ca33b4d76c89b2c7292"
+    },
+    {
+      "name": "identical_request",
+      "audience": "public_health_expert",
+      "years": [
+        2022,
+        2024
+      ],
+      "cache_status": "hit",
+      "cache_key": "dac64f6eca0c62486c68a59761cd779949bc99440dd34ca33b4d76c89b2c7292"
+    },
+    {
+      "name": "changed_years",
+      "audience": "public_health_expert",
+      "years": [
+        2023,
+        2024
+      ],
+      "cache_status": "miss",
+      "cache_key": "e0996abff1e8d8c678d9b4a3318b4480e1d73e2c6242fd0a99b24fff25ed4f63"
+    }
+  ],
+  "local_supporting_evidence_sha256": {
+    "reproduced/m3-container/evidence/SUMMARY.txt": "f540a74427b1f603f135a586c17c16745ec5658ef2acc4543d899394a228930a",
+    "reproduced/m3-container/evidence/artifact_sha256.txt": "73eb56f885f1407b60e0f12e2f0ba2ee8ea27c8b013274b0ad353a51b5dfd09f",
+    "reproduced/m3-container/evidence/capture-harness.sh": "6bddc23de55fe9a7fbe05663867dbb626acd95c5eadb981e89a9f469670ee009",
+    "reproduced/m3-container/evidence/check_outputs.log": "4636a9ddb4732ca1eca2534ceada851b548502dbf75d965dfa052e5df16aecf1",
+    "reproduced/m3-container/evidence/compare_hashes.log": "0f896c61a3bd1cf8915d3b442d2f8288cb99eca92698bbfd99ccc331085cef60",
+    "reproduced/m3-container/evidence/dashboard_smoke.log": "15c4c5e0bd782ccd7c644dc3041ce8a506519012c986af6d2cbce903e2b55a42",
+    "reproduced/m3-container/evidence/docker_build.log": "628fdbfb6663a543971fe9edbff532a2cdbd99a07a7197faa70ab65d050954ea",
+    "reproduced/m3-container/evidence/environment.txt": "2a1dc6798ea692297b21beca423cceb14c266e4d36d473a64c9af63bbe9197b7",
+    "reproduced/m3-container/evidence/full_build.log": "51db89b733f2a0a8a62f323d777d78689ad379d3a85c9c74ce672a9e9657d75e",
+    "reproduced/m3-container/evidence/full_pytest.log": "44e6f2454dd68de9d4a4d710f95a1e6e956a1ad776313c1ab313472fec277d2d",
+    "reproduced/m3-container/evidence/lint.log": "0283f31e0588cf85b4b678f56754fb3b567d003477a58eb9b29af45a1e7d9e6c",
+    "reproduced/m3-container/evidence/noop_rebuild.log": "029a1ab6ed2e441101ea42d42b931507eaea08121e63acd70bd7f69d524ed4c2",
+    "reproduced/m3-container/evidence/release.json": "84af4ed9202cff558a993c687916c52df9b2d2986f04e23c8eb33e67c6f877d8",
+    "reproduced/m3-container/evidence/shiny_smoke.log": "b6d5f454adc5255029972a8d7e6fd87d0561d7cd76d1793131ec1311e924f759",
+    "reproduced/m3-container/evidence/template_identity.log": "58f2f8c0846598a9cb6eb5ea12458b2c025ba6f8dd86df5c159f764b6ef9e905",
+    "reproduced/m3-container/evidence/verify_release.log": "66e616fc1f548568610a6c77c9e0fe72c49c5b7bcbd7d12c408c6153585166a1",
+    "reproduced/m3-local-adapter/evidence/capture-summary.json": "43f7b28a950003f824d90e45ae6748b296f5d7ce18ad53f574c34844806feee4",
+    "reproduced/m3-local-adapter/evidence/capture.log": "d2651356cdb3e6bf9c6614ec3cefc83e3bc673ec7d7b6e74b3a8b8cb4ed3710d",
+    "reproduced/m3-local-adapter/evidence/changed_years.json": "3f74ae7d4c0ba8f5d2f7f8335cee5ac29d1c36a2be06f9bbf328d6798fb3b919",
+    "reproduced/m3-local-adapter/evidence/first_request.json": "8ec554b020ced1d2fbec73215b1c49571ba1bc4fbb3e031833039a15b4478e3b",
+    "reproduced/m3-local-adapter/evidence/identical_request.json": "837d991e1a046e8e07222a3ff1ff12d587883174785346e5ffbf41fc6021fd7b",
+    "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/render.log": "94f18ef2c43af95115d3afe6fedf1bc9032cf03cac115f0832ea692abbbec6f5",
+    "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/report/methods.html": "9998543d68b61573080e66f08d88758f93c84046edde326a6a331db51562c7aa",
+    "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/report/provenance.json": "ca9fdc389c0175163932e6143eded629c1ef4022cd1e39aab0c95d422172eb6f",
+    "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/report/report.html": "7f51baafbe39701e9966548e428f08e889de539c52b5501a9fcef221e10bb4f4",
+    "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/report/request_provenance.json": "145c9c14a23ea00a9be3389ce12e17505af46883f2d007a4547f87cff507ef1f",
+    "results/local-ui/runs/5a96a7d8b3104fe88e70c4852f017bd7/request.json": "602c84f5eb8823c8755997d4981a3d28be257b1e13491f3e989710d88c4d9a02",
+    "results/local-ui/runs/e1b040b2106d44798739501e54629845/render.log": "94e8661d245351ce407ec8416bac4a3ba7f17c99390e7c2a8cbb79994b5217b3",
+    "results/local-ui/runs/e1b040b2106d44798739501e54629845/report/methods.html": "242d99a2144b3b9698b41a33f7d5ee10d95d1276a9756de8213061df15697305",
+    "results/local-ui/runs/e1b040b2106d44798739501e54629845/report/provenance.json": "cdcdfa5bbc0837a93619b7bdb6e78d67d8573adf5c27f152da56d7f3befa2f52",
+    "results/local-ui/runs/e1b040b2106d44798739501e54629845/report/report.html": "c2ad1336616978b995f5993f319a41286e48364e885ad8ce3e9bbe2c599f3271",
+    "results/local-ui/runs/e1b040b2106d44798739501e54629845/report/request_provenance.json": "45632a9d40a3dc349fdcab25aeb68e65382adcdf77b3c3430060b79c5b012c81",
+    "results/local-ui/runs/e1b040b2106d44798739501e54629845/request.json": "9957faf38ea465be3af78563f4462fe89da99678c890d2aeb742b2cf04ad9f67",
+    "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/render.log": "d084990a389241235b69c1e11c31ead34255183430cc17156b1a57f04d39a441",
+    "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/report/methods.html": "9998543d68b61573080e66f08d88758f93c84046edde326a6a331db51562c7aa",
+    "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/report/provenance.json": "ca9fdc389c0175163932e6143eded629c1ef4022cd1e39aab0c95d422172eb6f",
+    "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/report/report.html": "7f51baafbe39701e9966548e428f08e889de539c52b5501a9fcef221e10bb4f4",
+    "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/report/request_provenance.json": "145c9c14a23ea00a9be3389ce12e17505af46883f2d007a4547f87cff507ef1f",
+    "results/local-ui/runs/fb66fc24c8f04451b8b24696b9f845df/request.json": "602c84f5eb8823c8755997d4981a3d28be257b1e13491f3e989710d88c4d9a02"
+  },
+  "limitations": [
+    "Record creation verifies saved evidence; it does not independently rerun every stage.",
+    "Full logs, harness and generated reports remain local and git-ignored.",
+    "Fresh output generation does not establish cold dependency caches.",
+    "Analytical comparisons do not establish byte-identical HTML/PDF rendering.",
+    "Committed adapter capture is not a new browser-interaction test.",
+    "Earlier real browser validation remains separately documented as pre-commit evidence.",
+    "Visual readability and independent scientific validation are not established.",
+    "Final secret scan, remote CI and PR review are separate gates."
+  ]
+}

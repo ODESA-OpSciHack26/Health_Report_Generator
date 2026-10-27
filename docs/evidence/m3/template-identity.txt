@@ -1,0 +1,4 @@
+PASS: all six sidecars identify report_shared.qmd and its source hash.
+PASS: all three packaged report.qmd files match the shared source.
+shared_template_sha256=ff5a768554dcd88f3bd90780ff42a3de37281e7c654714fc2820afd92fa98111
+sidecars_checked=6
