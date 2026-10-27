@@ -43,6 +43,35 @@ does not imply a cold dependency cache or byte-identical HTML/PDF output.
 
 ## Pending
 
-- Committed-checkout M2 validation and fresh output capture.
+- Committed-checkout capture completed; see the successful run below.
 - Secret scan of final history.
 - Remote CI and PR review.
+
+## Successful committed-checkout M2 capture
+
+Tested commit: `33c3311965bc910db03ffe4d9e5b0a383b9670e6`.
+Run start: `2026-10-27T00:01:37Z`. Working tree: clean.
+
+All eleven capture stages passed, including 162 Python tests, fresh report
+generation, release verification, Shiny/dashboard smoke tests, the R baseline
+presentation check, no-op rebuild, analytical baseline comparisons, and the
+explicit template-identity check.
+
+Selected report/provenance artifacts hashed: 18. Analytical mismatches: none.
+All six sidecars name `report_shared.qmd` and its source hash; all three
+packaged `report.qmd` files match that source.
+
+The supplied summary and template-check output are preserved in
+`container-summary.txt` and `template-identity.txt`. `container-run.json`
+records environment details and hashes of local supporting evidence.
+Those hashes identify the evidence but do not provide access to local files.
+
+The earlier `validation-record.json` remains the pre-commit evidence record.
+This documentation follow-up does not alter either tested identity.
+
+The capture used the isolated Docker client configuration workaround.
+Dependency layers could be cached. No cold-cache or byte-identical rendered
+document claim is made. The two auxiliary workflows were not dispatched;
+their runner declarations were covered by regression tests.
+
+Final secret scanning and remote CI/review remain separate gates.
