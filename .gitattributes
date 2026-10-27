@@ -1,0 +1,3 @@
+# Start and stop scripts keep the line endings their system needs, on every checkout.
+*.sh text eol=lf
+*.bat text eol=crlf
