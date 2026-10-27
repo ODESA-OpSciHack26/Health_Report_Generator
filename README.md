@@ -65,6 +65,19 @@ Each folder also holds `methods.html`, PDFs, `provenance.json` (also embedded in
 
 To add an audience, copy a file in `scripts/health_pipeline/config/stakeholders/`, change its `id`, wording, sections and presentation, and list the id in `workflow/config.yaml`. The template does not change.
 
+## Local browser interface
+
+For a trusted Linux/WSL session, the optional
+[local Marimo form](docs/local-interface.md) selects an audience and year
+range, then invokes the existing Docker report service and custom-report
+cache. It requires host-side uv and Docker Compose, but no GitHub account,
+token, fork, or Actions dispatch. Initial software setup requires internet.
+
+The form supports the three standard audiences plus the existing public
+health expert parameter set. These are custom reports; the three standard
+release audiences remain unchanged. The GitHub-backed interface remains a
+separate optional path.
+
 ## Custom reports
 
 Beyond the three standard audiences, one command builds a report from a request file. A request is a stakeholder settings file, the same format as the files in `scripts/health_pipeline/config/stakeholders/`. Copy one (for example `public.json`) and change the fields you need, such as `years`, `title` or `geography`. The request is validated before anything renders, and an invalid one stops with `Invalid request: ...`.
@@ -126,7 +139,9 @@ The reports describe officially notified cases, not all infections. They are des
 
 Citing this work: see [CITATION.cff](CITATION.cff).
 
-Dependency ownership and environment boundaries: [docs/dependency-ownership.md](docs/dependency-ownership.md).\n\n## Tests and release discipline
+Dependency ownership and environment boundaries: [docs/dependency-ownership.md](docs/dependency-ownership.md).
+
+## Tests and release discipline
 
 ```sh
 ruff check .

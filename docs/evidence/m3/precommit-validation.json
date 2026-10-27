@@ -1,0 +1,48 @@
+{
+  "schema": "odesa-m3-precommit-validation/1.0",
+  "record_generated_at_utc": "2026-10-27T01:33:07.445217+00:00",
+  "base_commit": "fa45c939cb4086c9f31a07c8e4640db76c2eb5e3",
+  "validation_scope": "local working-tree implementation before commit",
+  "source_sha256_at_record_creation": {
+    "docs/local-interface.md": "89b118889b9bda263a635337a19e51785e4933168ff66e3880359f7911d598b6",
+    "src/local_report.py": "f696c0cd91bb71e4a554ba43dc84aafe9227933656f6c20539791c11b8e1c4ae",
+    "src/local_ui.py": "4fd29cecdc893c98925c87f247df6198daa1905e37c688ac6ba6a6937c7c5750",
+    "tests/test_local_report.py": "9b3f697cc57c2731ddf76c24fcdf9ece71b1802fa20b1908478510266d6c447b",
+    "tests/test_local_ui.py": "f82f46a52928230660a771ffd74ab961bd81f66fe189a02cb685ce5af9db2e05"
+  },
+  "maintainer_reported_results": {
+    "targeted_python_tests_passed": 25,
+    "full_python_tests_passed": 187,
+    "corrected_browser_render": "cache miss",
+    "corrected_browser_provenance_check": "passed",
+    "earlier_adapter_repeat": "cache hit; four output files matched"
+  },
+  "corrected_browser_case": {
+    "source_audience": "health_institution",
+    "years": [
+      2023,
+      2024
+    ],
+    "cache_key": "9921c3862fc20bf03f858d2702937ae846381cc758dd345a6c0de71d8f0b3429",
+    "snapshot_id": "d0709708a8057815801497701bfaa145017979f1ecace4508ae46237438573ee",
+    "rendered_at_utc": "2026-10-27T01:28:38+00:00",
+    "shared_template": "scripts/health_pipeline/report_shared.qmd",
+    "shared_template_sha256": "ff5a768554dcd88f3bd90780ff42a3de37281e7c654714fc2820afd92fa98111",
+    "local_run_directory": "results/local-ui/runs/ce2ddab51741420eafd2d08ccd97ea0f"
+  },
+  "local_browser_evidence_sha256": {
+    "results/local-ui/runs/ce2ddab51741420eafd2d08ccd97ea0f/request.json": "bf2cc45eb549bbc37f4f0e2c6351e4c340e70aaa25adb9a3ea25c31579047c8e",
+    "results/local-ui/runs/ce2ddab51741420eafd2d08ccd97ea0f/report/report.html": "ece681b4116104c7820590dc69386e2cbca614490ea616ef1425d5f83612dd11",
+    "results/local-ui/runs/ce2ddab51741420eafd2d08ccd97ea0f/report/methods.html": "bfa550d09c8fdc613f3e48b0c8ebe691fb3a858420022034a82dcb9c079a0d84",
+    "results/local-ui/runs/ce2ddab51741420eafd2d08ccd97ea0f/report/provenance.json": "27a41da6740e8f3ce1cdea6914211a12607ad062838bb1c971fee48303849ec5",
+    "results/local-ui/runs/ce2ddab51741420eafd2d08ccd97ea0f/report/request_provenance.json": "86de345ddf90f3d1c402e04742a8779695fa6b45dd5036d4b5d472a35bfcfb40"
+  },
+  "limitations": [
+    "Reported earlier test results were supplied by the maintainer.",
+    "Source hashes describe record-creation time, not independent runtime attestation.",
+    "Supporting report files remain local and git-ignored.",
+    "Browser rendering is not a recorded visual-readability assessment.",
+    "Earlier cache-repeat evidence predates the wording correction.",
+    "Fresh committed-checkout validation, lint, final secret scan and remote CI remain separate gates."
+  ]
+}
