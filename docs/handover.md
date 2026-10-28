@@ -13,7 +13,8 @@ The current line is a reporting foundation, not completion of the combined produ
 | [M2](evidence/m2/README.md) | Shared-template and dependency ownership |
 | [M3](evidence/m3/README.md) | Local form/adapter, cache checks and date-consistent wording |
 
-M3 tested implementation: cbc856ca9c5367d47b55e6836493bbe259af8e22. Final feature head including evidence/scanner review: 8b0a08b90bad800e4ad9731fd1d3221abbf018c5. The earlier M3 capture included 187 Python tests. Its actual browser check is pre-commit evidence. PR #4's successful remote checks were PR validation, not a new execution against the integration merge commit.
+M3 tested implementation: cbc856ca9c5367d47b55e6836493bbe259af8e22. Final feature head including evidence/scanner review: 8b0a08b90bad800e4ad9731fd1d3221abbf018c5. The earlier M3 capture included 187 Python tests. Its actual browser check is pre-commit evidence. PR #4's successful remote checks were PR validation, not a
+new execution against the integration merge commit.
 
 The later accepted integration candidate is fe5fb8ed1ab5f4bf94cc10da1637b82b539692ec. The maintainer supplied a clean fresh-checkout capture with eleven passing stages, unchanged analytical hashes, 18 selected artifacts and matching template identities. The user subsequently reported all three reports, navigation/downloads and PDFs visually passed. Retain this as baseline-only reported acceptance; the redesigned product needs new review. See acceptance for scope and limitations.
 
