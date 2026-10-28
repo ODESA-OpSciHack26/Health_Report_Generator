@@ -1,5 +1,6 @@
 """Package and render verified analysis bundles without recalculating statistics."""
 import argparse
+import csv
 import os
 import json
 import shutil
@@ -104,13 +105,104 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
     if extra: record['request']=extra
     return record
 
+def _csv_rows(path):
+    with Path(path).open('r',encoding='utf-8',newline='') as handle:
+        return list(csv.DictReader(handle))
+
+def _select_block_subject(bundle):
+    """Deterministic subject rule shared with the retained-bundle compatibility check."""
+    metrics=_csv_rows(bundle/'metrics.csv'); selection=_csv_rows(bundle/'selection.csv')
+    cfg=json.loads((bundle/'stakeholder.json').read_text())
+    excluded=set(cfg.get('exclude_from_group_totals') or [])
+    by_metric={row.get('metric_id'):row for row in metrics if row.get('metric_id')}
+    choices=[]
+    for metric_id,row in by_metric.items():
+        subject=row.get('subject') or ''
+        if row.get('metric_type')!='reference_change' or ':' in subject or subject in excluded: continue
+        try: value=float(row.get('value') or '')
+        except ValueError: continue
+        inputs=json.loads(row.get('inputs_json') or '[]')
+        if len(inputs)!=2 or any(i not in by_metric for i in inputs): continue
+        if not any(s.get('topic')==subject and s.get('status')=='included' for s in selection): continue
+        choices.append((subject,metric_id,inputs[0],inputs[1],value))
+    choices.sort(key=lambda item:item[0])
+    return choices[0] if choices else None
+
+def build_block(bundle,results_root,project_root,instance_id='block-reference-comparison'):
+    """Resolve one reference-comparison block from saved bundle records only.
+
+    No percentage is recalculated: the saved metric value, count bindings and lineage
+    strings are carried through. A contract failure returns an explicit failed record
+    instead of a plausible-looking block.
+    """
+    import composer_contracts as contracts
+    bundle=Path(bundle); results_root=Path(results_root)
+    try:
+        selected=_select_block_subject(bundle)
+        if selected is None:
+            raise contracts.ContractError('selection','no eligible disease-level reference_change metric')
+        subject,result_id,reference_id,latest_id,value=selected
+        loaded=contracts.load_bundle(bundle)
+        scope={key:loaded.stakeholder[key] for key in contracts.SCOPE_FIELDS}
+        parameters={'reference_year':scope['reference_year'],'latest_year':scope['years'][1],
+                    'measure':loaded.metrics[reference_id]['unit']}
+        instance={'contract':contracts.INSTANCE_CONTRACT,'instance_id':instance_id,
+            'component':{'type':'reference-comparison','version':'1'},
+            'analysis':{'snapshot_id':loaded.snapshot['snapshot_id'],'scope':scope},
+            'bindings':{'reference_count':reference_id,'latest_count':latest_id,'result':result_id},
+            'plotted':{'file':contracts.PLOTTED_ARTIFACT,
+                       'rows':[{'topic':subject,'year':parameters['reference_year']},
+                               {'topic':subject,'year':parameters['latest_year']}],
+                       'digest':loaded.manifest['files'][contracts.PLOTTED_ARTIFACT]},
+            'presentation':{'unit':'percent'},'disclosure':{'distribution':'public'}}
+        evidence={'contract':contracts.EVIDENCE_CONTRACT,'instance_id':instance_id,
+            'inputs':{'metric_ids':[reference_id,latest_id]},
+            'calculation':{'method_id':'percent_reference_change','method_version':'1',
+                           'formula':'percent_change','parameters':parameters},
+            'results':{'metric_id':result_id,'value':value,'unit':'percent',
+                       'availability':'available','unavailable_reason':None},
+            'implementation':{
+                'analysis':{'file':'scripts/health_pipeline/analyse.py',
+                            'sha256':digest(PROJECT/'scripts/health_pipeline/analyse.py')},
+                'presentation':{'file':'scripts/health_pipeline/templates/report_helpers.R',
+                                'sha256':digest(PROJECT/'scripts/health_pipeline/templates/report_helpers.R')}},
+            'reproduction':{'entry_point':'snakemake --cores 2',
+                            'snapshot_id':loaded.snapshot['snapshot_id']}}
+        checked=contracts.check_block(instance,evidence,loaded,
+                                      project_root=project_root,results_root=results_root)
+    except contracts.ContractError as exc:
+        return {'status':'failed','instance_id':instance_id,'code':exc.code,'detail':str(exc),
+                'findings':[{'code':item.code,'subject':item.subject,'detail':item.detail}
+                            for item in getattr(exc,'findings',())]}
+    lineage=next((row for row in loaded.lineage
+                  if row.get('metric_id')==reference_id and row.get('input_kind')=='raw'),{})
+    return {'status':'verified','instance_id':instance_id,
+            'contract':{'instance':contracts.INSTANCE_CONTRACT,'evidence':contracts.EVIDENCE_CONTRACT},
+            'component':{'type':'reference-comparison','version':'1'},'subject':subject,
+            'reference_year':parameters['reference_year'],'latest_year':parameters['latest_year'],
+            'measure':parameters['measure'],
+            'reference_count':{'metric_id':reference_id,'value':loaded.metrics[reference_id]['value']},
+            'latest_count':{'metric_id':latest_id,'value':loaded.metrics[latest_id]['value']},
+            'result':{'metric_id':result_id,'value':value,'unit':'percent',
+                      'formula':'percent_change','availability':'available'},
+            'effective':checked.effective,'trace':[dict(item) for item in checked.trace],
+            'identities':checked.identities,
+            'snapshot':{'snapshot_id':loaded.snapshot['snapshot_id'],
+                        'snapshot_path':loaded.snapshot.get('snapshot_path')},
+            'implementation':evidence['implementation'],'reproduction':evidence['reproduction'],
+            'lineage':{'source_file':lineage.get('source_file'),'source_row':lineage.get('source_row'),
+                       'sha256':lineage.get('sha256')}}
+
 def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None):
     output=Path(output).resolve(); output.parent.mkdir(parents=True,exist_ok=True)
     # Each format gets a separate build directory so concurrent rendering cannot race.
     with tempfile.TemporaryDirectory(prefix='health-report-') as tmp:
         package(bundle,tmp)
         if provenance is not None:
-            # The template embeds this record in HTML as application/json.
+            # Resolve the block at render time from saved records, then embed the same
+            # record in HTML and write it as the sidecar so both stay identical.
+            provenance=dict(provenance)
+            provenance['blocks']=[build_block(bundle,Path(bundle).parents[2],PROJECT)]
             write_json(Path(tmp)/'provenance.json',provenance)
         env = os.environ.copy()
         project = HERE.parents[1]
@@ -120,6 +212,9 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             command = [quarto,'render',f'{document}.qmd','--to',fmt]
             if document == 'methods':
                 command += ['-P', 'download_prefix:data/']
+            if document == 'report' and provenance is not None:
+                # Explicit absolute path: no working-directory lookup in the template.
+                command += ['-P', f'evidence_file:{Path(tmp) / "provenance.json"}']
             subprocess.run(command,cwd=tmp,check=True,env=env)
         # Publish the pair only after both have rendered successfully.
         shutil.copyfile(Path(tmp)/f'report.{fmt}',output)

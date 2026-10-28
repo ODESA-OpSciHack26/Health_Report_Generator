@@ -112,7 +112,7 @@ quality_document <- function(b) {
   )
 }
 
-audience_document_html <- function(b, navigation=TRUE) {
+audience_document_html <- function(b, navigation=TRUE, evidence_file='') {
   p <- presentation_profile(b)
   technical <- p$layout == 'technical'
   sections <- list()
@@ -170,6 +170,13 @@ audience_document_html <- function(b, navigation=TRUE) {
           if(show_section(b, 'change_table')) html_table(friendly_table(b)) else ''
         ))
 
+  # One evidence-linked reference-comparison block, sibling to the section above.
+  block_html <- reference_block(b, evidence_file)
+  if(nzchar(block_html))
+    sections[[length(sections)+1L]] <- list(
+      id='block-reference-comparison', title='Reference comparison', html=block_html
+    )
+
   if(technical) {
     totals <- b$metrics[
       b$metrics$metric_type == 'group_total',
@@ -214,10 +221,10 @@ audience_document_html <- function(b, navigation=TRUE) {
 
 # Preserve General public's existing rendering exactly.
 findings_html_previous <- findings_html
-findings_html <- function(b, navigation=TRUE) {
+findings_html <- function(b, navigation=TRUE, evidence_file='') {
   if(presentation_profile(b)$layout == 'editorial')
-    return(findings_html_previous(b, navigation))
-  audience_document_html(b, navigation)
+    return(findings_html_previous(b, navigation, evidence_file))
+  audience_document_html(b, navigation, evidence_file)
 }
 
 audience_document_pdf <- function(b) {

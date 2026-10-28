@@ -160,7 +160,58 @@ friendly_table <- function(b) {
   d
 }
 html_table <- function(d) paste0('<div class="table-scroll">',as.character(knitr::kable(d,format='html',escape=TRUE,row.names=FALSE,table.attr='class="report-table"')),'</div>')
-findings_html <- function(b,navigation=TRUE) {
+reference_block <- function(b,evidence_file='') {
+  if(!nzchar(evidence_file)) return('')
+  unavailable <- function(reason) paste0('<section class="chart-panel full" id="block-reference-comparison"><h2>Reference comparison unavailable</h2>',
+    '<p class="caption">The retained block record could not be used, so no values are shown.</p>',
+    '<div class="audit-row"><span>Reason</span><strong>',esc(reason),'</strong></div></section>')
+  if(!knitr::is_html_output()) return('')
+  if(!file.exists(evidence_file)) return(unavailable(paste('evidence file is missing:',evidence_file)))
+  record <- tryCatch(jsonlite::fromJSON(evidence_file,simplifyVector=FALSE),error=function(e) NULL)
+  if(is.null(record)) return(unavailable('evidence file is not valid JSON'))
+  if(is.null(record$blocks) || !length(record$blocks)) return(unavailable('evidence file carries no reference-comparison block'))
+  block <- record$blocks[[1]]
+  row <- function(k,v) paste0('<div class="audit-row"><span>',esc(k),'</span><strong>',esc(v),'</strong></div>')
+  if(!identical(block$status,'verified')) {
+    return(paste0('<section class="chart-panel full" id="block-reference-comparison"><h2>Reference comparison unavailable</h2>',
+      '<p class="caption">The saved block did not pass its contract checks, so no values are shown.</p>',
+      row('Reason',paste0(block$code,': ',block$detail)),'</section>'))
+  }
+  fmt <- function(x) format(as.numeric(x),big.mark=',',scientific=FALSE,trim=TRUE)
+  pct <- if(identical(block$result$availability,'available')) sprintf('%+.1f%%',as.numeric(block$result$value)) else 'Not available'
+  trace <- paste(vapply(block$trace,function(t) paste0(t$field,' = ',t$value,' (',t$source,')'),character(1)),collapse='; ')
+  paste0('<section class="chart-panel full" id="block-reference-comparison">',
+    '<h2>',esc(label_topic(b,block$subject)),': ',esc(pct),' in ',esc(block$latest_year),' compared with ',esc(block$reference_year),'</h2>',
+    '<p class="caption">Saved comparison read from the analysis bundle. This report does not recalculate it.</p>',
+    row(paste('Reported cases in',block$reference_year),fmt(block$reference_count$value)),
+    row(paste('Reported cases in',block$latest_year),fmt(block$latest_count$value)),
+    row('Percentage change',paste0(pct,' (percent)')),
+    row('Reported measure',block$measure),
+    '<details class="block-inspector" id="block-reference-comparison-inspector"><summary>Evidence and identities</summary>',
+    '<div class="audit-panel" id="block-data"><h3>Data and scope</h3>',
+    row('Snapshot',block$snapshot$snapshot_id),
+    row('Snapshot path',block$snapshot$snapshot_path),
+    row('Result metric',block$result$metric_id),
+    row('Bound counts',paste(block$reference_count$metric_id,'and',block$latest_count$metric_id)),
+    row('Formula',block$result$formula),
+    row('Availability',block$result$availability),
+    '</div><div class="audit-panel" id="block-method"><h3>Method and parameters</h3>',
+    row('Reference year',block$reference_year),
+    row('Latest year',block$latest_year),
+    row('Effective settings',trace),
+    '</div><div class="audit-panel" id="block-implementation"><h3>Implementation identities</h3>',
+    row('Analysis code',paste0(block$implementation$analysis$file,' · ',substr(block$implementation$analysis$sha256,1,16))),
+    row('Render code',paste0(block$implementation$presentation$file,' · ',substr(block$implementation$presentation$sha256,1,16))),
+    row('Analytical identity',block$identities$analytical),
+    row('Result identity',block$identities$result),
+    row('Instance identity',block$identities$instance),
+    '</div><div class="audit-panel" id="block-reproduction"><h3>Reproduction</h3>',
+    row('Entry point',block$reproduction$entry_point),
+    row('Retained source record',paste0(block$lineage$source_file,' record ',block$lineage$source_row)),
+    '<p class="caption">Identities show that these records agree with each other; they do not prove the numbers are correct. Opening this panel performs no calculation.</p>',
+    '</div></details></section>')
+}
+findings_html <- function(b,navigation=TRUE,evidence_file='') {
   panel<-function(title,caption,plot,note,width=6,height=3.8) paste0('<section class="chart-panel"><h2>',esc(title),'</h2><p class="caption">',esc(caption),'</p>',chart_image(plot,title,width,height),'<div class="chart-note">',note,'</div></section>')
   year<-report_year(b);ref<-b$cfg$reference_year
   excluded<-paste(label_topic(b,b$cfg$exclude_from_group_totals),collapse=', ')
@@ -184,6 +235,7 @@ findings_html <- function(b,navigation=TRUE) {
   parts<-c(parts,'</div>')
   if(show_section(b,'small_multiples'))parts<-c(parts,paste0('<section class="chart-panel full"><h2>Which diseases changed most?</h2><p class="caption">Reported cases in ',year,' compared with ',ref,'</p>',chart_image(plot_changes(b),'Disease-specific changes in reported cases',9,4.7),'<div class="chart-note">Source: selected national FOPH case series. Right of zero = more notifications; left = fewer. Percentage changes do not measure disease severity or statistical significance.</div>'))
   if(show_section(b,'change_table'))parts<-c(parts,paste0('<details><summary>View the figures behind the comparison</summary>',html_table(friendly_table(b)),'<div class="table-note">Source: selected FOPH annual national case counts. Change = (latest count − baseline count) ÷ baseline count × 100. Values are rounded for display. <a href="methods.html#calculations">View calculation details</a></div></details>'))
+  parts<-c(parts,reference_block(b,evidence_file))
   if(show_section(b,'small_multiples'))parts<-c(parts,'</section>')
   parts <- c(parts, technical_findings(b))
   parts <- c(parts, audience_extras(b))
