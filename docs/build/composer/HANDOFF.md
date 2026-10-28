@@ -62,6 +62,13 @@ G6: final revision and acceptance. Run the requirement matrix from clean compati
 
 Map checkpoints onto B1-B7; B6 integrity remains cross-cutting. Existing product stages are not replaced.
 
+Block-level reader experience, parameters, evidence requirements, failure behaviour and
+implementation status are captured in [BLOCK-CATALOGUE.md](BLOCK-CATALOGUE.md). Gate A/B1
+(explicit report topic scope and recipe v2 topic binding) is a completed implementation
+checkpoint at `181f206382f8c71a6a58f912ef02b507b0dd1280`, retaining its documented
+limitations and scoped review; the next analytical implementation candidate is the
+separately gated saved-series block.
+
 ## 6. Visual loop and revision
 
 At G2/G4/G6 provide actual interactive output, desktop/narrow screenshots, collapsed/expanded inspector states, navigation/table/control findings and a short delta. Identify commit, fixture/recipe, render/evidence manifests, environment and untested items. Only synthetic or reviewed open fixtures enter shareable artifacts. Follow [REVIEW_AND_RESUME.md](REVIEW_AND_RESUME.md).
