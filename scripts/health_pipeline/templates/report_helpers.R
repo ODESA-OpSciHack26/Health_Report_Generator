@@ -196,6 +196,7 @@ reference_block <- function(b,evidence_file='',variant='legacy',instance_id=NULL
       ' compared with ',esc(block$reference_year),' · measure ',esc(block$measure),'</p>',
       '<div class="finding-counts"><div><span>',esc(block$reference_year),'</span><strong>',fmt(block$reference_count$value),'</strong></div>',
       '<div><span>',esc(block$latest_year),'</span><strong>',fmt(block$latest_count$value),'</strong></div></div>',
+      '<div class="audience-explanation"><p>',composition_copy_for(b)$reference(b,block,pct,fmt),'</p></div>',
       '<p class="finding-caution">Notification changes reflect surveillance and testing as well as disease occurrence; they do not establish disease severity or statistical significance.</p>',
       '<details class="block-inspect" id="',esc(inspect_id),'"><summary>Inspect this block</summary>',
       row('Result metric',block$result$metric_id),
@@ -387,6 +388,66 @@ source('audience_reports.R')
 composition_labels <- c(intro = 'Context', 'reference-comparison' = 'Reference comparison',
                         limitations = 'Limitations', reproduction = 'Reproduction')
 
+# One explicit mapping from the existing presentation layout to composed-block explanation.
+# No new configuration field: layout/detail_level already live in each audience's stakeholder.json.
+composition_geography <- function(b)
+  if(identical(b$cfg$geography,'CHFL')) 'Switzerland and Liechtenstein' else 'Switzerland'
+
+composition_copy <- list(
+  technical = list(
+    reference = function(b, block, pct, fmt) paste0(
+      'Saved comparison: result metric ', esc(block$result$metric_id),
+      ' is the percent change in annual reported ', esc(block$measure), ' for ',
+      esc(label_topic(b, block$subject)), ' in ', esc(block$latest_year), ' compared with ',
+      esc(block$reference_year), '. Bound counts: ', esc(block$reference_count$metric_id), ' (',
+      esc(fmt(block$reference_count$value)), ') and ', esc(block$latest_count$metric_id), ' (',
+      esc(fmt(block$latest_count$value)), '). Unit ', esc(block$result$unit), '; formula ',
+      esc(block$result$formula), '; scope ', esc(composition_geography(b)), '; period type ',
+      esc(b$cfg$period_type), '; displayed value ', esc(pct),
+      '. This block is a descriptive comparison of saved records: it supplies no inferential ',
+      'uncertainty estimate and no causal conclusion.'),
+    limitation = paste0('Automated checks test data handling and consistency; they do not establish ',
+                        'the completeness or accuracy of the source counts.')
+  ),
+  dashboard = list(
+    reference = function(b, block, pct, fmt) paste0(
+      'Monitoring question: ', esc(b$cfg$question), ' Observed change: ', esc(pct),
+      ' in reported ', esc(block$measure), ' for ', esc(label_topic(b, block$subject)), ' in ',
+      esc(block$latest_year), ' compared with ', esc(block$reference_year), ' (',
+      esc(fmt(block$reference_count$value)), ' and ', esc(fmt(block$latest_count$value)),
+      ' reported cases). Scope: ', esc(composition_geography(b)),
+      ' national notification counts; reporting years ', esc(paste(b$cfg$years, collapse='–')),
+      ', reference year ', esc(block$reference_year),
+      '. This indicator describes national reported notifications only: it provides no canton- or ',
+      'institution-specific evidence, applies no operational threshold and supports no ',
+      'recommendation, and it does not measure infection incidence, clinical severity or ',
+      'statistical significance.'),
+    limitation = paste0('Automated checks test data handling and consistency, not the completeness ',
+                        'or accuracy of the source counts. No operational threshold or recommendation ',
+                        'is derived from them.')
+  ),
+  editorial = list(
+    reference = function(b, block, pct, fmt) paste0(
+      'In plain terms: ', esc(fmt(block$latest_count$value)), ' ', esc(block$measure), ' of ',
+      esc(tolower(label_topic(b, block$subject))), ' were reported in ', esc(block$latest_year),
+      ', compared with ', esc(fmt(block$reference_count$value)), ' in ', esc(block$reference_year),
+      '. That is a change of ', esc(pct), ' between the two years. Reported notifications are counts ',
+      'of cases reported to the surveillance system, not a count of every infection. More ',
+      'notifications do not necessarily mean a matching rise in infections or in how severe the ',
+      'illness is; this comparison is descriptive and is not a statistical test.'),
+    limitation = paste0('The data went through automated checks for handling and consistency. ',
+                        'These checks cannot prove that the reported counts are complete or accurate.')
+  )
+)
+
+composition_copy_for <- function(b) {
+  copy <- composition_copy[[presentation_profile(b)$layout]]
+  if(is.null(copy)) composition_copy$technical else copy
+}
+
+composed_limitations <- function(b) paste0(document_limits(b),
+  '<div class="audience-explanation"><p>', esc(composition_copy_for(b)$limitation), '</p></div>')
+
 composition_registry <- list(
   intro = list(label = composition_labels[['intro']], primary = FALSE,
     render = function(b, entry, evidence_file='') selection_intro(b)),
@@ -394,7 +455,7 @@ composition_registry <- list(
     render = function(b, entry, evidence_file='')
       reference_block(b, evidence_file, variant='composed', instance_id=entry$instance_id)),
   limitations = list(label = composition_labels[['limitations']], primary = FALSE,
-    render = function(b, entry, evidence_file='') document_limits(b)),
+    render = function(b, entry, evidence_file='') composed_limitations(b)),
   reproduction = list(label = composition_labels[['reproduction']], primary = FALSE,
     render = function(b, entry, evidence_file='')
       paste0(code_disclosure(annual_reproduction_code()),

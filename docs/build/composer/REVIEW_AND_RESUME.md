@@ -414,6 +414,50 @@ docker --context rootless run --rm --pull never --user 0:0 \
   for health_institution and plain-language treatment beyond the quality sentence are not
   shipped. No content redesign was attempted in this turn.
 
+### Follow-up G1-AUDIENCE-01: composed audience explanations (author-run)
+
+- Anchor commit `67816964f933476cabdb91b8d512c86357937813`; candidate is **uncommitted**.
+  Changed paths: `M scripts/health_pipeline/templates/report_helpers.R`,
+  `M tests/r_composition_smoke.R`, and this review record. No recipe, instance-id, schema,
+  analysis, provenance, CSS or PDF change.
+- Mechanism: the existing `presentation_profile(b)$layout` (`technical` / `dashboard` /
+  `editorial`) selects one explicit `composition_copy` mapping. The composed
+  reference-comparison block emits one visible `audience-explanation` paragraph and the
+  limitations block appends one clarification. Values come from the saved block record;
+  counts use the existing formatter and the percentage is the saved value (display rounded
+  to +20.2%). The inspector, identities and block instance ids are unchanged.
+- Content: **researcher** = metric bindings, counts, unit, formula, geography, period type,
+  displayed value, and an explicit statement that the block supplies no inferential
+  uncertainty estimate and no causal conclusion. **health_institution** = the saved
+  monitoring question, observed change, CHFL national scope, reporting years and reference
+  year, plus explicit limits: no canton- or institution-specific evidence, no operational
+  threshold, no recommendation, and no incidence/severity/significance measurement.
+  **public** = plain-language counts/years/percentage, notification ≠ infection caveat and
+  "not a statistical test". All three limitations explanations state that automated checks
+  test handling/consistency, not completeness or accuracy of source counts; the recorded
+  "853 checks" sentence is retained only as an automated-check count, not proof.
+- Commands/exits in `~/.local/state/composer-bootstrap/g1-audience-copy-20261028T124210`
+  (pinned image, rootless, `--network none`, repo/baseline read-only):
+  `focused.log` 122 passed exit 0; `r-composition-smoke.log` exit 0;
+  `r-dispatch-smoke.log` exit 0; `maintained-suite.log` 475 passed (29.37s) exit 0;
+  `batch.log` exit 0; `rendered-verification.log` exit 0; `rendered-r-checks.log` exit 0 for
+  all three audiences; `audience-copy.log` and `audience-copy-isolation.log` exit 0. A first
+  run at
+  `g1-audience-copy-20261028T123918` preceded a markup-consistency fix (limitations
+  explanation `<p>` → `<div>`) and is retained but not used; no log was overwritten.
+- Verified on the three rendered HTML files: identical saved comparison in all outputs
+  (`+20.2%`, `7,253`, `8,716`); exactly two `audience-explanation` blocks per page; the
+  audience-specific sentence present only in its own report; recipe order, instance ids and
+  navigation targets unchanged; <instance>-inspect present once; composition/provenance
+  identities agree; embedded provenance equals the sidecar; no `href="report.pdf"` and the
+  HTML-only note remains.
+- Remaining limits: explanation-level copy only. Public still carries the technical
+  limitations paragraphs apart from the plain-language quality sentence; health_institution
+  has no institution-type indicators beyond national counts; no confidence intervals,
+  denominators, adjusted rates or causal explanation are added. Visual, accessibility and
+  independent review remain **NOT REVIEWED** (no browser). G0 open; R02 and challenge
+  requirements not accepted.
+
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 

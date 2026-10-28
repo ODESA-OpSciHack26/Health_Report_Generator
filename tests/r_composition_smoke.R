@@ -190,6 +190,64 @@ stopifnot(grepl(strrep('1', 64), legacy, fixed = TRUE))
 stopifnot(identical(reference_block(b, ''), ''))
 stopifnot(!grepl('composed-block', legacy, fixed = TRUE))
 
+# 11. Audience-specific explanations use the existing presentation layout.
+audience_b <- function(layout, detail) list(
+  cfg = list(id = layout, title = paste('Title', layout),
+             question = 'Which notifiable diseases changed most in 2025?',
+             years = c(2021, 2025), reference_year = 2019, geography = 'CHFL',
+             period_type = 'year',
+             presentation = list(display_name = layout, layout = layout,
+                                 detail_level = detail, version = '1.0')),
+  manifest = list(snapshot_id = strrep('d', 64)),
+  classes = data.frame(topic = 'virus', label = 'Virus', stringsAsFactors = FALSE),
+  checks = data.frame(status = c('PASS', 'PASS', 'WARN', 'SKIP'), stringsAsFactors = FALSE))
+explanation <- function(html) {
+  found <- regmatches(html, regexpr('<div class="audience-explanation">.*?</div>', html))
+  stopifnot(length(found) == 1L)
+  found
+}
+b_tech <- audience_b('technical', 'full')
+b_dash <- audience_b('dashboard', 'monitoring')
+b_pub <- audience_b('editorial', 'plain_language')
+ref_tech <- reference_block(b_tech, path, variant = 'composed', instance_id = 'ref-a')
+ref_dash <- reference_block(b_dash, path, variant = 'composed', instance_id = 'ref-a')
+ref_pub <- reference_block(b_pub, path, variant = 'composed', instance_id = 'ref-a')
+tech <- explanation(ref_tech); dash <- explanation(ref_dash); pub <- explanation(ref_pub)
+
+# Same saved values reach every audience; only the explanation differs.
+for (html in list(ref_tech, ref_dash, ref_pub)) {
+  stopifnot(grepl('+60.0%', html, fixed = TRUE))
+  stopifnot(grepl('<strong>10</strong>', html, fixed = TRUE))
+  stopifnot(grepl('<strong>16</strong>', html, fixed = TRUE))
+}
+stopifnot(grepl('virus:reference_change', tech, fixed = TRUE))
+stopifnot(grepl('virus:2019:count', tech, fixed = TRUE))
+stopifnot(grepl('formula percent_change', tech, fixed = TRUE))
+stopifnot(grepl('Unit percent', tech, fixed = TRUE))
+stopifnot(grepl('no inferential uncertainty estimate', tech, fixed = TRUE))
+stopifnot(grepl('no causal conclusion', tech, fixed = TRUE))
+stopifnot(grepl('Monitoring question:', dash, fixed = TRUE))
+stopifnot(grepl('Which notifiable diseases changed most in 2025?', dash, fixed = TRUE))
+stopifnot(grepl('Observed change: +60.0%', dash, fixed = TRUE))
+stopifnot(grepl('Switzerland and Liechtenstein', dash, fixed = TRUE))
+stopifnot(grepl('no canton- or institution-specific evidence', dash, fixed = TRUE))
+stopifnot(grepl('applies no operational threshold', dash, fixed = TRUE))
+stopifnot(grepl('does not measure infection incidence', dash, fixed = TRUE))
+stopifnot(grepl('In plain terms: 16 cases of virus were reported in 2025, compared with 10 in 2019', pub, fixed = TRUE))
+stopifnot(grepl('do not necessarily mean a matching rise in infections', pub, fixed = TRUE))
+stopifnot(grepl('not a statistical test', pub, fixed = TRUE))
+stopifnot(!grepl('virus:reference_change', pub, fixed = TRUE))
+stopifnot(!grepl('In plain terms', tech, fixed = TRUE))
+stopifnot(!grepl('Monitoring question', pub, fixed = TRUE))
+
+lim_tech <- composed_limitations(b_tech)
+lim_dash <- composed_limitations(b_dash)
+lim_pub <- composed_limitations(b_pub)
+stopifnot(grepl('do not establish the completeness or accuracy', lim_tech, fixed = TRUE))
+stopifnot(grepl('No operational threshold or recommendation is derived from them.', lim_dash, fixed = TRUE))
+stopifnot(grepl('cannot prove that the reported counts are complete or accurate', lim_pub, fixed = TRUE))
+stopifnot(grepl('Before this summary was made', lim_pub, fixed = TRUE))
+
 cat('r-composition smoke passed\n')
 
 # Optional rendered-output assertions: pass a produced composed report.html path,
@@ -218,5 +276,10 @@ if (length(args) >= 1L) {
   for (label in c('Context', 'Reference comparison', 'Limitations', 'Reproduction'))
     stopifnot(grepl(paste0('>', label, '</a>'), html, fixed = TRUE))
   stopifnot(!grepl('href="report.pdf"', html, fixed = TRUE))
+  phrases <- c(researcher = 'no inferential uncertainty estimate',
+               health_institution = 'no canton- or institution-specific evidence',
+               public = 'do not necessarily mean a matching rise in infections')
+  stopifnot(count_of(html, 'class="audience-explanation"') == 2L)
+  stopifnot(grepl(phrases[[audience]], html, fixed = TRUE))
   cat('rendered composition checks passed:', audience, '\n')
 }
