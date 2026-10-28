@@ -54,7 +54,7 @@ def test_empty_recipe_is_rejected(tmp_path):
 
 
 def test_render_passes_recipe_path_only_to_report(tmp_path, monkeypatch):
-    bundle = build_bundle(tmp_path, archive=True)
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
     commands = []
 
     def fake_package(source, dest):
@@ -77,6 +77,16 @@ def test_render_passes_recipe_path_only_to_report(tmp_path, monkeypatch):
     assert not any(arg.startswith("block_recipe:") for arg in methods)
 
 
+def test_composed_render_rejects_recipe_for_another_bundle(tmp_path, monkeypatch):
+    bundle = build_bundle(tmp_path, archive=True)
+    called = []
+    monkeypatch.setattr(publish.subprocess, "run", lambda *a, **k: called.append(a))
+    with pytest.raises(ValueError, match="does not match bundle audience"):
+        publish.render(bundle["bundle"], tmp_path / "out" / "report.html", "html", "quarto",
+                       provenance={"schema": "test"}, composition=RECIPE)
+    assert called == []
+
+
 def test_legacy_mode_sends_no_recipe(tmp_path, monkeypatch):
     bundle = build_bundle(tmp_path, archive=True)
     commands = []
@@ -97,7 +107,7 @@ def test_legacy_mode_sends_no_recipe(tmp_path, monkeypatch):
 
 
 def _capture(tmp_path, monkeypatch, fmt, **kwargs):
-    bundle = build_bundle(tmp_path, archive=True)
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
     commands = []
 
     def fake_package(source, dest):
@@ -160,7 +170,7 @@ def test_repeated_stateless_blocks_are_allowed_with_distinct_ids(tmp_path):
 def _composed_sidecar(tmp_path, monkeypatch, blocks, name):
     work = tmp_path / name
     work.mkdir(parents=True, exist_ok=True)
-    bundle = build_bundle(work, archive=True)
+    bundle = build_bundle(work, archive=True, stakeholder_overrides={"id": "researcher"})
     recipe = write_recipe(work, blocks)
     commands = []
 
@@ -206,3 +216,165 @@ def test_reordering_keeps_contract_instance_identity(tmp_path, monkeypatch):
         "intro-0001", "ref-block-0001"]
     assert [entry["instance_id"] for entry in second["composition"]["instances"]] == [
         "ref-block-0001", "intro-0001"]
+
+
+RECIPES = ROOT / "scripts" / "health_pipeline" / "config" / "composer" / "compositions"
+AUDIENCE_ORDER = {
+    "researcher": ["intro", "reference-comparison", "limitations", "reproduction"],
+    "health_institution": ["reference-comparison", "intro", "limitations", "reproduction"],
+    "public": ["intro", "limitations", "reference-comparison", "reproduction"],
+}
+
+
+def test_three_audience_recipes_declare_their_own_audience():
+    for audience, order in AUDIENCE_ORDER.items():
+        recipe = publish.load_composition(RECIPES / f"{audience}.json")
+        assert recipe["audience"] == audience
+        assert [entry["block"] for entry in recipe["blocks"]] == order
+        ids = [entry["instance_id"] for entry in recipe["blocks"]]
+        assert len(ids) == len(set(ids)) == 4
+
+
+def _fake_bundle(bundle_root, audience, recorded=None):
+    data = bundle_root / audience / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "bundle.json").write_text('{"files": {}}')
+    (data / "stakeholder.json").write_text(json.dumps({"id": recorded or audience}))
+    return data
+
+
+def _named_recipe(directory, audience, block_order, declared=None, prefix=None):
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{audience}.json"
+    tag = prefix or audience[:2]
+    blocks = [{"block": block, "instance_id": f"{tag}-{block[:3]}-{index}"}
+              for index, block in enumerate(block_order, start=1)]
+    path.write_text(json.dumps({"contract": "health-report/composition-recipe/1",
+                                "audience": declared or audience, "blocks": blocks}))
+    return path
+
+
+def _stub_batch(tmp_path, monkeypatch, audiences=None):
+    calls = []
+
+    def fake_provenance(bundle, fmt, quarto=None, data_root=None, wf=None):
+        return {"schema": "test", "bundle": str(bundle), "format": fmt}
+
+    def fake_render(bundle, output, fmt, quarto="quarto", provenance=None,
+                    provenance_out=None, composition=None):
+        calls.append({"bundle": Path(bundle), "output": Path(output),
+                      "composition": Path(composition)})
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("rendered")
+        Path(provenance_out).write_text("{}")
+
+    monkeypatch.setattr(publish, "build_provenance", fake_provenance)
+    monkeypatch.setattr(publish, "render", fake_render)
+    return calls
+
+
+def test_batch_renders_each_audience_from_its_own_bundle_and_recipe(tmp_path, monkeypatch):
+    calls = _stub_batch(tmp_path, monkeypatch)
+    bundle_root = tmp_path / "bundles"
+    recipes = tmp_path / "recipes"
+    for audience, order in AUDIENCE_ORDER.items():
+        _fake_bundle(bundle_root, audience)
+        _named_recipe(recipes, audience, order,
+                      prefix={"researcher": "res", "health_institution": "hi",
+                              "public": "pub"}[audience])
+    results = publish.render_composition_batch(bundle_root, recipes, tmp_path / "out")
+    assert [item["status"] for item in results] == ["rendered", "rendered", "rendered"]
+    assert [item["audience"] for item in results] == list(publish.BATCH_AUDIENCES)
+    assert [Path(item["report"]).parent.name for item in results] == list(publish.BATCH_AUDIENCES)
+    assert [call["bundle"] for call in calls] == [
+        bundle_root / audience / "data" for audience in publish.BATCH_AUDIENCES]
+    assert [call["composition"] for call in calls] == [
+        recipes / f"{audience}.json" for audience in publish.BATCH_AUDIENCES]
+    assert len({call["output"] for call in calls}) == 3
+
+
+def test_batch_rejects_recipe_for_another_audience(tmp_path, monkeypatch):
+    calls = _stub_batch(tmp_path, monkeypatch)
+    bundle_root = tmp_path / "bundles"
+    recipes = tmp_path / "recipes"
+    for audience, order in AUDIENCE_ORDER.items():
+        _fake_bundle(bundle_root, audience)
+        _named_recipe(recipes, audience, order)
+    _named_recipe(recipes, "health_institution", AUDIENCE_ORDER["health_institution"],
+                  declared="researcher")
+    results = publish.render_composition_batch(bundle_root, recipes, tmp_path / "out")
+    by_audience = {item["audience"]: item for item in results}
+    assert by_audience["researcher"]["status"] == "rendered"
+    assert by_audience["public"]["status"] == "rendered"
+    assert by_audience["health_institution"]["status"] == "failed"
+    assert "does not match requested audience" in by_audience["health_institution"]["error"]
+    assert len(calls) == 2
+
+
+def test_batch_never_substitutes_another_audience_bundle(tmp_path, monkeypatch):
+    calls = _stub_batch(tmp_path, monkeypatch)
+    bundle_root = tmp_path / "bundles"
+    recipes = tmp_path / "recipes"
+    for audience, order in AUDIENCE_ORDER.items():
+        _fake_bundle(bundle_root, audience, recorded="researcher" if audience == "public" else audience)
+        _named_recipe(recipes, audience, order)
+    results = publish.render_composition_batch(bundle_root, recipes, tmp_path / "out")
+    by_audience = {item["audience"]: item for item in results}
+    assert by_audience["public"]["status"] == "failed"
+    assert "Bundle audience 'researcher' does not match requested audience 'public'" in by_audience["public"]["error"]
+    assert [call["bundle"].parent.name for call in calls] == ["researcher", "health_institution"]
+
+
+def test_batch_reports_missing_audience_bundle(tmp_path, monkeypatch):
+    _stub_batch(tmp_path, monkeypatch)
+    bundle_root = tmp_path / "bundles"
+    recipes = tmp_path / "recipes"
+    for audience in ("researcher", "health_institution"):
+        _fake_bundle(bundle_root, audience)
+        _named_recipe(recipes, audience, AUDIENCE_ORDER[audience])
+    _named_recipe(recipes, "public", AUDIENCE_ORDER["public"])
+    results = publish.render_composition_batch(bundle_root, recipes, tmp_path / "out")
+    by_audience = {item["audience"]: item for item in results}
+    assert by_audience["public"]["status"] == "failed"
+    assert "No retained bundle for audience 'public'" in by_audience["public"]["error"]
+
+
+def test_batch_exits_nonzero_when_any_report_fails(tmp_path, monkeypatch, capsys):
+    calls = _stub_batch(tmp_path, monkeypatch)
+    bundle_root = tmp_path / "bundles"
+    recipes = tmp_path / "recipes"
+    for audience, order in AUDIENCE_ORDER.items():
+        _fake_bundle(bundle_root, audience)
+        _named_recipe(recipes, audience, order)
+
+    def failing_render(bundle, output, fmt, quarto="quarto", provenance=None,
+                       provenance_out=None, composition=None):
+        if Path(composition).stem == "health_institution":
+            raise RuntimeError("renderer exploded")
+        calls.append({"bundle": Path(bundle), "output": Path(output)})
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("rendered")
+        Path(provenance_out).write_text("{}")
+
+    monkeypatch.setattr(publish, "render", failing_render)
+    with pytest.raises(SystemExit) as excinfo:
+        publish.main(["batch", "--bundle-root", str(bundle_root), "--recipes", str(recipes),
+                      "--output-root", str(tmp_path / "out")])
+    assert excinfo.value.code != 0
+    assert "1 of 3 composed reports failed: health_institution" in str(excinfo.value)
+    out = capsys.readouterr().out
+    assert "researcher: rendered" in out
+    assert "health_institution: failed" in out
+    assert "public: rendered" in out
+    assert len(calls) == 2
+
+
+def test_batch_success_returns_without_exit(tmp_path, monkeypatch):
+    _stub_batch(tmp_path, monkeypatch)
+    bundle_root = tmp_path / "bundles"
+    recipes = tmp_path / "recipes"
+    for audience, order in AUDIENCE_ORDER.items():
+        _fake_bundle(bundle_root, audience)
+        _named_recipe(recipes, audience, order)
+    assert publish.main(["batch", "--bundle-root", str(bundle_root), "--recipes", str(recipes),
+                         "--output-root", str(tmp_path / "out")]) is None

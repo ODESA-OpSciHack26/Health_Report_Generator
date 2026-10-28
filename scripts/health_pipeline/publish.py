@@ -248,6 +248,12 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
         raise ValueError('PDF export of a composed report is not supported; '
                          'omit --composition for the legacy PDF')
     recipe=load_composition(composition) if composition is not None else None
+    if recipe is not None:
+        # A recipe names the audience it was written for; rendering it against another
+        # audience's bundle would relabel saved output.
+        bundle_stakeholder=json.loads((Path(bundle)/'stakeholder.json').read_text(encoding='utf-8'))
+        if recipe.get('audience')!=bundle_stakeholder.get('id'):
+            raise ValueError(f"Recipe audience {recipe.get('audience')!r} does not match bundle audience {bundle_stakeholder.get('id')!r}")
     output=Path(output).resolve(); output.parent.mkdir(parents=True,exist_ok=True)
     # Each format gets a separate build directory so concurrent rendering cannot race.
     with tempfile.TemporaryDirectory(prefix='health-report-') as tmp:
@@ -289,19 +295,89 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
         if provenance is not None and provenance_out is not None:
             write_json(provenance_out,provenance)
 
-if __name__=='__main__':
-    ap=argparse.ArgumentParser(); ap.add_argument('action',choices=['package','html','pdf']); ap.add_argument('--bundle',required=True); ap.add_argument('--output',required=True); ap.add_argument('--quarto',default='quarto')
+BATCH_AUDIENCES=('researcher','health_institution','public')
+
+def audience_bundle(bundle_root,audience):
+    """Resolve one audience's retained bundle. Never fall back to another audience."""
+    bundle=Path(bundle_root)/audience/'data'
+    if not (bundle/'bundle.json').is_file():
+        raise ValueError(f'No retained bundle for audience {audience!r} at {bundle}')
+    stakeholder=bundle/'stakeholder.json'
+    if not stakeholder.is_file():
+        raise ValueError(f'Retained bundle for audience {audience!r} has no stakeholder.json')
+    recorded=json.loads(stakeholder.read_text(encoding='utf-8')).get('id')
+    if recorded!=audience:
+        raise ValueError(f'Bundle audience {recorded!r} does not match requested audience {audience!r}')
+    return bundle
+
+def _workflow_record(path):
+    if path and Path(path).is_file():
+        return {'path':str(path),'sha256':digest(path)}
+    return None
+
+def render_composition_batch(bundle_root,recipes_root,output_root,quarto='quarto',data_root=None,
+                             workflow_config=None,audiences=BATCH_AUDIENCES):
+    """Render one composed HTML report per audience from that audience's own bundle and recipe.
+
+    Every audience must resolve its own retained bundle and a recipe whose declared audience
+    matches. Failures are collected so the batch can still report the other outcomes; the
+    caller turns any failure into a nonzero exit instead of claiming a complete batch.
+    """
+    wf=_workflow_record(workflow_config)
+    results=[]
+    for audience in audiences:
+        recipe=Path(recipes_root)/f'{audience}.json'
+        try:
+            if not recipe.is_file():
+                raise ValueError(f'No composition recipe for audience {audience!r} at {recipe}')
+            loaded=load_composition(recipe)
+            if loaded.get('audience')!=audience:
+                raise ValueError(f"Recipe audience {loaded.get('audience')!r} does not match requested audience {audience!r}")
+            bundle=audience_bundle(bundle_root,audience)
+            output=Path(output_root)/audience/'report.html'
+            provenance_out=output.parent/'provenance.json'
+            record=build_provenance(bundle,'html',quarto,data_root,wf)
+            render(bundle,output,'html',quarto,record,provenance_out,recipe)
+            results.append({'audience':audience,'status':'rendered',
+                            'report':str(output),'provenance':str(provenance_out)})
+        except Exception as exc:
+            results.append({'audience':audience,'status':'failed','error':str(exc)})
+    return results
+
+def main(argv=None):
+    ap=argparse.ArgumentParser()
+    ap.add_argument('action',choices=['package','html','pdf','batch'])
+    ap.add_argument('--bundle'); ap.add_argument('--output'); ap.add_argument('--quarto',default='quarto')
     ap.add_argument('--provenance',help='Write a machine-readable provenance sidecar here and embed it in HTML')
     ap.add_argument('--data-root',help='Canonical input root recorded in provenance')
     ap.add_argument('--workflow-config',help='Workflow configuration file recorded in provenance')
     ap.add_argument('--composition',help='Block recipe JSON; omit for the legacy presentation')
-    a=ap.parse_args()
+    ap.add_argument('--bundle-root',help='Batch input root holding <audience>/data bundles')
+    ap.add_argument('--recipes',default=str(HERE/'config/composer/compositions'),
+                    help='Directory of <audience>.json composition recipes')
+    ap.add_argument('--output-root',help='Batch output root; each audience writes <audience>/report.html')
+    a=ap.parse_args(argv)
+    if a.action=='batch':
+        if not a.bundle_root or not a.output_root:
+            ap.error('--bundle-root and --output-root are required for batch')
+        results=render_composition_batch(a.bundle_root,a.recipes,a.output_root,a.quarto,
+                                         a.data_root,a.workflow_config)
+        for item in results:
+            detail=f" -> {item['report']}" if item['status']=='rendered' else f" ({item['error']})"
+            print(f"{item['audience']}: {item['status']}{detail}")
+        failed=[item for item in results if item['status']!='rendered']
+        if failed:
+            raise SystemExit(f"{len(failed)} of {len(results)} composed reports failed: "
+                             + ', '.join(item['audience'] for item in failed))
+        return
+    if not a.bundle or not a.output:
+        ap.error('--bundle and --output are required')
     if a.action=='package': package(a.bundle,a.output)
     else:
         record=None
         if a.provenance:
-            wf=None
-            if a.workflow_config and Path(a.workflow_config).is_file():
-                wf={'path':a.workflow_config,'sha256':digest(a.workflow_config)}
-            record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,wf)
+            record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,_workflow_record(a.workflow_config))
         render(a.bundle,a.output,a.action,a.quarto,record,a.provenance,a.composition)
+
+if __name__=='__main__':
+    main()

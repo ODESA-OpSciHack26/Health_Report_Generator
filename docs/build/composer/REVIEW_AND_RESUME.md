@@ -310,6 +310,110 @@ For G2/G4/G6 record review ID, source commit, base/build/task branch, fixture/in
   checked" is not a visual or scientific acceptance claim. G0 remains open; R02 is not
   accepted.
 
+### Candidate entry G1-BATCH-01: three-audience one-command composed batch (author-run)
+
+- Anchor commit `2cf666f0fb9cf501d7b09b32be76b5f5d0f57a95` on `design/contracts`; candidate
+  is **uncommitted** working-tree state. No acceptance status changed.
+- Changed paths: `A scripts/health_pipeline/config/composer/compositions/health_institution.json`,
+  `A scripts/health_pipeline/config/composer/compositions/public.json`,
+  `M scripts/health_pipeline/publish.py`, `M tests/test_composition.py`,
+  `M tests/r_composition_smoke.R`, `M README.md`, and this review record. `researcher.json`
+  is unchanged; no schema, analysis, release-verifier, Snakemake or CSS change.
+- Insertion point: `publish.py` gains `render_composition_batch` and a `batch` CLI action
+  that calls the existing `render()` per audience. Recipes are validated by the existing
+  `load_composition`; `recipe.audience` must equal the requested audience, and a composed
+  `render()` now also rejects a recipe whose audience differs from the bundle's
+  `stakeholder.json.id`. Bundle input is `<bundle-root>/<audience>/data`; no audience falls
+  back to another audience's bundle. Failures are collected per audience, printed, and turn
+  into a nonzero exit; partial outputs are not reported as a complete batch.
+- Audience differences are real inputs plus order, but the rendered bodies are largely
+  shared (see the follow-up below): each audience uses its own saved bundle
+  (`presentation.layout`/`detail_level`, title, question, `outputs`, checks) and its own
+  recipe instance ids. researcher keeps intro → reference-comparison → limitations →
+  reproduction; health_institution is decision-first (reference-comparison → intro →
+  limitations → reproduction); public is caveat-first (intro → limitations →
+  reference-comparison → reproduction). Every recipe keeps `limitations` and `reproduction`
+  (evidence access). All three share the same saved campylobacteriosis reference comparison
+  (`+20.2%`), which is the same underlying scope — it is not recomputed or relabelled per
+  audience.
+- Command (pinned image, bounded rootless setup, `--network none`, repo/baseline read-only):
+  `python scripts/health_pipeline/publish.py batch --bundle-root /baseline/reports
+  --output-root /evidence/reports
+  --data-root /baseline/snapshots/d0709708a8057815801497701bfaa145017979f1ecace4508ae46237438573ee
+  --workflow-config workflow/config.yaml`. README documents the host equivalent over
+  `results/reports` → `results/composed`.
+- Evidence `~/.local/state/composer-bootstrap/g1-three-audience-20261028T121823`:
+  `focused.log` 122 passed exit 0; `r-composition-smoke.log` exit 0; `r-dispatch-smoke.log`
+  exit 0; `maintained-suite.log` 475 passed (28.08s) exit 0; `batch.log` exit 0 (three
+  audiences rendered); `batch-failure.log` exit **1** with
+  `1 of 3 composed reports failed: public` and two other reports left in
+  `failure-reports/`; `rendered-verification.log` exit 0; `rendered-r-checks.log` exit 0 for
+  all three audiences; `legacy-researcher/render.log` exit 0.
+- Outputs: `reports/researcher/report.html`, `reports/health_institution/report.html`,
+  `reports/public/report.html` (each with `methods.html`, `provenance.json`). Verified per
+  audience: section ids and nav targets equal the recipe instance ids in order, each href/id
+  exactly once, no duplicate `id` attributes in the page, one primary card, one
+  `<instance>-inspect` and no legacy `-inspector`, checked record and
+  `composition.instances` agree (`contract_instance_id`, `contract_status=verified`,
+  `instance_identity` equals the block record and appears in HTML), embedded provenance
+  equals the sidecar, `effective_parameters.id`/presentation/title/question equal that
+  audience's bundle, and no `href="report.pdf"` while the HTML-only note is present.
+  Legacy researcher render keeps its prior section ids and two PDF links and has no
+  `composition` record.
+- Not done / limitations: this is presentation-only rendering of unchanged retained bundles;
+  no acquisition, harmonisation or analysis was run. Repeated reference-comparison, per-block
+  options, a second non-composed audience route and composed PDF remain unsupported. Visual,
+  accessibility, keyboard/focus and independent review are **NOT REVIEWED**; no browser was
+  used. G0 remains open; R02 and challenge requirements are not accepted.
+
+### Follow-up G1-BATCH-01a: documented command correction and audience-claim check
+
+- README defect corrected: the batch example passed a host-expanded
+  `$(pwd)/results/snapshots/<snapshot-id>` as `--data-root`, but `compose.yaml` mounts the
+  repository at `/app`, so that host path does not exist inside the container. The example
+  now uses `/app/results/snapshots/<snapshot-id>` and states that these are container paths.
+  No code, schema or orchestration change.
+- The retained-baseline demonstration was re-run once with the exact command below into a new
+  evidence directory; previous evidence and logs were not overwritten.
+  `~/.local/state/composer-bootstrap/g1-three-audience-doc-verify-20261028T123032`:
+  `batch.log` exit 0 (three audiences rendered), `rendered-verification.log` exit 0 (same
+  recipe-order, instance-identity, provenance-equality and no-PDF checks as above).
+
+```sh
+E=~/.local/state/composer-bootstrap/g1-three-audience-doc-verify-20261028T123032
+mkdir -p "$E"
+docker --context rootless run --rm --pull never --user 0:0 \
+  --network none --cpus 2 --memory 4g --memory-swap 5g --pids-limit 512 \
+  -e PYTHONDONTWRITEBYTECODE=1 -e HEALTH_REPORT_PROJECT=/app -e R_PROFILE_USER=/app/.Rprofile \
+  -v /home/builder/composer-sandbox:/app:ro \
+  -v /home/builder/.local/state/composer-bootstrap/baseline-lJXSvvGc/output:/baseline:ro \
+  -v "$E":/evidence:rw -w /app \
+  sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8 \
+  python scripts/health_pipeline/publish.py batch \
+    --bundle-root /baseline/reports --output-root /evidence/reports \
+    --data-root /baseline/snapshots/d0709708a8057815801497701bfaa145017979f1ecace4508ae46237438573ee \
+    --workflow-config workflow/config.yaml
+```
+
+- This block is a retained-bundle presentation demonstration: it re-renders the saved bundles
+  under `/baseline/reports` with bounded, network-disabled Docker and writes only to the new
+  `/evidence` directory. It does not acquire source data and does not re-run harmonisation or
+  analysis; full analysis reproduction remains `snakemake --cores 2`.
+- Audience-claim check on the rendered bodies (`audience-body-diff.log` in the same new
+  evidence directory): **public** is the only audience with body-level plain-language
+  adaptation — its Limitations quality sentence is rewritten for
+  `detail_level=plain_language` ("Before this summary was made…"). **researcher** and
+  **health_institution** share identical Limitations, reference-comparison body, counts and
+  caution, reproduction prose/code sample and evidence fields apart from the block instance
+  id and instance identity; the Context block differs only by the profile label
+  (`Researcher · technical presentation` vs `Health institution · dashboard presentation` vs
+  `General public · editorial presentation`). health_institution otherwise differs by title,
+  block order, instance ids and provenance metadata, not by monitoring-specific wording. The
+  finding, counts and caution are identical because the saved scope is identical.
+- Therefore audience communication refinement is **pending**, not complete: monitoring wording
+  for health_institution and plain-language treatment beyond the quality sentence are not
+  shipped. No content redesign was attempted in this turn.
+
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 

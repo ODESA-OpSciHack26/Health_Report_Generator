@@ -50,6 +50,23 @@ Canonical audience folders also hold methods.html, PDFs, provenance.json (embedd
 
 For existing canonical IDD audiences, copy a stakeholder file in scripts/health_pipeline/config/stakeholders/, change its validated communication settings and list its ID in workflow/config.yaml. No audience-specific QMD is needed. Standard release audiences retain matching analytical scope. This is not a claim that a dynamic generic registry, composer or arbitrary new method is shipped.
 
+## Composed audience reports (experimental, HTML-only)
+
+One command composes all three audience reports from their own retained analysis bundles and audience recipes:
+
+```sh
+docker compose run --rm report python scripts/health_pipeline/publish.py batch \
+  --bundle-root results/reports --output-root results/composed \
+  --data-root /app/results/snapshots/<snapshot-id> \
+  --workflow-config workflow/config.yaml
+```
+
+`compose.yaml` mounts the repository at `/app`, so these are container paths: a host-expanded `$(pwd)/...` value is not valid inside the container.
+
+Recipes live in `scripts/health_pipeline/config/composer/compositions/<audience>.json` and must declare that audience. The batch refuses a recipe or bundle whose audience does not match instead of substituting another audience's inputs. Outputs are `results/composed/researcher/report.html`, `results/composed/health_institution/report.html` and `results/composed/public/report.html`, each with `methods.html` and `provenance.json` (also embedded in the HTML). The command exits nonzero if any requested report fails; a partial run may leave the other reports in place, so check the exit status before treating the batch as complete.
+
+This is presentation-only rendering: it re-renders saved bundles and does not re-run acquisition, harmonisation or analysis. Full analysis reproduction remains `snakemake --cores 2`. Composed reports are HTML-only; passing `--composition` with PDF is rejected, and the legacy HTML/PDF route (`snakemake`, or `publish.py html|pdf` without `--composition`) is unchanged. Composed outputs are outside `results/release.json`.
+
 ## Local and GitHub-backed interfaces
 
 The optional [host-local Marimo form](docs/local-interface.md), for trusted Linux/WSL use, selects an audience/year range and invokes Docker plus the custom-report cache. It needs host uv and Docker Compose, but no GitHub account/token/fork/Actions. It offers three standard profiles plus the retained public-health-expert profile as custom reports.

@@ -126,6 +126,23 @@ stopifnot(identical(instance_ids,
                     c('intro-0001', 'block-reference-comparison',
                       'limitations-0001', 'reproduction-0001')))
 
+# 8b. The three audience recipes declare themselves and keep evidence/limitations.
+expected_orders <- list(
+  researcher = c('intro', 'reference-comparison', 'limitations', 'reproduction'),
+  health_institution = c('reference-comparison', 'intro', 'limitations', 'reproduction'),
+  public = c('intro', 'limitations', 'reference-comparison', 'reproduction'))
+for (audience in names(expected_orders)) {
+  one <- jsonlite::fromJSON(file.path(project, 'scripts', 'health_pipeline', 'config', 'composer',
+                                      'compositions', paste0(audience, '.json')),
+                            simplifyVector = FALSE)
+  stopifnot(identical(one$audience, audience))
+  stopifnot(identical(vapply(one$blocks, function(x) x$block, character(1)),
+                      expected_orders[[audience]]))
+  ids <- vapply(one$blocks, function(x) x$instance_id, character(1))
+  stopifnot(length(ids) == length(unique(ids)))
+  stopifnot(all(c('limitations', 'reproduction') %in% vapply(one$blocks, function(x) x$block, character(1))))
+}
+
 # 9. reference_block selects the checked record by instance id and namespaces its inspector.
 make_block <- function(instance, identity) list(
   status = 'verified', instance_id = instance, subject = 'virus',
@@ -175,22 +192,31 @@ stopifnot(!grepl('composed-block', legacy, fixed = TRUE))
 
 cat('r-composition smoke passed\n')
 
-# Optional rendered-output assertions: pass a produced composed report.html path.
+# Optional rendered-output assertions: pass a produced composed report.html path,
+# optionally followed by its audience id (default: researcher).
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) >= 1L) {
   report <- args[[1]]
+  audience <- if (length(args) >= 2L) args[[2]] else 'researcher'
   stopifnot(file.exists(report))
   html <- paste(readLines(report, warn = FALSE, encoding = 'UTF-8'), collapse = '\n')
+  audience_recipe <- jsonlite::fromJSON(file.path(project, 'scripts', 'health_pipeline', 'config',
+                                                  'composer', 'compositions',
+                                                  paste0(audience, '.json')), simplifyVector = FALSE)
+  stopifnot(identical(audience_recipe$audience, audience))
+  expected <- vapply(audience_recipe$blocks, function(x) x$instance_id, character(1))
   ids <- section_ids(html)
-  stopifnot(identical(ids, instance_ids))
-  stopifnot(identical(nav_targets(html), instance_ids))
-  for (id in instance_ids) {
+  stopifnot(identical(ids, expected))
+  stopifnot(identical(nav_targets(html), expected))
+  for (id in expected) {
     stopifnot(count_of(html, paste0('href="#', id, '"')) == 1L)
     stopifnot(count_of(html, paste0('id="', id, '"')) == 1L)
   }
-  stopifnot(count_of(html, 'id="block-reference-comparison-inspect"') == 1L)
+  ref_id <- expected[[which(vapply(audience_recipe$blocks, function(x) x$block, character(1)) ==
+                              'reference-comparison')]]
+  stopifnot(count_of(html, paste0('id="', ref_id, '-inspect"')) == 1L)
   for (label in c('Context', 'Reference comparison', 'Limitations', 'Reproduction'))
     stopifnot(grepl(paste0('>', label, '</a>'), html, fixed = TRUE))
   stopifnot(!grepl('href="report.pdf"', html, fixed = TRUE))
-  cat('rendered composition checks passed\n')
+  cat('rendered composition checks passed:', audience, '\n')
 }
