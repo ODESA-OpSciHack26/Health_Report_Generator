@@ -1,0 +1,31 @@
+{
+  "record_type": "composer-build-requirements/1",
+  "status": "handoff-only-execution-not-started",
+  "seed_commit": "0cb8dd095a29760ca7b0dc45167538b938b3a6c7",
+  "isolated_lane": "build/composer",
+  "promotion_target": "integration/steward-ready-v1",
+  "frozen_commit": "c72bd54f69300b8e79bb967c201529d48625ae45",
+  "note": "Planning ledger, not an executable request schema or implementation evidence. Checkpoints map onto the authoritative B0-B7 roadmap.",
+  "requirements": [
+    {"id":"R01","scope":"required","checkpoint":"G0","acceptance":"Seed/environment baseline and remaining B0 dispositions recorded; historical checks not relabelled","state":"not_started"},
+    {"id":"R02","scope":"required","checkpoint":"G1","acceptance":"Strict deterministic component/composition/evidence contracts reject unknown fields, unsafe refs and duplicate IDs","state":"not_started"},
+    {"id":"R03","scope":"required","checkpoint":"G2","acceptance":"Existing reference comparison has hand-checked inputs/results and complete adjacent data, method, analysis/render-code and reproduction views","state":"not_started"},
+    {"id":"R04","scope":"required","checkpoint":"G3","acceptance":"Three structurally distinct presets use shared source and agree for unchanged analytical scope","state":"not_started"},
+    {"id":"R05","scope":"required","checkpoint":"G3","acceptance":"Confirmed table interpretation and actual selection retain original records; UI/CLI agree and ambiguity is visible","state":"not_started"},
+    {"id":"R06","scope":"required","checkpoint":"G3","acceptance":"Versioned multi-measure/group/ungrouped-record-count extensions have separate units and expected fixtures without implicit aggregation","state":"not_started"},
+    {"id":"R07","scope":"required","checkpoint":"G4","acceptance":"Add/remove/duplicate/reorder/configure blocks and clone a genuinely new profile with explicit batch selection","state":"not_started"},
+    {"id":"R08","scope":"required","checkpoint":"G4","acceptance":"Actual previews are labelled and saved confirmed recipes replay through UI and CLI","state":"not_started"},
+    {"id":"R09","scope":"required","checkpoint":"G5","acceptance":"Versioned exact publication/evidence verification rejects false rehashed results/config/source and missing/extra artifacts","state":"not_started"},
+    {"id":"R10","scope":"required","checkpoint":"G5","acceptance":"Failed runs preserve accepted outputs and cache-layer invalidation/validation is correct","state":"not_started"},
+    {"id":"R11","scope":"required","checkpoint":"G5","acceptance":"Restricted bytes are absent from public artifacts; export omissions and replay limits are explicit","state":"not_started"},
+    {"id":"R12","scope":"required","checkpoint":"G6","acceptance":"Reference data, generic snapshot/time series and a new stakeholder pass clean replay and actual human revision/review","state":"not_started"},
+    {"id":"R13","scope":"required","checkpoint":"G6","acceptance":"No unexplained scientific drift; old-request compatibility or approved migration; frozen reference unchanged","state":"not_started"},
+    {"id":"R14","scope":"decision_required","checkpoint":"G5","acceptance":"Generic PDF/static parity implemented or explicitly deferred; canonical PDF/apps preserved","state":"not_started"},
+    {"id":"R15","scope":"optional","checkpoint":"G3","acceptance":"Parquet/extra locale-delimiter-encoding/wide-to-long support needs approved scope and fixtures before advertisement","state":"not_started"},
+    {"id":"R16","scope":"deferred","checkpoint":"later_extension","acceptance":"Surveillance maps/statuses, advanced inference and forecasts require separate scientific/capability review","state":"not_started"},
+    {"id":"R17","scope":"required","checkpoint":"G2","acceptance":"Scoped visual adaptation and evidence disclosure preserve semantics and receive keyboard/focus/narrow-layout review","state":"not_started"}
+  ],
+  "initial_state": {"baseline_at_seed_tested":false,"runner_started":false,"last_verified_candidate":null,"last_human_accepted_candidate":null,"active_tasks":[],"blockers":[],"next_task":"G0 baseline and preparation disposition, then minimal G1 contracts"},
+  "evidence_records": [],
+  "task_branches": {"contracts":"design/contracts","comparison-inspector":"design/comparison-inspector","csv-interpretation":"design/csv-interpretation","composer-interface":"design/composer-interface","verification":"design/verification"}
+}
