@@ -657,6 +657,23 @@ def _cell_number(text):
     return number
 
 
+def _record_number(text):
+    """Exact positive CSV data-record number: ASCII integer or integer with zero fraction.
+
+    Accepted forms are ``"521"``, ``"521.0"`` and ``"521.00"``. The header is record 1 and
+    data starts at record 2, so any value below 2 is not a data-record number. Fractions,
+    signs, empty values, non-finite names, exponent notation and booleans are rejected.
+    The digits are parsed as an integer; the original stored text is never rewritten.
+    """
+    if not isinstance(text, str):
+        return None
+    match = re.fullmatch(r"([0-9]+)(?:\.(0+))?", text)
+    if match is None:
+        return None
+    value = int(match.group(1))
+    return value if value >= 2 else None
+
+
 def _json_list(text):
     if text is None:
         return None
@@ -929,8 +946,9 @@ def verify_references(resolved: ResolvedInstance, bundle: BundleEvidence, *, pro
                     add(exc.code, metric_id, exc.detail)
                 if not SHA256.match(row.get("sha256", "") or ""):
                     add("lineage_digest", metric_id, "raw lineage row lacks a source sha256")
-                if not str(row.get("source_row", "")).isdigit():
-                    add("lineage_row", metric_id, "raw lineage row lacks a numeric source row")
+                if _record_number(row.get("source_row")) is None:
+                    add("lineage_row", metric_id,
+                        "raw lineage row lacks an exact positive data-record number (>=2)")
             else:
                 add("lineage_kind", metric_id, f"unsupported lineage input kind {kind!r}")
 

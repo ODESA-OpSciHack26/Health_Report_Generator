@@ -235,3 +235,57 @@ Review/probe scope: both review rounds were source reviews in chat plus isolated
 command-line probes (symlinked paths, stale manifest digests, fixture counts, targeted
 module execution). They are review inputs and targeted checks, not a full independent
 verification, not browser acceptance, and not completion of any requirement.
+
+## source_row reader-compatibility decision (R7 follow-up, uncommitted)
+
+The real-bundle compatibility check failed on the canonical bundle with two `lineage_row`
+findings. The cause was a reader assumption, not saved data: the canonical writer emits
+`source_row` as a float-formatted string (`"521.0"`), and the check required
+`str(...).isdigit()`. All 144 raw lineage rows in that bundle are float-formatted.
+
+Decision: accept `source_row` strings that represent an exact positive CSV data-record
+number in ASCII integer form or integer-with-zero-fraction form (`"521"`, `"521.0"`,
+`"521.00"`). The header is record 1 and data starts at record 2, so values below 2 are
+rejected. Fractions, signs, empty values, `nan`/`NaN`, `Infinity`, exponent notation and
+boolean-like text are rejected. The digits are parsed as an integer — no binary
+floating-point conversion — and the stored string is preserved and never rewritten. The
+canonical writer, the retained baseline, source data and metrics are unchanged.
+
+Repair: one private helper (`_record_number`) plus one call-site change in
+`verify_references`. No other logic, schema or module structure was touched.
+
+| Run | Result | Exit | Log |
+|---|---|---|---|
+| Focused, before the repair | 7 failed, 88 passed (2.39s) | 1 | `~/.local/state/composer-bootstrap/g1-checks-20261028T062307/source-row-before-fix.log` |
+| Focused, after the repair | 95 passed (2.33s) | 0 | `~/.local/state/composer-bootstrap/g1-checks-20261028T062307/focused-after-fix.log` |
+| Maintained suite, after the repair | 448 passed (32.75s) | 0 | `~/.local/state/composer-bootstrap/g1-checks-20261028T062307/maintained-suite.log` |
+
+New tests: accepted forms (`"521"`, `"521.0"`, `"521.00"`, `"699.0"`, `"2"`, `"2.0"`),
+rejected forms (`"0"`, `"1"`, `"1.0"`, `"521.5"`, `"-521"`, `"-521.0"`, empty, `nan`,
+`NaN`, `Infinity`, `5.21e2`, `True`, `521.`), loader preservation of the original string,
+and multiple monthly raw rows with zero-fraction row numbers.
+
+Real-bundle rerun: `~/.local/state/composer-bootstrap/g1-real-bundle-20261028T062425`,
+same deterministic subject rule and unchanged retained input, exit 0, no findings. The
+analytical, result and instance identities are byte-identical to the failed run
+(`909f9de7…`, `568ba83d…`, `63c76b3c…`), which is expected because the documents and the
+saved records did not change. The validation script was copied byte-for-byte (sha256
+`acf87a2264682e6dc6c1c512965a9c3bb1bee6339f116aba908922d5a8d52167` in both runs); no
+silent edit was made to it. The original failed run remains preserved at
+`~/.local/state/composer-bootstrap/g1-real-bundle-20261028T061651`.
+
+Patch identity: uncommitted compatibility patch on top of
+`04ed30ac90a5552397b1c2d2573427e464f28ec3`; patched module
+`faf47ed0836c1ade8c8e2e3c6a021189825f56b732bfb51771908a3c44df9d87`, test module
+`cba1790384b8577c71cacc6e5366bb0e2b81a8c44c4e1cc84780d91342fe32ef`.
+
+Limits for this decision: one real subject only, author-run, no independent review, no
+second bundle or synthetic-vs-real comparison. This is reader compatibility, not a claim
+that the saved lineage is scientifically correct, and it does not change publication,
+schema versions or the canonical writer.
+
+Evidence ownership correction: both real-bundle evidence directories
+(`…-20261028T061651` and `…-20261028T062425`) contain files owned by `1001:1001`
+(builder), verified on the host with `ls -ln`. A previous chat statement that container
+user `0:0` produced host-root-owned evidence was incorrect and is corrected here; no file
+ownership was changed and no evidence was recreated.

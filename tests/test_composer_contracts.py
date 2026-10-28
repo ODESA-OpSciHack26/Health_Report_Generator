@@ -834,3 +834,50 @@ def test_r7_monthly_raw_rows_for_one_annual_count_remain_valid(tmp_path):
     bundle = build_bundle(tmp_path, lineage_overrides={
         "virus:2019:count": {"source_row": "2"}})
     assert findings(bundle) == ()
+
+
+# ---------------------------------------------------------------------------
+# source_row reader compatibility (R7 follow-up): exact data-record numbers
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("source_row", ["521", "521.0", "521.00", "699.0", "2", "2.0"])
+def test_source_row_accepts_integer_and_zero_fraction_forms(tmp_path, source_row):
+    bundle = build_bundle(tmp_path, lineage_overrides={
+        "virus:2019:count": {"source_row": source_row}})
+    assert findings(bundle) == ()
+
+
+@pytest.mark.parametrize("source_row", [
+    "0", "1", "1.0", "521.5", "-521", "-521.0", "", "nan", "NaN",
+    "Infinity", "5.21e2", "True", "521.",
+])
+def test_source_row_rejects_invalid_record_numbers(tmp_path, source_row):
+    bundle = build_bundle(tmp_path, lineage_overrides={
+        "virus:2019:count": {"source_row": source_row}})
+    assert "lineage_row" in codes(findings(bundle))
+
+
+def test_source_row_string_is_preserved_by_the_loader(tmp_path):
+    bundle = build_bundle(tmp_path, lineage_overrides={
+        "virus:2019:count": {"source_row": "521.00"}})
+    loaded = cc.load_bundle(bundle["bundle"])
+    rows = [row for row in loaded.lineage if row["metric_id"] == "virus:2019:count"]
+    assert len(rows) == 1
+    assert rows[0]["source_row"] == "521.00"
+    on_disk = [row for row in csv.DictReader((bundle["bundle"] / "lineage.csv").open(newline="", encoding="utf-8"))
+               if row["metric_id"] == "virus:2019:count"]
+    assert on_disk[0]["source_row"] == "521.00"
+
+
+def test_multiple_monthly_raw_rows_with_zero_fraction_rows_stay_valid(tmp_path):
+    bundle = build_bundle(tmp_path)
+    lineage = bundle["bundle"] / "lineage.csv"
+    rows = list(csv.DictReader(lineage.open(newline="", encoding="utf-8")))
+    header = list(rows[0])
+    extra = dict(rows[0])
+    extra.update({"input_kind": "raw", "source_row": "12.0", "sha256": "d" * 64})
+    rows.append(extra)
+    rows[0]["source_row"] = "2.0"
+    _write_csv(lineage, header, rows)
+    _refresh_manifest(bundle["bundle"])
+    assert findings(bundle) == ()
