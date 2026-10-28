@@ -8,7 +8,7 @@ Follow the root README.md for supported environment and installation commands. R
 
 ## Before changing code
 
-1. For Track B, create a focused branch from the current integration/steward-ready-v1 tip and PR back into that branch. Do not develop on the frozen Track A reference or promote to main automatically. Other maintenance targets require an explicit maintainer decision.
+1. Track B feature work normally starts from the current integration/steward-ready-v1 tip and PRs back there. For the approved composer isolated integration lane, design/* task branches start from the current build/composer tip and internal PRs target build/composer. Its umbrella draft PR targets integration/steward-ready-v1 and stays unmerged until explicit human promotion approval. See the [build handoff](docs/build/composer/HANDOFF.md). This exception does not bypass permissions/confirmation rules or authorize changes to frozen/main/release refs. Other maintenance targets require a maintainer decision.
 2. Record whether the change affects data, scientific policy, calculations, presentation, provenance, or only documentation.
 3. Do not edit generated files under results/; regenerate through the applicable documented pipeline.
 4. Do not delete or deduplicate source data by filename alone. Compare data and metadata content, preserve original snapshot identity and document every resolution.

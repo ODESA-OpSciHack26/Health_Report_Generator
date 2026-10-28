@@ -1,6 +1,6 @@
 # Track B: unified reporting product and inspectable composer
 
-Status: authoritative forward plan; implementation is incremental and incomplete. Updated 28 October 2026 after PR #7. Integration home: `integration/steward-ready-v1`, inspected at `eb392370852992b8cd5794ea90548c36ebae47f7`. Frozen Track A: `m4/frozen-descriptive-reports` at `c72bd54f69300b8e79bb967c201529d48625ae45`. Main, original releases and historical evidence remain unchanged.
+Status: authoritative forward plan; implementation is incremental and incomplete. Updated 28 October 2026 after PR #9. Integration home: `integration/steward-ready-v1`, build seed inspected at `0cb8dd095a29760ca7b0dc45167538b938b3a6c7`. Frozen Track A: `m4/frozen-descriptive-reports` at `c72bd54f69300b8e79bb967c201529d48625ae45`. Main, original releases and historical evidence remain unchanged.
 
 ## Product end state
 
@@ -22,7 +22,9 @@ Prompt draft preview is desirable, but unconfirmed settings or sampled data are 
 
 ## Branch and milestone policy
 
-Focused feature branches start from the current integration tip and PR back into `integration/steward-ready-v1`. The former composer branch was a transfer source, not another integration home. Never move the frozen reference for development. Use Track A/Track B and B0-B7 as active delivery identifiers. Older M4/M5 names are historical; future Surveillance Extension covers reviewed maps, baselines, seasonal windows and statuses, not initial composer scope.
+Focused feature branches normally start from the current integration tip and PR back into `integration/steward-ready-v1`. The former composer branch was a transfer source, not another accepted integration home. Never move the frozen reference for development. Use Track A/Track B and B0-B7 as active delivery identifiers. Older M4/M5 names are historical; future Surveillance Extension covers reviewed maps, baselines, seasonal windows and statuses, not initial composer scope.
+
+The approved composer isolated integration lane is `build/composer`, seeded at `0cb8dd095a29760ca7b0dc45167538b938b3a6c7`. It is an experimental candidate lane, not a replacement accepted product base. Internal `design/*` branches start from its current tip and PR into it. Only its umbrella draft PR targets product integration, with explicit human promotion approval required. The [operational handoff](build/composer/HANDOFF.md), [requirements ledger](build/composer/requirements.json) and [review/resume protocol](build/composer/REVIEW_AND_RESUME.md) map execution checkpoints onto this plan without replacing product requirements. Internal integration still requires actual permissions and applicable approvals; no protections, runner, release or deployment are installed by prose.
 
 ## Delivery stages
 
@@ -41,15 +43,14 @@ E1-E7 in the inspector decision are concrete evidence slices within these stages
 
 ## B0 preparation checklist
 
-The documentation now specifies the technical workflow, selective presentation adaptation and inspector direction. B0 remains open until the following are completed in this readiness branch:
+The documentation specifies the technical workflow, selective presentation adaptation and inspector direction. PR #9 added conflict dispositions and workflow preservation. B0 is not automatically closed by that merge; validate remaining items at G0 in the build handoff before functional activation:
 
-- Correct top-level README ambiguity: the local host form uses the custom cache; the GitHub-backed form does not. Preserve actual commands and present destination-replacement behavior until migrated.
-- Update architecture to describe the opt-in tabular route separately from target registries/evidence and scope configuration-only stakeholder claims to their actual route.
-- Reconcile repository map, handover and original composer notes with the active integration home and current versus historical status, preserving original acceptance records.
-- Record explicit conflict dispositions and validate documentation links/status claims.
-- Define B1 contract/test scope, including staged multi-measure/ungrouped extensions, without advertising an unfinished renderer or released schema.
+- Confirm README cache/publication wording and architecture route distinctions against executable behavior.
+- Confirm repository-map/handover/historical-note dispositions and licence/status consistency, including the source-data README, without changing licence/citation authorship.
+- Validate active documentation links/status claims and record reviewed candidate, unresolved issues and explicit dispositions.
+- Fix the minimal B1 contract/test scope, including staged table-shape extensions, without claiming a released schema or completed renderer.
 
-B0 is not complete merely because new design documents exist. Runtime code, calculations, dependencies and frozen references are unchanged by this documentation update.
+B0 is not complete merely because new documents exist. This handoff bootstrap changes no runtime code, calculations, dependencies or frozen references. Earlier tests retain their actual source/review scope.
 
 ## Preserved technical reference identities
 
