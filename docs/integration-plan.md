@@ -4,17 +4,21 @@ Status: authoritative forward plan; implementation is incremental and incomplete
 
 ## Product end state
 
-One trusted local steward workspace supports a captured IDD snapshot or a general CSV/TSV. The steward reviews interpretation and analytical scope, uses three distinctive default presets or clones a new stakeholder, adds/removes/duplicates/reorders registered blocks, previews the actual report, renders and verifies, and saves a portable recipe. One command replays an explicitly selected batch. A stakeholder assembled from existing capabilities needs configuration, not a new audience template.
+One trusted local steward workspace supports a captured IDD snapshot or a general table. The steward uploads or selects data, reviews a compact proposed interpretation, accepts/corrects it, chooses analytical scope and audiences, previews, configures blocks if needed, renders/verifies and saves a portable recipe. Clear inputs should not require handwritten mappings or a long wizard. One command replays an explicitly selected batch. A stakeholder assembled from existing capabilities needs configuration, not a new audience template.
 
-Every analytical block has a common evidence inspector directly beside or below its result: exact permitted input data, selection/eligibility, calculation and assumptions, saved results, plotted data, analysis code, rendering code and reproduction identities. Details expand independently; material scope, units and caveats remain visible. See [the decision and E0-E7 sequence](decisions/inspectable-blocks.md). This is a block-contract requirement from B1, not a final UI embellishment.
+Every analytical block has a common evidence inspector directly beside or below its result: exact permitted input data, selection/eligibility, calculation and assumptions, saved results, plotted data, analysis code, rendering code and reproduction identities. Details expand independently; material scope, units and caveats remain visible. This is a block-contract requirement from B1, not a final UI embellishment.
+
+Detailed specifications: [technical data workflow](data-workflow.md), [presentation adaptation](presentation-adaptation.md), [contracts](integration-contracts.md), [workspace](steward-workspace.md), [inspector decision and E0-E7 sequence](decisions/inspectable-blocks.md), and [acceptance](integration-acceptance.md).
 
 ## Current versus target
 
 Implemented foundations include the canonical IDD workflow, captured CSV/TSV inspection and explicit preparation, verified bundles, checksum-pinned tabular request versions 1/2, one-command three-audience HTML rendering, descriptive results/row references, charts, interactive tables and exact verification. Generic input currently maps one category, one measure and optional time.
 
-Not yet implemented: guided generic upload/interpretation, a dynamic block/profile registry, editable compositions, unified publication plans, per-block evidence inspectors or the combined steward experience. Generic geography labels are not filters; period normalization is not a date-window filter. Multiple measures, wide-to-long conversion and additional parser policies need explicit contracts. Generic reports currently support HTML; canonical PDF/apps are separate existing capabilities.
+Not yet implemented: guided upload/interpretation, actual generic selection controls, a dynamic block/profile registry, editable compositions, unified publication plans, per-block evidence inspectors or the combined steward experience. Generic geography labels are not filters; period normalization is not a date-window filter.
 
-Track A acceptance is not acceptance of the complete combined product. Previous successful tests retain their actual candidate/review scope.
+The target includes multiple measures, group candidates and explicit ungrouped/row-count modes, implemented through validated interpretation/result extensions rather than silently changing old request semantics. Additional formats such as Parquet, delimiter/encoding/locale handling and wide-to-long transformation are separately evaluated extensions. Do not claim universal spreadsheet compatibility. No name-based sum/mean decision or unreadable-value coercion may be hidden from interpretation review.
+
+Prompt draft preview is desirable, but unconfirmed settings or sampled data are labelled and cannot become verified publication. Final rendering consumes captured bytes and the confirmed interpretation. Three distinctive defaults plus explicit extra profiles remain the publication goal. Generic reports currently support HTML; canonical PDF/apps are separate existing capabilities. Track A acceptance is not acceptance of the complete combined product.
 
 ## Branch and milestone policy
 
@@ -24,34 +28,34 @@ Focused feature branches start from the current integration tip and PR back into
 
 | Stage | Work and dependency | Exit condition |
 |---|---|---|
-| B0 | Align plan, contracts, workspace, inspector decision and active guidance | Conflicts explicitly resolved; no runtime changes |
-| B1 | Strict composition, capability, publication and evidence contracts | Deterministic resolution; invalid settings/references rejected; old requests unchanged |
-| B2 | Extract existing renderers and distinct presets; first comparison evidence chain and shared inspector | Numerical parity; real data/method/code bindings; stable navigation |
-| B3 | Confirmed CSV interpretation, limits, saved mapping and supported selection; follows B1, can overlap B2 | Snapshot/time-series fixtures and replay; stable original record identity |
+| B0 | Align plan, technical workflow, presentation, contracts, workspace, inspector and active guidance | Conflicts explicitly resolved; no runtime changes |
+| B1 | Strict interpretation/selection, composition, capability, publication and evidence contracts | Deterministic resolution; invalid settings/references rejected; old requests unchanged |
+| B2 | Extract scoped presentation components and distinct presets; first comparison evidence chain/inspector | Numerical parity; truthful data/method/code bindings; stable navigation |
+| B3 | Guided bounded upload, confirmed interpretation, saved mapping and supported selection; follows B1, can overlap B2 | Snapshot/time-series and planned shape extensions have fixtures/replay and stable record identity |
 | B4 | Dynamic profile discovery and explicit publication; version manifests/verifiers together | New configured stakeholder; exact artifact/evidence checks |
-| B5 | Unified source review, composer, actual preview and save/replay UI | UI/CLI effective requests agree; accessible authoring controls |
+| B5 | Unified low-friction source review, composer, actual preview and save/replay UI | UI/CLI effective requests agree; accessible controls |
 | B6 | Cross-cutting provenance, layered cache, disclosure and lifecycle throughout B1-B5 | Correct invalidation; verified reuse; safe approved exports |
 | B7 | Combined IDD/general-table/default/custom acceptance | Clean replay, runtime and browser review, transferable evidence |
 
-E1-E7 in the inspector decision are the concrete evidence implementation slices within these stages. Prove the existing reference comparison first; do not introduce new inference to demonstrate inspectability.
+E1-E7 in the inspector decision are concrete evidence slices within these stages. Prove the existing reference comparison first, not a new inference method. A visual fixture spike may accompany B1; production presentation extraction follows its contracts.
 
 ## B0 preparation checklist
 
-This initial alignment commit updates the index, plan, contracts, workspace, acceptance and inspector specification. B0 remains open until the following are completed in this readiness branch:
+The documentation now specifies the technical workflow, selective presentation adaptation and inspector direction. B0 remains open until the following are completed in this readiness branch:
 
 - Correct top-level README ambiguity: the local host form uses the custom cache; the GitHub-backed form does not. Preserve actual commands and present destination-replacement behavior until migrated.
-- Update architecture to describe the existing opt-in tabular route separately from the target registry/evidence design. Scope configuration-only stakeholder claims to their actual route.
+- Update architecture to describe the opt-in tabular route separately from target registries/evidence and scope configuration-only stakeholder claims to their actual route.
 - Reconcile repository map, handover and original composer notes with the active integration home and current versus historical status, preserving original acceptance records.
-- Record an explicit conflict disposition and validate documentation links and status claims.
-- Define the first B1 contract/test scope; do not advertise an unfinished renderer or released schema.
+- Record explicit conflict dispositions and validate documentation links/status claims.
+- Define B1 contract/test scope, including staged multi-measure/ungrouped extensions, without advertising an unfinished renderer or released schema.
 
-B0 is not complete merely because a new design document exists.
+B0 is not complete merely because new design documents exist. Runtime code, calculations, dependencies and frozen references are unchanged by this documentation update.
 
-## Preserved donor and planning provenance
+## Preserved technical reference identities
 
-Earlier integration baseline: `fe5fb8ed1ab5f4bf94cc10da1637b82b539692ec`. v2 repair donor: `6cbe222eb7edefe353d7370168c974c43b1a5350`. Nisha donor: `a1cba89bbb5e37b20b48e2df8b334aa4ba7d250b`. Preserve the [donor assessment](m4-wp0-donor-assessment.md), its machine-readable decisions, attribution, licences and original failure evidence. Reuse/adapt/reject components explicitly; do not wholesale merge donor environments, deletions or audience engines.
+Earlier integration baseline: `fe5fb8ed1ab5f4bf94cc10da1637b82b539692ec`. Repair reference: `6cbe222eb7edefe353d7370168c974c43b1a5350`. Earlier report-design reference: `a1cba89bbb5e37b20b48e2df8b334aa4ba7d250b`. Current presentation/table-workflow reference: `12a7afaab5e86dab81cc03b7e39f0284a8104b3c`. The latter was source-inspected, not newly runtime/browser validated. Preserve the [assessment](m4-wp0-donor-assessment.md), machine-readable decisions, licences, attribution and original failure evidence. Technical prose uses neutral component/source descriptions; required credit and historical records are not removed.
 
-The former WP0-WP7 responsibilities continue: compatibility assessment; contracts; lifecycle; CSV integration; presentation; builder; integrity/export; combined acceptance. B0-B7 reorganize delivery, not delete those obligations. Retire redundant supported paths only after replacement parity; the backup enables deliberate refactoring, not indiscriminate removal.
+Reuse/adapt/defer selected components explicitly rather than wholesale merging environments, deletions or audience engines. The former WP0-WP7 responsibilities continue: compatibility assessment; contracts; lifecycle; CSV integration; presentation; builder; integrity/export; combined acceptance. B0-B7 reorganize delivery, not remove obligations. Retire redundant supported paths only after replacement parity.
 
 ## Non-goals and release boundary
 
