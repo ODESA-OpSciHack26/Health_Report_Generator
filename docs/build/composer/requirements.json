@@ -26,6 +26,128 @@
     {"id":"R17","scope":"required","checkpoint":"G2","acceptance":"Scoped visual adaptation and evidence disclosure preserve semantics and receive keyboard/focus/narrow-layout review","state":"not_started"}
   ],
   "initial_state": {"baseline_at_seed_tested":false,"runner_started":false,"last_verified_candidate":null,"last_human_accepted_candidate":null,"active_tasks":[],"blockers":[],"next_task":"G0 baseline and preparation disposition, then minimal G1 contracts"},
-  "evidence_records": [],
+  "scope_boundary": {
+    "runner_bootstrap_and_startup_assessment": "performed in the isolated lane and recorded in evidence_records",
+    "product_implementation": "not_started",
+    "note": "Recording bootstrap runs and documentation corrections is not product implementation, requirement acceptance or G0 closure."
+  },
+  "current_state": {
+    "recorded_at": "2026-10-28",
+    "recording_actor": "coordinator build session (Hermes Agent); no reviewer identity asserted",
+    "lane": "build/composer",
+    "pre_patch_anchor": {
+      "head": "72b80d95703159d3102d7021b14a598adac4d72e",
+      "worktree": "clean",
+      "observed_when": "before any edit in this documentation turn",
+      "note": "this is the only state described as clean"
+    },
+    "candidate_state": {
+      "base_commit": "72b80d95703159d3102d7021b14a598adac4d72e",
+      "clean": false,
+      "worktree": "uncommitted documentation diff: data/README.md and docs/build/composer/requirements.json modified, docs/build/composer/G0-STATUS.md added",
+      "note": "the current candidate is not a clean worktree, not a new commit and not a canonical release"
+    },
+    "bootstrap_commit_role": "72b80d9 is the bootstrap commit of this lane, not seed 0cb8dd095a29760ca7b0dc45167538b938b3a6c7, and the runs below are not executions of the seed",
+    "initial_state_role": "the initial_state object above is preserved as the historical handoff record and is not rewritten",
+    "baseline": {"evidence_recorded": true, "accepted": false, "independent_verification": false, "human_visual_review": false},
+    "g0": {"closed": false},
+    "requirements": {"states_changed": [], "note": "R01-R17 states are deliberately unchanged; recording evidence does not accept a requirement"},
+    "pending_human_decisions": [
+      "reviewer and file-ownership assignment",
+      "R14 generic PDF/static parity or explicit deferral",
+      "R15 optional format/encoding scope",
+      "cost/time budgets, artifact storage/retention and credential boundary before any unattended execution",
+      "G1 assignment approval"
+    ]
+  },
+  "evidence_records": [
+    {
+      "record_type": "composer-evidence/1",
+      "id": "EV-BOOT-001",
+      "kind": "maintained_test_suite",
+      "status": "recorded_not_accepted",
+      "evidence_path": "/home/builder/.local/state/composer-bootstrap/checks-opWZHBjo",
+      "started_at": "2026-10-28T03:30:32Z",
+      "finished_at": "2026-10-28T03:30:59Z",
+      "source_commit": "72b80d95703159d3102d7021b14a598adac4d72e",
+      "container_image_id": "sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8",
+      "command": "python -m pytest -q --basetemp=/evidence/pytest-tmp --junitxml=/evidence/pytest.xml",
+      "exit_code": 0,
+      "observed": {
+        "pytest_summary": "353 passed in 22.02s",
+        "junit_tests": 353,
+        "junit_time_seconds": 22.017,
+        "junit_timestamp": "2026-10-28T03:30:37.233333+00:00",
+        "runner_hostname": "ace6d5a764df",
+        "worktree_clean_after": true,
+        "toolchain_reported": {"python": "3.11.6", "R": "4.3.2", "quarto": "1.3.353", "uv": "0.8.14", "snakemake": "8.30.0"}
+      },
+      "inspected_files": ["exit-code.txt", "source-commit.txt", "started-at.txt", "finished-at.txt", "image-id.txt", "git-status-after.txt", "checks.log", "pytest.xml", "container-check.sh"],
+      "not_rerun": ["the maintained test suite", "the container invocation and toolchain version assertions"],
+      "limitations": ["execution of bootstrap commit 72b80d9, not of seed 0cb8dd0", "no independent verification or human acceptance accompanies this record"]
+    },
+    {
+      "record_type": "composer-evidence/1",
+      "id": "EV-BOOT-002",
+      "kind": "canonical_release_with_audience_provenance_and_shiny_verification",
+      "status": "recorded_not_accepted",
+      "evidence_path": "/home/builder/.local/state/composer-bootstrap/baseline-lJXSvvGc",
+      "started_at": "2026-10-28T03:33:00Z",
+      "finished_at": "2026-10-28T03:34:32Z",
+      "source_commit": "72b80d95703159d3102d7021b14a598adac4d72e",
+      "container_image_id": "sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8",
+      "command": "snakemake --cores 2 --config out=/evidence/output; python scripts/health_pipeline/check_outputs.py --out /evidence/output --config workflow/config.yaml; Rscript tests/shiny_smoke.R /evidence/output/reports/researcher/app; artifact presence loop for researcher, health_institution, public",
+      "exit_code": 0,
+      "observed": {
+        "workflow_steps": "17 of 17 steps (100%) done",
+        "finished_job_markers": 17,
+        "audience_and_provenance_verification": "Audience outputs and provenance verified",
+        "researcher_shiny_smoke": "Shiny server outputs passed",
+        "expected_artifacts_present": ["researcher", "health_institution", "public"],
+        "release_json": {"schema_version": "2.0", "git_commit": "72b80d95703159d3102d7021b14a598adac4d72e", "git_status": "", "python": "3.11.6", "quarto": "1.3.353"},
+        "worktree_clean_after": true
+      },
+      "artifacts_path": "/home/builder/.local/state/composer-bootstrap/baseline-lJXSvvGc/output",
+      "inspected_files": ["exit-code.txt", "source-commit.txt", "started-at.txt", "finished-at.txt", "image-id.txt", "git-status-after.txt", "baseline.log", "container-baseline.sh", "output/release.json"],
+      "not_rerun": ["the workflow release", "check_outputs.py audience/provenance verification", "tests/shiny_smoke.R", "the artifact presence loop"],
+      "limitations": [
+        "execution of bootstrap commit 72b80d9 with the recorded image, not a seed execution",
+        "not independent verification, blue-M4 browser acceptance or an archived-input replay",
+        "release.json records tex as 'unavailable' while the toolchain log reports pdfTeX present and PDF artifacts were produced; the reason for the unavailable probe result was not investigated"
+      ]
+    },
+    {
+      "record_type": "composer-evidence/1",
+      "id": "EV-DOC-001",
+      "kind": "documentation_candidate_checks",
+      "status": "recorded_not_accepted",
+      "base_commit": "72b80d95703159d3102d7021b14a598adac4d72e",
+      "candidate": "uncommitted documentation diff on data/README.md and docs/build/composer/requirements.json plus new docs/build/composer/G0-STATUS.md",
+      "candidate_clean": false,
+      "container_image": {"tag": "composer-report:bootstrap-72b80d9", "id": "sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8", "rebuilt": false},
+      "result_summary": {"documentation_tests": "12 passed in 2.29s", "maintained_suite": "353 passed in 20.56s", "exit_code": 0},
+      "commands": [
+        "docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD\":/app -w /app --user \"$(id -u):$(id -g)\" composer-report:bootstrap-72b80d9 python -m pytest -q -p no:cacheprovider --basetemp=/tmp/pt-docs tests/test_release_docs.py tests/test_handover_docs.py",
+        "docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD\":/app -w /app --user \"$(id -u):$(id -g)\" composer-report:bootstrap-72b80d9 python -m pytest -q -p no:cacheprovider --basetemp=/tmp/pt-full"
+      ],
+      "execution_properties": {
+        "cpu_limit": "not explicitly supplied",
+        "memory_limit": "not explicitly supplied",
+        "process_pid_limit": "not explicitly supplied",
+        "network": "not explicitly disabled",
+        "container_user_requested": "1001:1001",
+        "context_selection": "implicit; no --context was named and the effective context was not captured in these execution records, so neither a rootless nor a non-rootless daemon is asserted"
+      },
+      "future_hardened_syntax": "docker --context rootless run ... (--context is a global Docker option)",
+      "scope": "documentation regression checks on an uncommitted working tree based on 72b80d9; not a new clean commit, not a canonical release and not independent review",
+      "not_rerun": ["canonical release", "check_outputs.py audience and provenance verification", "tests/shiny_smoke.R", "scripts/health_pipeline/verify_release.py"],
+      "limitations": [
+        "results belong to an uncommitted working tree and cannot be attributed to a commit",
+        "no independent reviewer observed the runs",
+        "verify_release.py exists as a supported verifier invoked by CI, but no execution of it is recorded for this lane",
+        "the rerun invocation did not explicitly select a context, supply CPU/memory/PID limits or disable network access, and its effective context was not captured; this limitation applies only to this record, not to EV-BOOT-001 or EV-BOOT-002"
+      ]
+    }
+  ],
   "task_branches": {"contracts":"design/contracts","comparison-inspector":"design/comparison-inspector","csv-interpretation":"design/csv-interpretation","composer-interface":"design/composer-interface","verification":"design/verification"}
 }

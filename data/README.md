@@ -32,4 +32,9 @@ The removal is reversible through Git history, but restoration is not part of th
 
 ## Project licence
 
-The repository does not yet state a project-wide licence; choosing one is a decision for the repository owner (see `docs/release-checklist.md`). Until then, no reuse rights are granted for the project code. The data terms above are independent of that choice.
+The project software is licensed under the MIT License. The tracked [LICENSE](../LICENSE)
+file holds the operative terms; [release-checklist.md](../docs/release-checklist.md)
+records how releases treat it. The source-data terms above are separate from that
+software licence: the MIT License does not license the source data, attribution to the
+FOPH is still required when redistributing reports or data, and the publisher publishes
+no separate licence text for the data.
