@@ -1,57 +1,55 @@
-# Integration contracts and architecture decisions
+# Track B contracts and architectural boundaries
 
-Status: target M4 contracts. Field names below describe responsibilities, not a released schema/API. Final schemas and migration tests are delivered in WP1. Current executable behaviour remains documented in [architecture](architecture.md). See [plan](integration-plan.md).
+Status: target responsibilities, not a released schema/API. Updated 28 October 2026. Governed by [the plan](integration-plan.md) and [inspectable-block decision](decisions/inspectable-blocks.md). B1 delivers concrete strict schemas and migration tests. Existing tabular request versions 1/2 remain unchanged until an explicit compatible extension is implemented.
 
-## 1. Boundaries
+## Pipeline and identities
 
-The flow is input adapter -> recorded interpretation -> blocking QC -> domain-specific analysis -> verified bundle -> shared parameterised renderer -> complete output manifest. IDD and generic descriptive analysis remain distinct; one renderer does not mean one arbitrary statistical method. UI and CLI submit the same validated request to the same execution service. Rendering must not reread an unvalidated upload or recalculate epidemiological results.
+Input adapter -> recorded interpretation -> domain QC and analytical selection -> domain analysis -> verified results/capabilities -> resolved composition/publication plan -> shared QMD and registered renderers -> exact verification -> no-replace publication.
 
-## 2. Entities and required responsibilities
+Keep source/interpretation/selection identity, numerical-analysis identity and composition/render identity distinct. The current descriptive serialization mixes labels/chart selection with numerical results; do not promise whole-file invariance for every display edit. Change serialized meaning only through an explicit version/migration decision.
 
-| Entity | Required identity and content |
+| Entity | Required responsibility |
 |---|---|
-| Dataset | source type, immutable content identity, retained input reference, terms/attribution, schema, available roles/capabilities, sensitivity |
-| Interpretation | original-to-normalised field mapping, time parsing/frequency/timezone, measure and identifier roles, units, missing/invalid handling, aggregation decisions, inferred/confirmed/overridden status and method version |
-| Stakeholder | stable ID, version, purpose, wording templates, detail level, allowed/default filters, ordered components, bindings/options, mandatory communication elements |
-| Request | schema version, dataset/interpretation identities, stakeholder and overrides, analytical selection, presentation, outputs, execution/environment identity |
-| Analysis bundle | integrity manifest, verified tables, units, scope, coverage, QC, lineage and available capabilities; shared core metadata with domain-specific tables |
-| Component | stable type/version, required capabilities, binding/option schema, rendering implementation, fallback, provenance and tests |
-| Run/export | state, request identity, source/analysis/render identities, timestamps, artifacts and hashes, review references, errors/limitations and disclosure policy |
+| Dataset | Immutable content identity, retained reference, attribution/terms, available fields/capabilities, sensitivity |
+| Interpretation | Confirmed mapping, parsing/frequency/timezone, units/roles, missingness and aggregation policy, inference/override status |
+| Selection | Actual predicates, retained original record identities, before/after counts, exclusion reasons; labels are not filters |
+| Analysis | Method/version, resolved parameters, scope, full-precision results, eligibility/QC, source lineage |
+| Profile | Stable ID/version, purpose/detail, wording, defaults and allowed settings; discovery separate from publication |
+| Component | Trusted type/version, bindings/options, required capabilities, renderer/formats, evidence producer and tests |
+| Composition | Ordered unique instances, resolved settings, dependency/context rules and omission decisions |
+| Evidence | Inputs, calculation, results, plotted data, code/environment references and disclosure state |
+| Publication/run | Selected profiles/formats, request and effective plan, state, timestamps, exact artifacts/hashes, reviews and permitted exports |
 
-Schemas reject unknown or invalid executable fields, unsafe paths, incompatible bindings and unrecognised IDs. Use explicit migrations and versioned fixtures; do not silently reinterpret old recipes after an upgrade. Final decision: document which configuration format is canonical; JSON is compatible with existing profiles, and UI-generated exports must round-trip without semantic loss.
+Use JSON-compatible strict configuration. Reject unknown executable fields, unsafe identifiers/paths, duplicate instance IDs, invalid bindings and unsupported versions. Canonical schema/precedence rules are fixed in B1, not inferred from this prose. Save the author request and fully resolved effective plan so changing defaults cannot silently reinterpret old recipes.
 
-## 3. CSV interpretation
+## Data and domain rules
 
-Reuse the donor's structural validation and optional mapping while fixing the split between importer and renderer. Automatic suggestions remain low-friction for clear inputs. Ambiguous roles, time parsing or aggregation must be surfaced and resolved. Record the resolved interpretation even when no mapping file was manually supplied.
+Reuse captured-byte CSV/TSV preparation. Initial supported shape is category plus one measure and optional time. Suggest roles conservatively; require correction/confirmation for ambiguity and save the interpretation. Preserve leading-zero identifiers. New encodings, delimiters, decimal conventions, missing sentinels, ungrouped/multi-measure shapes or wide-to-long transforms require explicit versioned contracts.
 
-Treat identifier-like numbers as candidates for identifiers, not measures by default. Parse year integers with explicit calendar-year rules. Preserve leading zeros and category codes. Define duplicate-header/row, encoding, delimiter, decimal, timezone, missing-sentinel, invalid-value and mixed-unit policies. Do not assume that sums of rates, means of percentages or an 'All' category are meaningful. A time-free snapshot records import time separately from observation time; import date must not masquerade as a measured period.
+Do not silently sum rates, average percentages, treat numeric identifiers as measures, infer observation time from import time or classify arbitrary uploads as FOPH data. Filtering preserves original source-record identities.
 
-Structured IDD-compatible uploads require their own explicit contract and checks; extension names alone do not confer eligibility. General tables never inherit disease classifications, population denominators or FOPH attribution. Repeated imports of identical source bytes should have stable source identity even if run IDs/import timestamps differ.
+IDD analysis retains its domain-specific verified metrics, QC, denominators and selection rules. Generic descriptive analysis remains separate. Share metadata/capability interfaces, not a universal scientific algorithm. Unsupported content is unavailable, not zero, normal or low risk.
 
-## 4. Parameter resolution and capabilities
+## Composition and inspector
 
-Define precedence: validated application defaults -> selected dataset interpretation/capabilities -> stakeholder defaults -> explicit request overrides, constrained by supported analytical options. Resolve once, record the result and give UI/CLI the same validation errors. Profiles cannot override mandatory QC or disclosure rules. A dynamic title/question must use the actual component scope, not a fixed 2025 string.
+Each block instance references its type/version, analysis scope/result, exact input and plotted-data identities, method/parameters, relevant analysis/render source and environment, initial disclosure and distribution policy. The common inspector renders data, calculation, analysis code, rendering code and reproduction views beside the result. Required context travels with the claim.
 
-A section declares inputs and returns supported, unavailable or invalid. Unsupported optional sections render an honest explanation or are omitted with a recorded reason; required unsupported sections block generation. Unavailable is not zero, normal, no change or no risk. M4 reserves M5 capabilities without simulating their results. Different geographic or time scopes must be labelled per component.
+Source panels show retained versioned implementation, relevant helpers and effective parameters, not generated illustrative code or moving remote branch contents. Record execution metadata at the analysis boundary; label generated replay recipes separately from actual execution traces. Do not claim that hashes attest all loaded binaries.
 
-## 5. Presentation and graph plugins
+Reordering preserves evidence links; duplication creates a new display identity while sharing unchanged results. Opening disclosures performs no analysis. Initial analytical scope is report-global; block-local display subsets are labelled. Advanced block-local analytical scopes need independent identities and explicit approval.
 
-Keep a single shared report entry point plus common methods presentation and reusable components. Display logic can format verified data, not introduce hidden analysis. A chart configuration selects trusted code, never supplies arbitrary code. Bindings reference defined table/field identities and units. Component registration includes semantic prerequisites, options, visual labels, missingness behaviour, uncertainty handling, accessible description, interaction, safe static representation and output formats. Refuse unsupported format claims; HTML interactivity does not imply equivalent PDF behaviour.
+## Backend and formats
 
-Review whether donor Plotly/Python results should be packaged as verified chart specifications/assets for the existing renderer or rendered through a compatible presentation backend. Choose via a tested WP0/WP1 spike. Preserve one common entry point and provenance contract whichever backend wins; avoid forcing an unnecessary language rewrite or retaining parallel audience engines. Keep environment ownership explicit and pinned.
+Keep one shared report entry point with source-specific capability adapters. No extra audience QMDs. Renderers format verified results, not recalculate scientific metrics. Retain the existing host/Compose execution route initially; topology/backend changes need a tested ADR, dependency ownership and rollback. Components advertise only tested interactive/static/PDF capabilities.
 
-## 6. Caches and atomic publication
+## Verification, caches and lifecycle
 
-Use conceptual layers: input/normalisation identity; analysis identity covering input, interpretation, analytical parameters, methods and relevant software; render identity covering bundle, stakeholder/wording/components, visual settings, template and renderer environment. Reuse current cache verification where correct. Initially conservative invalidation is acceptable; undeclared reuse is not.
+Version generation and independent verification together. Validate exact artifact/evidence sets, source/result references, embedded/sidecar agreement and effective composition. Reconstruct supported calculations and evidence from captured inputs; do not accept a rehashed false result. Historical artifacts use their recorded compatible source/schema, not weakened checks.
 
-A hit must validate its manifest and retain original rendering provenance. Record the new request/submission separately from the original render. No wall-clock import date should silently change a semantic snapshot identifier. Never reuse by filename alone. File locks must cover all supported writers or use isolated immutable entries with atomic publication. A failed render or partial HTML/PDF pair cannot replace a successful output. Cache schema changes require explicit invalidation/migration, not exceptions that weaken integrity checks.
+Cache keys cover the appropriate input, method or rendering identities. Validate entries and preserve original render timestamps separately from new retrieval/submission times. Use isolated work and complete no-replace publication for the new unified lifecycle; do not describe old replacement routes as already migrated.
 
-## 7. Provenance and retention
+## Privacy/export and extension limits
 
-Embed and export machine-readable provenance identifying source and dataset version/digest, filters, interpretation, selected stakeholder/components, effective parameters, transformation/method versions, analytical/table lineage, code/environment identities and generation time. Track component-specific windows/geography when they differ. A descriptive CSV report must meet the shared provenance contract, not only record filename and row count.
+Reader collapse, steward initial display state and artifact distribution policy are different controls. Restricted bytes must be absent from public HTML, scripts, downloads, manifests and linked code artifacts, not merely hidden. Give a restricted export its own manifest, omission reasons and replay limits; retain the private accepted run under its actual policy.
 
-Keep private forensic details out of public provenance. Export manifests state what was intentionally omitted and whether full replay requires private retained inputs. Software locks, source/snapshot content and configs are necessary companions to hashes. Record manual review as reviewer-reported evidence, not an automated verification result.
-
-## 8. Decisions required before coding across boundaries
-
-Record ADRs for execution topology, report backend/asset bridge, shared bundle schema, registry/discovery and publication selection, CSV inference/override policy, cache/concurrency design, privacy/export policy and dependency migrations. Each ADR includes donor alternatives, rationale, risks, rollback, owner and evidence. Revisit only with recorded consequences; architecture decisions must not remain hidden in one-off patch scripts.
+Do not expose credentials, home paths or arbitrary environment dumps. New scientific methods, geographic surveillance and source families require reviewed prerequisites, implementation and fixtures. No-code customization means combinations of trusted existing capabilities, not uploaded executable expressions.
