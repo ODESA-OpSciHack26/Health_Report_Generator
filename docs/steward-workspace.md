@@ -1,95 +1,49 @@
-# Steward workspace, report vault and authoring experience
+# Steward workspace and report authoring experience
 
-Status: target specification for M4, not shipped features. The word vault means a portable reporting workspace, not an encrypted secret store or an Obsidian requirement. The default interface is local and intended for a trusted single steward. See [plan](integration-plan.md) and [contracts](integration-contracts.md).
+Status: target experience, not shipped UI behavior. Updated 28 October 2026. See [plan](integration-plan.md), [contracts](integration-contracts.md), [inspectable blocks](decisions/inspectable-blocks.md) and [acceptance](integration-acceptance.md).
 
-## 1. Steward journey
+## Finished user journey
 
-1. Create/open a workspace. Show tool/schema versions, storage location and local-only scope. Never initialise over an existing workspace without explicit confirmation.
-2. Choose committed IDD data or upload CSV/TSV. Display source attribution, source identity, preview, dimensions, missingness and QC. Do not imply that uploaded data are FOPH data.
-3. Review the interpretation. Suggest time, category, measure, unit and identifier roles. Distinguish calendar years from timestamps, rates from counts and category codes from values. Use clear explanations and editable choices; save the effective interpretation.
-4. Choose a stakeholder starter or clone a profile. Ask what decision/question the report supports, who will read it, the required detail and the intended distribution. Avoid audience labels as the sole design input.
-5. Assemble sections from a component catalogue. Reorder, hide optional sections, choose graph variants, configure bindings and add editorial notes. Mandatory source, methods, uncertainty and limitations information cannot be suppressed.
-6. Preview validation and a low-cost rendering. Clearly label previews and sampled data; a preview is not a verified final report. Explain disabled components and how to supply missing prerequisites.
-7. Render and verify. Show queued/running/failed/succeeded states, progress, safe errors and local diagnostic references. A previously successful report remains accessible after a failed new run.
-8. Save the request and export a report package. Repeat the saved recipe in the UI or through the same CLI/batch mechanism. Cache reuse displays the original render time and the new retrieval/submission time separately.
+1. Open/create a local workspace without replacing an existing one. Show location, versions and trusted-single-steward assumptions. A workspace is not an encrypted vault.
+2. Choose a captured IDD snapshot or CSV/TSV. Show source identity, bounded preview, dimensions, missingness and QC. Acquisition is separate from regeneration.
+3. Review suggested roles and confirm/correct interpretation. Save mapping, parsing, units, supported period and identifier policies. Ambiguous columns require a decision.
+4. Set actual report-global analytical selection and supported comparisons. Distinguish exclusions from display-only filtering; geography annotations do not filter data.
+5. Select the standard three-profile batch or clone a profile for a new purpose. Discovering a profile does not add it to publication.
+6. Assemble registered blocks, select metrics/graphs, add attributed editorial notes and reorder/duplicate/place supporting detail. Required context cannot be suppressed.
+7. Preview the actual report with draft/sampling labels and actionable capability/dependency messages. Preview is not verified publication.
+8. Render/verify through the same effective request service as the CLI. Show queued/running/failed/succeeded state and safe diagnostic references. Preserve previous accepted output after failure.
+9. Save/reopen a portable recipe and export explicitly approved artifacts. One command replays the selected batch with retained source/environment references.
 
-## 2. Proposed vault layout
+## Composer layout
 
-This is the target workspace layout, not a request to move current production directories immediately. Implement migration/adapter steps in small reversible changes.
+- Source/interpretation panel: source identity, preview, field review, selection and QC.
+- Block library: categories/search, explanation, availability and prerequisites.
+- Ordered outline plus real preview: headings, stable instances, configure/move/duplicate/remove and placement.
+- Settings: metrics/order, permitted bindings, display precision, caption, supported scale, detail and initial evidence disclosures.
+- Run/evidence view: validation, analysis-versus-display changes, progress and last accepted report.
 
-```text
-report-vault/
-  workspace.json                 # schema version, defaults, project identity
-  catalog/
-    datasets/*.json              # source identities, capabilities, terms
-    stakeholders/*.json          # validated communication profiles
-    mappings/*.json              # saved input interpretations
-    recipes/*.json               # replayable single-report requests
-    batches/*.json               # ordered report sets and publication selection
-    charts/*.json                # named configurations of trusted chart types
-    themes/*.json                # supported design tokens, not arbitrary scripts
-  inputs/
-    originals/<content-id>/      # immutable uploaded bytes; private by default
-    snapshots/<snapshot-id>/     # retained analysis inputs/manifests
-  work/<run-id>/                 # incomplete intermediates; never published
-  runs/<run-id>/
-    request.json                 # resolved request and selected versions
-    interpretation.json
-    qc.json
-    analysis/                    # verified tables and lineage
-    reports/<stakeholder-id>/    # complete HTML/PDF/assets/data/provenance
-    manifest.json
-    logs/                        # local diagnostics; access controlled
-  cache/analysis/                # disposable verified computations
-  cache/render/                  # disposable verified presentation results
-  reviews/<run-id>/              # visual/scientific review, reviewer, scope/time
-  exports/<export-id>/           # explicitly approved transferable bundles
-```
+Use move buttons and keyboard operation; dragging is optional convenience. Preserve visible focus, understandable labels, expansion states, contrast and responsive layouts. Retain Marimo initially; do not replace the framework merely to obtain a composer widget. The existing host-local and GitHub-backed forms remain different supported routes until a replacement passes parity.
 
-The repository retains application code, schemas, component implementations, default profiles, public test fixtures and documentation. A vault holds steward-owned requests/data/results and may live outside the repository. Runtime originals, private profiles, logs and exports are not automatically committed or synchronised. `.gitignore` is not access control. Profile recipes should use portable dataset IDs/relative references; external paths require explicit local binding and must not escape the workspace through symlinks or traversal.
+## Inspectable results
 
-## 3. What a steward can change without coding
+Every analytical graph, table or card has adjacent independently expandable data, calculation, analysis-code, rendering-code and reproduction sections. Large data is clearly previewed with full permitted artifacts or a withholding explanation. The inspector is common UI driven by each block's evidence bindings.
 
-- Clone/name a profile; choose purpose, language/detail, section order and labels.
-- Select supported filters, baselines and time ranges when the data contract permits them.
-- Choose among registered graph types and bind eligible columns/verified tables.
-- Set safe titles, explanatory text, units, rounding, category ordering, axes and reference annotations.
-- Create a batch for recurring reporting and select its audience profiles.
-- Save a chart configuration for reuse across reports.
+Researcher defaults emphasize methods/audit. Institutional defaults emphasize scope/comparability. Public defaults show plain-language explanation and material limits with technical evidence reachable. Custom profiles set initial disclosure, not permission to leak restricted artifacts or remove essential caveats.
 
-No-code means combinations of existing capabilities. A new scientific measure or executable chart implementation remains developer work. Do not allow uploaded Python/R/JavaScript, arbitrary Quarto fragments, raw SQL or executable expressions in profiles. Editorial text is escaped/sanitised and is distinct from computed findings.
+## Distinct report defaults
 
-## 4. Graph catalogue and guidance
+Researcher: question/scope -> quality/coverage -> statistics -> diagnostics -> detailed rows -> methods/reproduction.
 
-| Registered family | Suitable request | Mandatory checks |
-|---|---|---|
-| Line/point trend | Comparable measure over ordered time | frequency, gaps, units, group identities; do not join incompatible series |
-| Bar/dot ranking | Measure by category | aggregation, sort, negative values, denominators; disclose top-N exclusions |
-| Histogram | Distribution of observations | numeric role, bin policy, sample size, missingness |
-| Box plot | Grouped distributions | observation-level data, sample sizes, small groups; no invented uncertainty |
-| Scatter | Relationship between two measures | row alignment, units, missingness; no causal wording |
-| Table/KPI card | Verified value/summary | value definition, period, unit, comparison scope, missing states |
-| Heatmap | Valid time/category matrix | aggregation, comparability, missing-cell legend, accessible fallback |
-| Map and surveillance band/status | M5 capability | disabled until validated geographic/baseline contracts exist |
+Institution: monitoring scope -> changes to review -> latest/reference values -> eligibility/quality -> optional trends -> attributed operational context.
 
-M4 initially implements only the families needed by supported donor examples and the acceptance set; record shipped versus deferred catalogue entries explicitly. Avoid pie/stacked/dual-axis defaults unless their semantics and accessibility have been reviewed. A type recommendation is advisory, not an invisible statistical decision. If no safe recommendation exists, provide a table and explanation.
+Public: main message -> one primary visual -> explanation/limits -> reachable supporting counts -> source/methods.
 
-A steward adds a named graph by configuring an existing trusted family. A developer adds a new family through a versioned registration including required inputs/capabilities, option schema, renderer, static fallback, provenance fields, accessibility behaviour and fixture tests. Adding a family must not require another audience-specific report template.
+A new stakeholder is a genuinely new configured profile, not merely the already existing public-health-expert profile. Different defaults must differ in information architecture, not only titles/colours.
 
-## 5. Helpful builder features and priorities
+## Workspace ownership and safety
 
-M4 required: clone-profile wizard; schema-backed forms; source preview; inferred-role review; graph compatibility explanations; section ordering; dynamic titles/questions; field-level validation; save/replay recipe; batch generation; cache explanation; complete export; visible limitations; profile discovery in UI and CLI.
+Conceptual storage separates catalogue/recipes, immutable originals, incomplete work, accepted runs, validated cache, reviews and approved exports. This is not permission to move current directories before a migration. Application code/defaults/public fixtures remain in Git; steward data, logs/private profiles are not automatically committed.
 
-M4 usability improvements when core gates are secure: compare draft with previous accepted report; show exactly which data/settings/design fields changed; saved favourites; restore defaults; undo unsaved edits; reusable chart presets; copy a successful run as a new draft; concise guided mode plus advanced configuration view. None may bypass QC or conceal an inferred choice.
+Enforce input/resource limits and path containment before upload acceptance. Do not execute arbitrary code, Quarto fragments or expressions from profiles. Escape authored content and distinguish it from generated findings. A public export must actually omit restricted raw data/source literals; collapsing sections is not access control. Record retention/deletion explicitly and never treat accepted inputs/runs as disposable cache.
 
-Later optional enhancements: scheduled local batches, translation workflows, collaboration/approval roles and remote deployment. They are not promised as M4 features. Scheduling must preserve a frozen request and show source refresh versus report regeneration separately.
-
-## 6. Privacy, review and sharing
-
-Default upload/export policy is private local use. Enforce configurable upload/row/column/resource limits, safe filenames, path containment, bounded previews, HTML escaping and safe download handling. Warn about potential identifiers and health information; do not claim automatic detection anonymises data. Raw-data and lineage downloads may require de-identification or explicit exclusion from public exports. Preserve the fuller private run when a redacted export is created; give the export its own manifest and reproducibility limitations.
-
-Do not silently include absolute home paths, environment variables, tokens, diagnostic dumps or raw uploads in shareable provenance. Record portable identities and controlled references instead. Retention/deletion is explicit: originals and accepted runs are not cache; cache deletion must not delete source data. Provide disk usage and export previews, and require confirmation for destructive cleanup. A vault is not encrypted unless encryption is separately implemented and documented.
-
-## 7. Extensibility demonstration
-
-Acceptance exercise: a steward clones a starter into a new stakeholder ID, changes purpose/wording, selects sections, switches one supported graph family, changes a permitted filter, saves a recipe, and generates it through both UI and CLI without changing runtime source. It appears in profile discovery but is not silently added to the standard published batch. Repeat with a generic CSV and record capability-dependent differences. Verify that removed/renamed profiles and upgraded schemas produce actionable migration errors rather than fallback to another audience.
+HTML composer support comes first. Static/PDF behavior is capability-specific and tested separately. Scheduling, collaboration, translation workflow, remote hosting and advanced inference/surveillance are later separately approved work, not automatic consequences of the builder.
