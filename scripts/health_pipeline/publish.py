@@ -36,6 +36,71 @@ def package(bundle,dest):
         shutil.copyfile(HERE/'templates'/n,dest/n)
     write_json(dest/'package.json',{'schema_version':'2.0','files':{p.name:digest(p) for p in sorted(dest.iterdir()) if p.is_file() and p.name!='package.json'}})
 
+# Evidence published beside the report. The shared template links these as data/<name>,
+# so the published folder must contain an exact copy or the link is dead.
+# (artifact id, bundle file name, reader-facing label, required)
+EVIDENCE_ARTIFACTS=(
+    ('audience-parameters','stakeholder.json','Exact audience parameters (JSON)',True),
+    ('bundle-manifest','bundle.json','Artifact manifest (JSON)',True),
+    ('metrics','metrics.csv','Metrics table (CSV)',True),
+    ('lineage','lineage.csv','Calculation lineage (CSV)',True),
+    ('checks','checks.csv','Validation check records (CSV)',True),
+    ('series','series.csv','Plotted series (CSV)',True),
+    ('selection','selection.csv','Dataset selection (CSV)',True),
+    ('sources','sources.csv','Source registry (CSV)',True),
+    ('snapshot','snapshot.json','Snapshot record (JSON)',True),
+    ('pathogen-class','pathogen_class.csv','Pathogen classes (CSV)',True),
+)
+
+def publish_evidence(bundle,dest):
+    """Copy the analysis bundle byte-for-byte into <report>/data and verify digests.
+
+    Every file named by bundle.json is published, plus bundle.json itself. Files are
+    copied as saved, never rebuilt. bundle.json carries digests for the other files but is
+    not self-digested.
+    """
+    bundle,dest=Path(bundle),Path(dest); manifest=verify_bundle(bundle)
+    dest.mkdir(parents=True,exist_ok=True)
+    labels={name:label for _,name,label,_ in EVIDENCE_ARTIFACTS}
+    published={}
+    for name in sorted(manifest['files'])+['bundle.json']:
+        source=bundle/name
+        if not source.is_file():
+            raise ValueError(f'Bundle file named by the manifest is missing: {name}')
+        expected=manifest['files'].get(name)
+        if expected is not None and digest(source)!=expected:
+            raise ValueError(f'Evidence artifact digest mismatch: {name}')
+        target=dest/name
+        if not (target.is_file() and digest(target)==digest(source)):
+            shutil.copyfile(source,target)
+        published[name]={'path':f'data/{name}','sha256':digest(target),'expected':expected,
+                         'label':labels.get(name,name)}
+    return published
+
+LOCAL_EVIDENCE_LINK=re.compile(r'(?:href|src)="(?!https?:|#|mailto:|data:)([^"]+)"')
+
+def validate_published_evidence(report_dir):
+    """Check the final published folder, not the temporary render workspace.
+
+    Both report.html and methods.html are checked for evidence targets: data/ downloads
+    plus the co-located methods/provenance documents. The legacy PDF link is out of scope.
+    """
+    report_dir=Path(report_dir)
+    if not (report_dir/'report.html').is_file():
+        raise ValueError(f'Published report is missing: {report_dir/"report.html"}')
+    missing=[]
+    for document in ('report.html','methods.html'):
+        html=report_dir/document
+        if not html.is_file(): continue
+        for target in sorted(set(LOCAL_EVIDENCE_LINK.findall(html.read_text(encoding='utf-8',errors='replace')))):
+            if '{' in target or '}' in target: continue  # JavaScript template literal, not a link
+            path=target.split('#',1)[0].split('?',1)[0]
+            if not path: continue
+            if not path.startswith('data/') and path not in ('provenance.json','methods.html','report.html'): continue
+            if not (report_dir/path).is_file(): missing.append(f'{document}:{path}')
+    if missing: raise ValueError(f'Published report has unresolved local evidence links: {sorted(set(missing))}')
+    return True
+
 def _command(args):
     try: return subprocess.check_output(args,stderr=subprocess.STDOUT,text=True,cwd=PROJECT).strip()
     except (OSError,subprocess.CalledProcessError): return None
@@ -280,6 +345,9 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             command = [quarto,'render',f'{document}.qmd','--to',fmt]
             if document == 'methods':
                 command += ['-P', 'download_prefix:data/']
+                if composition is not None and fmt == 'html':
+                    # No PDF is generated beside this HTML-only package; do not offer one.
+                    command += ['-P', 'html_only:true', '-M', 'format-links:false']
             if document == 'report' and provenance is not None:
                 # Explicit absolute path: no working-directory lookup in the template.
                 command += ['-P', f'evidence_file:{Path(tmp) / "provenance.json"}']
@@ -294,6 +362,11 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
         shutil.copyfile(Path(tmp)/f'methods.{fmt}',output.parent/f'methods.{fmt}')
         if provenance is not None and provenance_out is not None:
             write_json(provenance_out,provenance)
+        if fmt=='html':
+            # The shared template links evidence as data/<name>; publish the exact saved
+            # artifacts and verify the final folder, not the temporary render workspace.
+            publish_evidence(bundle,output.parent/'data')
+            validate_published_evidence(output.parent)
 
 BATCH_AUDIENCES=('researcher','health_institution','public')
 

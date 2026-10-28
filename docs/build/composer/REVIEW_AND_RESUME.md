@@ -458,6 +458,195 @@ docker --context rootless run --rm --pull never --user 0:0 \
   independent review remain **NOT REVIEWED** (no browser). G0 open; R02 and challenge
   requirements not accepted.
 
+### Candidate entry G1-EVIDENCE-01: published evidence artifacts and explainable warnings
+
+- Anchor commit `fffac88f26893a13fad3a73770a7aad9e4e06455`; candidate is **uncommitted**.
+  Changed paths: `M scripts/health_pipeline/publish.py`,
+  `M scripts/health_pipeline/templates/report_helpers.R`,
+  `M scripts/health_pipeline/templates/audience_reports.R`,
+  `M scripts/health_pipeline/templates/methods.qmd`, `M tests/test_composition.py`,
+  `M tests/r_composition_smoke.R`, `M README.md`, and this record. No analysis, schema,
+  contract-identity, release-verifier, Snakefile or stylesheet change.
+- Demonstrated cause of the two dead controls (from disk, not browser): every composed
+  `report.html` links `data/stakeholder.json`, `data/bundle.json`, `data/metrics.csv`,
+  `data/lineage.csv` (and methods links more `data/*` files), but the published folder held
+  only `report.html`, `methods.html`, `provenance.json`. `publish.package()` copied the
+  bundle files into the temporary Quarto directory, and `render()` copied only the two HTML
+  documents to the output folder, so no `data/` directory was ever published. `provenance.json`
+  was co-located and worked. The missing targets are on disk, so this is a packaging defect,
+  not a browser behaviour question.
+- Repair: one explicit `EVIDENCE_ARTIFACTS` registry (id, bundle file, reader label, path,
+  digest) in `publish.py`; `publish_evidence()` copies byte-for-byte from the bundle into
+  `<report>/data/`, verifies manifest digests, and copies `bundle.json` as-is without
+  inventing a self-digest. `validate_published_evidence()` parses the **published**
+  `report.html` and fails on unresolved `data/` (or co-located methods/provenance) links;
+  `render()` runs it for HTML after publishing. A missing advertised artifact produces a
+  clear failure and a nonzero batch exit.
+- Readable evidence: the composed reproduction block now includes
+  “Report settings and source files” with the actual saved settings (audience id/title,
+  geography, reporting years 2021–2025, reference year 2019, measures, exclusions,
+  presentation, effective composition recipe and its digest) plus the manifest file list
+  with byte sizes and SHA-256 prefixes. It explains that parameters are the settings that
+  produced the report, that the manifest supports integrity checking, and that matching
+  hashes do not establish scientific correctness. Raw actions are labelled
+  “Download exact audience parameters — JSON” and “Download artifact manifest — JSON” and
+  the existing downloads use the `download` attribute. `bundle.json` is explicitly not
+  self-digested.
+- Warning detail (saved records only): composed limitations gain a “What was flagged?”
+  disclosure. Counting semantics are stated explicitly: **853 rows are check evaluations
+  (one rule × one dataset), not 853 distinct rules and not 853 affected findings**;
+  8 distinct rules, 56 datasets evaluated, 774 PASS, 76 SKIP, 3 WARN, 0 FAIL. The three real
+  warnings are all `value_present` (missing values): antibiotic resistance 85.5% missing,
+  wastewater sequencing 100.0% missing, wastewater viral load 52.7% missing. Each row shows
+  the saved check title/rule meaning, severity, dataset, recorded diagnostic, and the saved
+  selection record (“excluded — unclassified: not a classified count series” or
+  “excluded — surveillance_signal: not a classified count series”). Exact dataset-id matching
+  to `selection.csv` shows none of the flagged datasets is included, so the report says they
+  are shown for completeness and makes no claim about an effect on displayed findings.
+  Per-audience view sentences differ (technical: saved codes, no rerun; dashboard: selection
+  decision, not an operational threshold; public: plain-language notes about source data).
+  Unknown check ids keep the raw diagnostic and say no plain-language explanation is
+  available.
+- HTML-only PDF offer: composed `methods.html` no longer renders the legacy “PDF version”
+  navigation link or Quarto's alternate-format offer (`html_only:true` and
+  `format-links:false` for the methods document in composed HTML only). The legacy HTML/PDF
+  route keeps its links.
+- Evidence `~/.local/state/composer-bootstrap/g1-evidence-final2-20261028T132400` (pinned
+  image, rootless, `--network none`, repo/baseline read-only): `focused.log` 128 passed
+  exit 0; `r-composition-smoke.log` exit 0; `r-dispatch-smoke.log` exit 0;
+  `maintained-suite.log` 481 passed (31.12s) exit 0; `batch.log` exit 0;
+  `evidence-verification.log` exit 0; `structural-verification.log` exit 0;
+  `link-check.log` exit 0; `rendered-r-checks.log` exit 0 for all three; `warning-section.log`
+  exit 0; `legacy-researcher/render.log` exit 0. Earlier runs
+  `g1-evidence-20261028T131448` and `g1-evidence-final-20261028T132015` are superseded by
+  the methods-PDF repair and retained unchanged.
+- Verified on the final published folders: all 7 local links per page resolve; 9 manifest
+  artifacts are byte-identical to the retained bundle with matching SHA-256; no PDF link in
+  composed report or methods pages; 853/8/56/3 semantics match the saved `checks.csv`;
+  composition recipe digests and instance identities still agree; embedded provenance equals
+  the sidecar; legacy render still produces `data/` and keeps its existing PDF links.
+- Remaining limits: warnings are explained and linked to saved selection at dataset level;
+  no line-level linkage to the displayed comparison is claimed. Visual, accessibility and
+  independent review remain **NOT REVIEWED** (no browser). No ZIP/export system. G0/G1/R02
+  unchanged; challenge requirements not accepted.
+
+### Follow-up G1-EVIDENCE-01a: report-to-methods quality route and detailed check results
+
+- Anchor unchanged at `fffac88f26893a13fad3a73770a7aad9e4e06455`; candidate still
+  **uncommitted**. Changed in this follow-up: `publish.py`, `report_helpers.R`,
+  `tests/test_composition.py`, `tests/r_composition_smoke.R`, `README.md`, this record.
+  `audience_reports.R` and `methods.qmd` carry only the earlier link-label / HTML-only
+  plumbing.
+- Prior corrections checked: dataset-level relevance wording was already present and is
+  kept; the final-package link validator covered only `report.html` and is now extended to
+  `methods.html`; the artifact manifest explanation now distinguishes the published
+  analysis bundle (all files named by `bundle.json` plus the manifest) from the raw source
+  snapshot. The earlier counting sentence (“one rule applied to one dataset”) was **wrong**
+  and is corrected: `checks.csv` has 853 rows but only 448 distinct (dataset, rule) pairs,
+  with 36 repeated pairs (up to 26 rows for aggregation rules that record one row per
+  compared measure/period). The UI now says “853 recorded check-result rows covering 8
+  distinct rule identifiers and 56 datasets”, explains the repetitions, and does not infer
+  affected-record or affected-finding counts.
+- Shared preparation: `quality_results()` builds one ordered data frame (severity first) from
+  saved `checks.csv`, `selection.csv` and `sources.csv`; `quality_summary_html()` (main
+  report) and `quality_methods_html()` (methods) both derive totals, groups and rows from
+  it, so the two pages cannot drift. The main report keeps a short “What was flagged?”
+  disclosure with the category (Missing values / `value_present`, 3 results across 3
+  datasets), audience-appropriate sentence, the relevance statement, a direct
+  `methods.html#quality-checks` link and “Download exact check results — CSV”. The methods
+  section (`id="quality-checks"`) shows the audience and saved scope, counting definitions,
+  per-rule `<details>` explanations, and all 853 rows with status, check name/ID, dataset
+  label/ID, recorded diagnostic, selection record and established relevance, plus a return
+  link to `report.html#quality-summary`.
+- Controls are progressive enhancement: rows are all present without JavaScript (no
+  server-side truncation or hiding); the script starts the status filter on “Warnings and
+  failures”, provides status/rule selects and dataset search, and updates “Showing N of 853
+  recorded check results”. No network access, no new library. Table has a caption and
+  `scope="col"` headers; the results area is a labelled, focusable scroll region.
+- Downloads: every published artifact is listed with purpose, type, size, digest prefix and
+  a direct `Download …` link (bundle.json marked “not self-digested”); the note states the
+  folder publishes the 9 files named by the manifest plus the manifest, and that the raw
+  source snapshot is not included. Methods quality section adds exact downloads for
+  checks.csv, selection.csv and sources.csv.
+- Real saved warnings (`checks.csv` rows): `value_present` for antibiotic resistance 85.5%
+  missing, wastewater sequencing 100.0% missing, wastewater viral load 52.7% missing. All
+  three datasets are recorded as excluded (`unclassified: not a classified count series` /
+  `surveillance_signal: not a classified count series`). The summary therefore says:
+  “These warnings concern datasets recorded as excluded from this report's selected inputs.
+  Finding-level warning relevance has not been evaluated.”
+- Evidence `~/.local/state/composer-bootstrap/g1-quality-final-20261028T141424` (pinned image,
+  rootless, `--network none`, repo/baseline read-only): `focused.log` 130 passed exit 0;
+  `r-composition-smoke.log` exit 0; `r-dispatch-smoke.log` exit 0;
+  `maintained-suite.log` 483 passed (29.13s) exit 0; `batch.log` exit 0;
+  `quality-verification.log` exit 0 (853 rows per methods page, matching totals on both
+  pages, anchors, 9 artifacts byte-identical, warning details); `structural-verification.log`
+  exit 0; `rendered-r-checks.log` exit 0 for all three. The earlier run
+  `g1-quality-detail-20261028T140009` is superseded by the added audience/scope line and is
+  retained unchanged.
+- Remaining limits: filtering/keyboard interaction was not exercised in a browser — only
+  markup, data and script presence are verified. The methods page is ~1.6 MB because it
+  embeds all 853 rows and resources. Finding-level warning relevance remains unevaluated.
+  No time-trend block was started. G0/G1/R02 and challenge requirements remain unaccepted.
+
+### Follow-up G1-REPRO-01: evidence actions, reproduction layout and inert-search repair
+
+- Anchor unchanged at `fffac88f26893a13fad3a73770a7aad9e4e06455`; candidate committed at the
+  end of this slice. Changed paths: `publish.py`, `report_helpers.R`,
+  `audience_reports.R`, `methods.qmd`, `tests/test_composition.py`,
+  `tests/r_composition_smoke.R`, `README.md`, this record.
+- Demonstrated evidence-link cause: the user's pasted provenance identity (source commit
+  `67816964…`, rendered `2026-10-28T12:43:25+00:00`) matches the earlier
+  `g1-audience-copy-20261028T124210` package, whose folder contains only `report.html`,
+  `methods.html` and `provenance.json`. Every `data/…` target is absent there, while
+  `provenance.json` resolves. The later `g1-quality-final-20261028T141424` and this slice's
+  package contain `data/` with all manifest files; every action resolves from the final
+  folder. This is a stale old folder, not a live defect in the current output; historical
+  packages were not edited.
+- Inert “Filter rows” diagnosis: `interactive_tables_script()` attached a search input and
+  sorting to every `table.report-table`, including the hand-built “Report settings and
+  source files” artifact table in the Reproduction block (and the methods quality table,
+  which already has scoped controls). Table search is now explicit opt-in: `html_table()`
+  emits `data-searchable="true"` and the generic script selects only
+  `table.report-table[data-searchable]`. The settings and quality tables carry no such
+  attribute, so the Reproduction block no longer gets a search control; the methods
+  quality status/rule/dataset controls are unchanged and scoped to `#quality-results-table`.
+- Evidence actions are now explicit and single-instance: “View report provenance — JSON”
+  (`target="_blank"`, labelled as a view), “Download exact audience parameters — JSON”,
+  “Download bundle manifest — JSON”, “Download Metrics — CSV”, “Download Calculation
+  lineage — CSV”, “Open methods and source traceability”. Parameters/manifest/metrics/
+  lineage appear once, in the existing settings/artifact table; the reproduction section
+  links to that panel instead of duplicating raw links. Labels were normalised in
+  `provenance_summary()`; the builds fingerprint and build-time input path are labelled as
+  build-machine facts (“Build-time input location … readers are not expected to have this
+  path locally”).
+- Reproduction content is organised as requested: the code disclosure is titled “Show
+  code: verify saved-file integrity and inspect results”, states that it checks published
+  hashes against the saved manifest, reads saved metrics, does not verify source
+  observations and does not rerun the production analysis, and points to existing
+  environment instructions rather than a new environment manager. “How this report was
+  produced” lists audience/presentation, snapshot, source dates, geography, reporting
+  window, reference year, comparison year, measures, exclusions, commit/dirty state and
+  render timestamp as separate facts.
+- Executable validation: the displayed Python example was extracted from each published
+  `report.html`, run with the pinned image from that report directory, with only its
+  published `data/` as input. All three exited 0, verified every manifest digest, printed
+  the saved group totals and reference changes, and confirmed all manifest files were
+  present (`example-researcher.log`, `example-health_institution.log`,
+  `example-public.log`).
+- Evidence `~/.local/state/composer-bootstrap/g1-repro-final-20261028T200839` (pinned image,
+  rootless, `--network none`, read-only inputs): `batch.log` exit 0;
+  `repro-verification.log` exit 0; `quality-verification.log` exit 0;
+  `structural-verification.log` exit 0; `rendered-r-checks.log` exit 0 for all three;
+  `duplicate-link-check.log` exit 0; `maintained-suite.log` 483 passed (30.62s) exit 0;
+  example logs exit 0. Superseded runs retained unchanged:
+  `g1-quality-final-20261028T141424` (pre-repair), `g1-repro-evidence-20261028T195007`
+  (capitalised labels), and the three timed-out/killed batch attempts
+  `g1-repro-final-20261028T195619`, `…T200053`, `…T200445`.
+- Remaining limits: no browser was available; clicking, tab opening, filtering, keyboard
+  and download behaviour were not exercised — only file/path/markup/script checks and the
+  executed inspection example. No ZIP/export mechanism, no new block, no analysis change.
+  G0/G1/R02 and challenge acceptance remain unchanged.
+
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 

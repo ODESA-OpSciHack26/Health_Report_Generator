@@ -131,8 +131,24 @@ def test_composed_html_suppresses_alternate_format_offer(tmp_path, monkeypatch):
     report = [c for c in commands if "report.qmd" in c][0]
     methods = [c for c in commands if "methods.qmd" in c][0]
     assert ["-M", "format-links:false"] == report[report.index("-M"):report.index("-M") + 2]
-    assert "-M" not in methods
+    assert ["-M", "format-links:false"] == methods[methods.index("-M"):methods.index("-M") + 2]
     assert any(arg.startswith("block_recipe:") for arg in report)
+    assert not any(arg.startswith("block_recipe:") for arg in methods)
+
+
+def test_composed_methods_render_without_pdf_offer(tmp_path, monkeypatch):
+    commands = _capture(tmp_path, monkeypatch, "html",
+                        provenance={"schema": "test"}, composition=RECIPE)
+    methods = [c for c in commands if "methods.qmd" in c][0]
+    assert "html_only:true" in methods
+    report = [c for c in commands if "report.qmd" in c][0]
+    assert "html_only:true" not in report
+
+
+def test_legacy_methods_render_keeps_existing_pdf_link(tmp_path, monkeypatch):
+    commands = _capture(tmp_path, monkeypatch, "html", provenance={"schema": "test"})
+    methods = [c for c in commands if "methods.qmd" in c][0]
+    assert not any(arg.startswith("html_only:") for arg in methods)
 
 
 def test_composed_pdf_is_rejected_before_rendering(tmp_path, monkeypatch):
@@ -378,3 +394,109 @@ def test_batch_success_returns_without_exit(tmp_path, monkeypatch):
         _named_recipe(recipes, audience, order)
     assert publish.main(["batch", "--bundle-root", str(bundle_root), "--recipes", str(recipes),
                          "--output-root", str(tmp_path / "out")]) is None
+
+
+def test_render_publishes_exact_evidence_artifacts(tmp_path, monkeypatch):
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
+    out = tmp_path / "out" / "report.html"
+
+    def fake_package(source, dest):
+        Path(dest).mkdir(parents=True, exist_ok=True)
+
+    def fake_run(command, cwd=None, check=True, env=None):
+        links = ('<a href="data/stakeholder.json" download>params</a>'
+                 '<a href="data/bundle.json" download>manifest</a>'
+                 '<a href="data/metrics.csv" download>metrics</a>')
+        (Path(cwd) / (command[2].replace(".qmd", ".html"))).write_text(f"<html>{links}</html>")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(publish, "package", fake_package)
+    monkeypatch.setattr(publish.subprocess, "run", fake_run)
+    publish.render(bundle["bundle"], out, "html", "quarto",
+                   provenance={"schema": "test"},
+                   provenance_out=out.parent / "provenance.json", composition=RECIPE)
+
+    manifest = json.loads((bundle["bundle"] / "bundle.json").read_text())
+    data = out.parent / "data"
+    for name, expected in manifest["files"].items():
+        assert (data / name).read_bytes() == (bundle["bundle"] / name).read_bytes()
+        assert publish.digest(data / name) == expected
+    assert (data / "bundle.json").is_file()
+    assert publish.validate_published_evidence(out.parent) is True
+
+
+def test_published_evidence_check_rejects_workspace_only_artifact(tmp_path):
+    published = tmp_path / "published"
+    workspace = tmp_path / "workspace"
+    published.mkdir()
+    workspace.mkdir()
+    (published / "report.html").write_text('<a href="data/metrics.csv" download>metrics</a>')
+    (published / "methods.html").write_text("<html></html>")
+    (published / "provenance.json").write_text("{}")
+    (workspace / "metrics.csv").write_text("only in the temporary workspace")
+    with pytest.raises(ValueError, match="unresolved local evidence links"):
+        publish.validate_published_evidence(published)
+    (published / "data").mkdir()
+    (published / "data" / "metrics.csv").write_text("copied")
+    assert publish.validate_published_evidence(published) is True
+
+
+def test_published_evidence_check_ignores_template_literals(tmp_path):
+    published = tmp_path / "published"
+    published.mkdir()
+    (published / "report.html").write_text(
+        '<a href="data/metrics.csv" download>metrics</a>'
+        '<a href="${t}">script template</a><a href="https://example.org/x">external</a>'
+        '<a href="#section">anchor</a>')
+    (published / "methods.html").write_text("<html></html>")
+    (published / "provenance.json").write_text("{}")
+    (published / "data").mkdir()
+    (published / "data" / "metrics.csv").write_text("saved")
+    assert publish.validate_published_evidence(published) is True
+
+
+def test_publish_evidence_copies_every_manifest_file(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "stakeholder.json").write_text("{}")
+    (bundle / "extra_artifact.txt").write_text("saved bytes")
+    files = {name: publish.digest(bundle / name)
+             for name in ("stakeholder.json", "extra_artifact.txt")}
+    (bundle / "bundle.json").write_text(json.dumps({
+        "schema_version": "2.0", "snapshot_id": "x", "files": files}))
+    published = publish.publish_evidence(bundle, tmp_path / "out" / "data")
+    assert set(published) == {"stakeholder.json", "extra_artifact.txt", "bundle.json"}
+    assert (tmp_path / "out" / "data" / "extra_artifact.txt").read_text() == "saved bytes"
+
+
+def test_published_evidence_check_covers_methods_page(tmp_path):
+    published = tmp_path / "published"
+    published.mkdir()
+    (published / "report.html").write_text('<a href="data/metrics.csv" download>metrics</a>')
+    (published / "methods.html").write_text('<a href="data/checks.csv" download>checks</a>')
+    (published / "provenance.json").write_text("{}")
+    (published / "data").mkdir()
+    (published / "data" / "metrics.csv").write_text("saved")
+    with pytest.raises(ValueError, match="methods.html:data/checks.csv"):
+        publish.validate_published_evidence(published)
+    (published / "data" / "checks.csv").write_text("saved")
+    assert publish.validate_published_evidence(published) is True
+
+
+def test_publish_evidence_does_not_invent_absent_artifacts(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "stakeholder.json").write_text("{}")
+    (bundle / "bundle.json").write_text(json.dumps({
+        "schema_version": "2.0", "snapshot_id": "x",
+        "files": {"stakeholder.json": publish.digest(bundle / "stakeholder.json")}}))
+    data = tmp_path / "published" / "data"
+    published = publish.publish_evidence(bundle, data)
+    assert set(published) == {"stakeholder.json", "bundle.json"}
+    assert not (data / "metrics.csv").exists()
+    (tmp_path / "published" / "report.html").write_text(
+        '<a href="data/metrics.csv" download>metrics</a>')
+    (tmp_path / "published" / "methods.html").write_text("<html></html>")
+    (tmp_path / "published" / "provenance.json").write_text("{}")
+    with pytest.raises(ValueError, match="unresolved local evidence links"):
+        publish.validate_published_evidence(tmp_path / "published")

@@ -21,9 +21,11 @@ annual_reproduction_code <- function() paste(c(
 ), collapse="\n")
 
 code_disclosure <- function(code) paste0(
-  '<details class="reproduction-code"><summary>Show code: inspect verified results</summary>',
-  '<p>This executable Python example reads saved results; it is not the production analysis source. ',
-  'Run it from the downloaded report folder with pandas installed.</p>',
+  '<details class="reproduction-code"><summary>Show code: verify saved-file integrity and inspect results</summary>',
+  '<p>This executable Python example checks the published files against the saved bundle manifest, then reads and prints ',
+  'the saved metrics. It does not independently verify the source observations and it does not rerun the production ',
+  'analysis. Run it from the report folder. pandas is required (see the repository environment instructions); that is a ',
+  'convenience, not a pinned environment guarantee.</p>',
   '<pre><code class="language-python">', esc(code), '</code></pre></details>'
 )
 
@@ -383,32 +385,39 @@ quality_sentence <- function(b) {
   }
 }
 
-provenance_summary <- function(b) {
+provenance_summary <- function(b, raw_links=TRUE) {
   pr <- read_provenance()
   row <- function(k, v) paste0('<dt>', esc(k), '</dt><dd>', v, '</dd>')
   p <- presentation_profile(b)
-  items <- c(row('Audience profile', esc(if (startsWith(b$cfg$id, 'custom_') && !is.null(b$cfg$title)) paste0(b$cfg$title, ' (custom request based on ', p$display_name, ', ', p$layout, ', ', p$detail_level, ')') else paste0(b$cfg$id, ' (', p$display_name, ', ', p$layout, ', ', p$detail_level, ')'))),
-             row('Data snapshot', paste0('<code>', esc(b$manifest$snapshot_id), '</code>')))
+  cfg <- b$cfg
+  v <- function(x) if(is.null(x) || !length(x)) 'none' else paste(unlist(x), collapse=', ')
+  items <- c(row('Audience profile', esc(if (startsWith(cfg$id, 'custom_') && !is.null(cfg$title)) paste0(cfg$title, ' (custom request based on ', p$display_name, ', ', p$layout, ', ', p$detail_level, ')') else paste0(cfg$id, ' (', p$display_name, ', ', p$layout, ', ', p$detail_level, ')'))),
+             row('Data snapshot', paste0('<code>', esc(b$manifest$snapshot_id), '</code>')),
+             row('Geography', esc(if(cfg$geography == 'CHFL') 'Switzerland and Liechtenstein' else 'Switzerland')),
+             row('Reporting window', esc(paste(cfg$years, collapse='–'))),
+             row('Reference year', esc(cfg$reference_year)),
+             row('Comparison year', esc(cfg$years[2])),
+             row('Measures', esc(v(cfg$measures_preferred))),
+             row('Excluded from group sums', esc(paste(label_topic(b, cfg$exclude_from_group_totals), collapse=', '))),
+             row('Sensitivity comparison without', esc(paste(label_topic(b, cfg$sensitivity_exclude), collapse=', '))))
   if(!is.null(pr)) {
     rng <- function(x) if(is.null(x)) 'not recorded' else esc(paste(unique(substr(unlist(x), 1, 10)), collapse=' to '))
+    input_location <- if(is.null(pr$data$canonical_root)) pr$data$snapshot_manifest else pr$data$canonical_root
     items <- c(items,
       row('Source', esc(pr$data$publisher)),
       row('Publisher release dates', rng(pr$data$publishing_date_range)),
       row('Downloaded from the API', rng(pr$data$retrieved_at_utc_range)),
-      row('Input root', paste0('<code>', esc(if(is.null(pr$data$canonical_root)) pr$data$snapshot_manifest else pr$data$canonical_root), '</code>')),
-      row('Filters', esc(paste0(pr$filters$geography, ' · ', paste(unlist(pr$filters$years), collapse='–'),
-                                ' vs ', pr$filters$reference_year, ' · measure: ', paste(unlist(pr$filters$measures_preferred), collapse=', '),
-                                ' · excluded from group sums: ', paste(label_topic(b, unlist(pr$filters$exclude_from_group_totals)), collapse=', '),
-                                ' · sensitivity comparison without: ', paste(label_topic(b, unlist(pr$filters$sensitivity_exclude)), collapse=', ')))),
+      row('Build-time input location', paste0('<code>', esc(input_location), '</code><br>',
+        '<span class="table-note">Recorded on the build machine; readers are not expected to have this path locally.</span>')),
       row('Code version', paste0('<code>', esc(if(is.null(pr$code$git_commit)) 'not recorded' else pr$code$git_commit), '</code>',
                                  if(isFALSE(pr$code$git_worktree_clean)) ' (uncommitted changes present)' else '')),
       row('Rendered', esc(pr$rendered_at_utc)))
   }
   paste0('<dl class="provenance-list">', paste(items, collapse=''), '</dl>',
-         '<p><a href="provenance.json" download>Download provenance (JSON)</a> · ',
-         '<a href="data/stakeholder.json" download>Audience parameters</a> · ',
-         '<a href="data/bundle.json" download>Bundle manifest</a> · ',
-         '<a href="methods.html">Methods and source traceability</a></p>',
+         '<p><a href="provenance.json" target="_blank" rel="noopener">View report provenance — JSON</a> · ',
+         if(raw_links) paste0('<a href="data/stakeholder.json" download>Download exact audience parameters — JSON</a> · ',
+                              '<a href="data/bundle.json" download>Download bundle manifest — JSON</a> · ') else '',
+         '<a href="methods.html">Open methods and source traceability</a></p>',
          '<p class="table-note">The same record is embedded in this page as ',
          '<code>&lt;script type="application/json" id="report-provenance"&gt;</code>.</p>')
 }
@@ -494,7 +503,7 @@ audience_extras <- function(b) if(presentation_profile(b)$layout == 'editorial')
 interactive_tables_script <- function() paste0('<script>', "
 (function(){
   function num(t){var x=t.replace(/[,%+\\s]/g,'').replace('\\u2212','-');return x!==''&&!isNaN(x)?parseFloat(x):null;}
-  document.querySelectorAll('table.report-table').forEach(function(tbl,ti){
+  document.querySelectorAll('table.report-table[data-searchable]').forEach(function(tbl,ti){
     var wrap=tbl.parentNode, body=tbl.tBodies[0]; if(!body) return;
     var input=document.createElement('input'); input.type='search'; input.className='table-filter';
     input.placeholder='Filter rows'; input.setAttribute('aria-label','Filter table rows');

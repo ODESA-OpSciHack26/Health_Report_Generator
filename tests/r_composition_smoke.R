@@ -195,12 +195,25 @@ audience_b <- function(layout, detail) list(
   cfg = list(id = layout, title = paste('Title', layout),
              question = 'Which notifiable diseases changed most in 2025?',
              years = c(2021, 2025), reference_year = 2019, geography = 'CHFL',
-             period_type = 'year',
+             period_type = 'year', outputs = c('headline', 'quality', 'sources'),
              presentation = list(display_name = layout, layout = layout,
                                  detail_level = detail, version = '1.0')),
-  manifest = list(snapshot_id = strrep('d', 64)),
+  manifest = list(snapshot_id = strrep('d', 64),
+                  files = c(stakeholder.json = strrep('a', 64), metrics.csv = strrep('b', 64),
+                            lineage.csv = strrep('c', 64))),
   classes = data.frame(topic = 'virus', label = 'Virus', stringsAsFactors = FALSE),
-  checks = data.frame(status = c('PASS', 'PASS', 'WARN', 'SKIP'), stringsAsFactors = FALSE))
+  sources = data.frame(dataset_id = 'ds-virus', topic = 'virus',
+                       source_system = 'mandatory_reporting_system', used = 'True',
+                       stringsAsFactors = FALSE),
+  selection = data.frame(dataset_id = 'ds-virus', topic = 'virus',
+                         source_system = 'mandatory_reporting_system',
+                         status = 'included', reason = '', group_eligible = 'True',
+                         stringsAsFactors = FALSE),
+  checks = data.frame(dataset_id = rep('ds-virus', 4),
+                      check = c('no_duplicate_rows', 'value_present', 'cantons_sum_to_national', 'value_present'),
+                      status = c('PASS', 'WARN', 'SKIP', 'PASS'),
+                      detail = c('0', '12.5% missing', 'Requires 26 cantons', '0% missing'),
+                      stringsAsFactors = FALSE))
 explanation <- function(html) {
   found <- regmatches(html, regexpr('<div class="audience-explanation">.*?</div>', html))
   stopifnot(length(found) == 1L)
@@ -248,6 +261,161 @@ stopifnot(grepl('No operational threshold or recommendation is derived from them
 stopifnot(grepl('cannot prove that the reported counts are complete or accurate', lim_pub, fixed = TRUE))
 stopifnot(grepl('Before this summary was made', lim_pub, fixed = TRUE))
 
+# 12. Shared quality preparation, summary link, methods detail and escaping.
+warning_b <- function(checks, selection_status = 'included') {
+  b <- audience_b('technical', 'full')
+  b$checks <- checks
+  b$sources <- data.frame(dataset_id = c('ds-virus', 'ds-other'),
+                          topic = c('virus', 'other_signal'),
+                          source_system = c('mandatory_reporting_system', 'sentinella_reporting_system'),
+                          used = c('True', 'False'), stringsAsFactors = FALSE)
+  b$selection <- data.frame(dataset_id = c('ds-virus', 'ds-other'),
+                            topic = c('virus', 'other_signal'),
+                            source_system = c('mandatory_reporting_system', 'sentinella_reporting_system'),
+                            status = c(selection_status, 'excluded'),
+                            reason = c('', 'surveillance_signal: not a classified count series'),
+                            group_eligible = c('True', 'False'), stringsAsFactors = FALSE)
+  b
+}
+checks_mixed <- data.frame(
+  dataset_id = c('ds-virus', 'ds-virus', 'ds-virus', 'ds-other', 'ds-other', 'ds-other'),
+  check = c('no_duplicate_rows', 'value_present', 'mystery_rule', 'value_present',
+            'cantons_sum_to_national', 'periods_parseable'),
+  status = c('PASS', 'WARN', 'WARN', 'WARN', 'SKIP', 'PASS'),
+  detail = c('0', '12.5% missing', '<script>alert(1)</script>', '52.7% missing',
+             'Requires 26 cantons', '0'),
+  stringsAsFactors = FALSE)
+b_mixed <- warning_b(checks_mixed)
+summary_html <- quality_summary_html(b_mixed)
+methods_q <- quality_methods_html(b_mixed)
+totals_line <- '6 recorded check-result rows covering 5 distinct rule identifiers and 2 datasets: 2 PASS, 1 SKIP, 3 WARN, 0 FAIL.'
+
+# The same prepared records drive both pages.
+stopifnot(identical(quality_totals(quality_results(b_mixed)),
+                    quality_totals(quality_results(b_mixed))))
+stopifnot(grepl(totals_line, summary_html, fixed = TRUE))
+stopifnot(grepl(totals_line, methods_q, fixed = TRUE))
+stopifnot(grepl('id="quality-summary"', summary_html, fixed = TRUE))
+stopifnot(grepl('href="methods.html#quality-checks"', summary_html, fixed = TRUE))
+stopifnot(grepl('Inspect all checks and detailed warning explanations', summary_html, fixed = TRUE))
+stopifnot(grepl('Download exact check results — CSV', summary_html, fixed = TRUE))
+stopifnot(grepl('<summary>What was flagged?</summary>', summary_html, fixed = TRUE))
+stopifnot(grepl('Missing values', summary_html, fixed = TRUE))
+stopifnot(grepl('Some warnings concern datasets recorded as included, or their selection mapping is unresolved.',
+                summary_html, fixed = TRUE))
+
+stopifnot(grepl('id="quality-checks"', methods_q, fixed = TRUE))
+stopifnot(grepl('Report audience: <strong>technical</strong>', methods_q, fixed = TRUE))
+stopifnot(grepl('Saved scope: Switzerland and Liechtenstein; reporting years 2021–2025; reference year 2019.', methods_q, fixed = TRUE))
+stopifnot(grepl('href="report.html#quality-summary"', methods_q, fixed = TRUE))
+stopifnot(grepl('<caption>All 6 recorded check results', methods_q, fixed = TRUE))
+stopifnot(grepl('Showing all 6 recorded check results', methods_q, fixed = TRUE))
+stopifnot(count_of(methods_q, '<tr data-status=') == 6L)
+stopifnot(grepl('id="quality-status"', methods_q, fixed = TRUE))
+stopifnot(grepl('id="quality-check"', methods_q, fixed = TRUE))
+stopifnot(grepl('id="quality-search"', methods_q, fixed = TRUE))
+stopifnot(grepl('Warnings and failures', methods_q, fixed = TRUE))
+stopifnot(grepl('All results', methods_q, fixed = TRUE))
+stopifnot(grepl('role="region"', methods_q, fixed = TRUE))
+stopifnot(grepl('tabindex="0"', methods_q, fixed = TRUE))
+stopifnot(grepl('scope="col"', methods_q, fixed = TRUE))
+stopifnot(grepl('data/selection.csv', methods_q, fixed = TRUE))
+stopifnot(grepl('data/sources.csv', methods_q, fixed = TRUE))
+stopifnot(grepl('Share of rows with a missing value', methods_q, fixed = TRUE))
+stopifnot(grepl('12.5% missing', methods_q, fixed = TRUE))
+stopifnot(grepl('Unknown check', methods_q, fixed = TRUE))
+stopifnot(grepl('No plain-language explanation is available for this check yet.', methods_q, fixed = TRUE))
+stopifnot(grepl('&lt;script&gt;alert(1)&lt;/script&gt;', methods_q, fixed = TRUE))
+stopifnot(!grepl('<script>alert(1)</script>', methods_q, fixed = TRUE))
+stopifnot(grepl('surveillance_signal: not a classified count series', methods_q, fixed = TRUE))
+stopifnot(grepl('finding-level warning relevance has not been evaluated', methods_q, fixed = TRUE))
+filter_script <- quality_filter_script()
+stopifnot(grepl("getElementById('quality-status')", filter_script, fixed = TRUE))
+stopifnot(grepl("getElementById('quality-results-table')", filter_script, fixed = TRUE))
+stopifnot(grepl("Showing '+shown+' of '+rows.length+' recorded check results", filter_script, fixed = TRUE))
+stopifnot(!grepl('fetch(', filter_script, fixed = TRUE))
+stopifnot(!grepl('data-searchable', methods_q, fixed = TRUE))
+stopifnot(grepl('data-searchable="true"', html_table(data.frame(a = 1)), fixed = TRUE))
+stopifnot(grepl('table.report-table[data-searchable]', interactive_tables_script(), fixed = TRUE))
+
+excluded_only <- checks_mixed[checks_mixed$dataset_id == 'ds-other', ]
+excl_html <- quality_summary_html(warning_b(excluded_only))
+stopifnot(grepl("These warnings concern datasets recorded as excluded from this report's selected inputs. Finding-level warning relevance has not been evaluated.",
+                excl_html, fixed = TRUE))
+
+ambiguous <- warning_b(checks_mixed)
+ambiguous$selection <- rbind(ambiguous$selection[1, ], ambiguous$selection[1, ])
+amb_results <- quality_results(ambiguous)
+stopifnot(any(grepl('Ambiguous selection mapping (2 rows)', amb_results$selection, fixed = TRUE)))
+stopifnot(any(grepl('Relevance not established (ambiguous selection mapping)', amb_results$relevance, fixed = TRUE)))
+
+missing_checks <- data.frame(dataset_id = 'ds-missing', check = 'value_present',
+                             status = 'WARN', detail = '50.0% missing', stringsAsFactors = FALSE)
+miss_results <- quality_results(warning_b(missing_checks))
+stopifnot(identical(miss_results$selection, 'No selection record'))
+stopifnot(identical(miss_results$dataset_label, 'Source metadata not recorded'))
+stopifnot(identical(miss_results$relevance, 'Relevance not established (no selection record)'))
+
+clean <- data.frame(dataset_id = 'ds-virus', check = c('no_duplicate_rows', 'periods_parseable'),
+                    status = c('PASS', 'SKIP'), detail = c('0', 'No complete pair'),
+                    stringsAsFactors = FALSE)
+clean_b <- warning_b(clean)
+clean_summary <- quality_summary_html(clean_b)
+clean_methods <- quality_methods_html(clean_b)
+stopifnot(grepl('No WARN or FAIL results are recorded in this bundle. That is not proof that source counts are complete or accurate.',
+                clean_summary, fixed = TRUE))
+stopifnot(!grepl('no relevant warnings', clean_summary, ignore.case = TRUE))
+stopifnot(grepl('No WARN or FAIL results are recorded in this bundle.', clean_methods, fixed = TRUE))
+stopifnot(!grepl('Detailed warning explanations', clean_methods, fixed = TRUE))
+
+settings_dir <- tempfile('settings-')
+dir.create(settings_dir)
+old_settings <- setwd(settings_dir)
+writeLines('{}', 'stakeholder.json')
+writeLines('value', 'metrics.csv')
+writeLines('id', 'lineage.csv')
+writeLines('{}', 'bundle.json')
+settings <- composed_settings_html(b_tech)
+repro <- composition_registry$reproduction$render(b_tech,
+          list(block = 'reproduction', instance_id = 'reproduction-test'))
+setwd(old_settings)
+stopifnot(grepl('Report settings and source files', settings, fixed = TRUE))
+stopifnot(grepl('Reporting years', settings, fixed = TRUE))
+stopifnot(grepl('2021–2025', settings, fixed = TRUE))
+stopifnot(grepl('Reference year', settings, fixed = TRUE))
+stopifnot(grepl('2019', settings, fixed = TRUE))
+stopifnot(grepl('Switzerland and Liechtenstein', settings, fixed = TRUE))
+stopifnot(grepl('technical · full', settings, fixed = TRUE))
+stopifnot(grepl('aaaaaaaaaaaaaaaa', settings, fixed = TRUE))
+stopifnot(grepl('not composed', settings, fixed = TRUE))
+stopifnot(grepl('publishes 4 files', settings, fixed = TRUE))
+stopifnot(grepl('not self-digested', settings, fixed = TRUE))
+stopifnot(grepl('href="data/stakeholder.json" download', settings, fixed = TRUE))
+stopifnot(grepl('href="data/metrics.csv" download', settings, fixed = TRUE))
+stopifnot(grepl('href="data/bundle.json" download', settings, fixed = TRUE))
+stopifnot(grepl('Download exact audience parameters — JSON', settings, fixed = TRUE))
+stopifnot(grepl('Download bundle manifest — JSON', settings, fixed = TRUE))
+stopifnot(grepl('Download Metrics — CSV', settings, fixed = TRUE))
+stopifnot(grepl('Download Calculation lineage — CSV', settings, fixed = TRUE))
+stopifnot(!grepl('data-searchable', settings, fixed = TRUE))
+stopifnot(grepl('Show code: verify saved-file integrity and inspect results', repro, fixed = TRUE))
+stopifnot(grepl('does not rerun the production analysis', repro, fixed = TRUE))
+stopifnot(grepl('View report provenance — JSON', repro, fixed = TRUE))
+stopifnot(grepl('href="#report-settings"', repro, fixed = TRUE))
+stopifnot(grepl('Open methods and source traceability', repro, fixed = TRUE))
+stopifnot(count_of(repro, 'href="data/metrics.csv"') == 1L)
+provenance_links <- provenance_summary(b_tech)
+stopifnot(grepl('View report provenance — JSON', provenance_links, fixed = TRUE))
+stopifnot(grepl('Download exact audience parameters — JSON', provenance_links, fixed = TRUE))
+stopifnot(grepl('Download bundle manifest — JSON', provenance_links, fixed = TRUE))
+stopifnot(grepl('Open methods and source traceability', provenance_links, fixed = TRUE))
+stopifnot(grepl('href="data/stakeholder.json"', provenance_links, fixed = TRUE))
+stopifnot(grepl('href="data/bundle.json"', provenance_links, fixed = TRUE))
+without_raw <- provenance_summary(b_tech, raw_links = FALSE)
+stopifnot(!grepl('href="data/stakeholder.json"', without_raw, fixed = TRUE))
+stopifnot(!grepl('href="data/bundle.json"', without_raw, fixed = TRUE))
+stopifnot(grepl('View report provenance — JSON', without_raw, fixed = TRUE))
+
 cat('r-composition smoke passed\n')
 
 # Optional rendered-output assertions: pass a produced composed report.html path,
@@ -281,5 +449,27 @@ if (length(args) >= 1L) {
                public = 'do not necessarily mean a matching rise in infections')
   stopifnot(count_of(html, 'class="audience-explanation"') == 2L)
   stopifnot(grepl(phrases[[audience]], html, fixed = TRUE))
+  stopifnot(grepl('What was flagged?', html, fixed = TRUE))
+  stopifnot(grepl('Report settings and source files', html, fixed = TRUE))
+  stopifnot(grepl('Download exact audience parameters — JSON', html, fixed = TRUE))
+  stopifnot(grepl('Download bundle manifest — JSON', html, fixed = TRUE))
+  stopifnot(grepl('Download Metrics — CSV', html, fixed = TRUE))
+  stopifnot(grepl('Download Calculation lineage — CSV', html, fixed = TRUE))
+  stopifnot(grepl('View report provenance — JSON', html, fixed = TRUE))
+  stopifnot(!grepl('data-searchable="true"', html, fixed = TRUE))
+  stopifnot(grepl('data/checks.csv', html, fixed = TRUE))
+  stopifnot(grepl('href="methods.html#quality-checks"', html, fixed = TRUE))
+  methods <- file.path(dirname(report), 'methods.html')
+  stopifnot(file.exists(methods))
+  mhtml <- paste(readLines(methods, warn = FALSE, encoding = 'UTF-8'), collapse = '\n')
+  stopifnot(grepl('id="quality-checks"', mhtml, fixed = TRUE))
+  stopifnot(grepl('href="report.html#quality-summary"', mhtml, fixed = TRUE))
+  stopifnot(grepl('id="quality-results-table"', mhtml, fixed = TRUE))
+  stopifnot(grepl('id="quality-status"', mhtml, fixed = TRUE))
+  stopifnot(grepl('id="quality-check"', mhtml, fixed = TRUE))
+  stopifnot(grepl('id="quality-search"', mhtml, fixed = TRUE))
+  stopifnot(grepl('recorded check-result rows covering', mhtml, fixed = TRUE))
+  stopifnot(grepl('Detailed warning explanations', mhtml, fixed = TRUE))
+  stopifnot(grepl('data/checks.csv', mhtml, fixed = TRUE))
   cat('rendered composition checks passed:', audience, '\n')
 }
