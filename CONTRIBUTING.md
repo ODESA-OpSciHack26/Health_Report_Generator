@@ -1,21 +1,22 @@
 # Contributing
 
-Thank you for improving the Health Report Generator. Changes must preserve reproducibility, scientific traceability, and audience-appropriate communication.
+Thank you for improving the Health Report Generator. Changes must preserve reproducibility, scientific traceability, and audience-appropriate communication. The [mandatory workflow-preservation policy](docs/workflow-preservation-policy.md) applies throughout development and maintenance.
 
 ## Development setup
 
-Follow the root `README.md` for the supported environment and installation commands. Run commands from the repository root.
+Follow the root README.md for supported environment and installation commands. Run commands from the repository root.
 
 ## Before changing code
 
-1. Create a focused branch from the current default branch.
+1. For Track B, create a focused branch from the current integration/steward-ready-v1 tip and PR back into that branch. Do not develop on the frozen Track A reference or promote to main automatically. Other maintenance targets require an explicit maintainer decision.
 2. Record whether the change affects data, scientific policy, calculations, presentation, provenance, or only documentation.
-3. Do not edit generated files under `results/`; regenerate them through Snakemake.
-4. Do not delete or deduplicate source data by filename alone. Compare both data and metadata content, preserve the original snapshot ID, and document every resolution.
+3. Do not edit generated files under results/; regenerate through the applicable documented pipeline.
+4. Do not delete or deduplicate source data by filename alone. Compare data and metadata content, preserve original snapshot identity and document every resolution.
+5. Read the [conflict dispositions](docs/b0-conflict-dispositions.md), [technical workflow](docs/data-workflow.md) and [integration plan](docs/integration-plan.md). Target functionality is not an executable setup instruction.
 
 ## Validation
 
-Run the checks relevant to the change:
+Run checks relevant to the change:
 
 ```sh
 pip install -r scripts/ci/requirements-lint.txt
@@ -35,30 +36,23 @@ Rscript tests/dashboard_smoke.R results/reports/researcher/app
 bash scripts/ci/secret_scan.sh .   # Linux x86_64; downloads pinned gitleaks
 ```
 
-These mirror the CI jobs `fast`, `full` and `secrets`; see `docs/phase-6-ci-hardening.md`.
-
-A complete rendering check requires the pinned R, Quarto, and TinyTeX environment described in the root README.
+CI boundaries are described in [phase 6](docs/phase-6-ci-hardening.md). Complete rendering requires the pinned R, Quarto and TinyTeX environment. Use the [release checklist](docs/release-checklist.md) for candidate-specific fresh-checkout evidence and applicable container/full gates. Report commands not run; do not treat source inspection as runtime/browser acceptance.
 
 ## Change rules
 
-- Keep analysis logic out of presentation templates where possible.
-- Add or update tests when calculations, selection rules, schemas, or provenance change.
+- Keep scientific calculations out of presentation; render saved verified results.
+- Add/update tests for calculations, selection, schemas and provenance.
 - Reject unknown configuration keys rather than silently ignoring them.
-- Preserve explicit `SKIP`, `WARN`, and `FAIL` meanings in validation output.
-- Never convert missing values into zeros unless the scientific policy explicitly defines that transformation.
-- Do not describe descriptive changes as causal effects or statistical significance.
-- Ensure every audience output retains limitations, exclusions, source information, filters, and generation metadata.
-- Update dependency locks deliberately and in the same pull request as dependency declarations.
-- Pin every GitHub Action to a full commit SHA with a version comment; let Dependabot propose updates.
+- Preserve explicit SKIP, WARN and FAIL meanings.
+- Never convert missing to zero unless scientific policy explicitly defines it.
+- Do not describe descriptive changes as causal effects or significance.
+- Every audience retains limitations, exclusions, source, filters and generation metadata.
+- Update dependency locks deliberately with declarations.
+- Pin GitHub Actions to full commit SHAs with version comments.
+- Preserve frozen references, historical evidence, licences and attribution.
 
 ## Pull requests
 
-Keep pull requests small enough to review independently. Include:
+Keep PRs independently reviewable. Include purpose/scope, user-visible and scientific impact, commands/outcomes, known limits and follow-ups. Every PR MUST include the workflow-preservation section required by the policy: affected stages/routes; base/candidate identities; applicable pre/post numerical and provenance checks; compatibility/migration/backout; and unrun checks. Intentional scientific or schema changes require explicit versioned decisions, not weakened tests.
 
-- Purpose and scope.
-- User-visible and scientific impact.
-- Commands executed and their outcomes.
-- Data or provenance changes, including pre/post hashes when applicable.
-- Known limitations and follow-up work.
-
-Structural cleanup, data migration, scientific-policy changes, and report redesign should be separate pull requests whenever possible.
+Documentation-only changes must identify unchanged runtime/data/calculations/dependencies and validate links/status claims. A written policy is not an installed CI gate. Structural cleanup, data migration, scientific-policy changes and report redesign should remain separate PRs where possible. Release/publication remains a separate maintainer decision.
