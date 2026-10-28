@@ -13,9 +13,9 @@ b <- list(cfg = list(title = 'Composed test', years = c(2021, 2025), reference_y
           manifest = list(snapshot_id = strrep('a', 64)),
           classes = data.frame(topic = 'virus', label = 'Virus', stringsAsFactors = FALSE))
 
-write_recipe <- function(blocks) {
+write_recipe <- function(blocks, contract = 'health-report/composition-recipe/1') {
   path <- tempfile(fileext = '.json')
-  writeLines(toJSON(list(contract = 'health-report/composition-recipe/1', audience = 'test',
+  writeLines(toJSON(list(contract = contract, audience = 'test',
                          blocks = blocks), auto_unbox = TRUE), path)
   path
 }
@@ -62,6 +62,14 @@ html_b <- compose_report_html(b, reversed, registry = registry)
 stopifnot(identical(section_ids(html_b), c('i-beta', 'i-alpha')))
 stopifnot(identical(nav_targets(html_b), c('i-beta', 'i-alpha')))
 stopifnot(identical(sort(section_ids(html_a)), sort(section_ids(html_b))))
+
+# 2b. v2 recipes compose the same way; the topic is a binding field, not renderer input.
+v2_recipe <- write_recipe(list(list(block = 'alpha', instance_id = 'i-alpha',
+                                    topic = 'virus'),
+                               list(block = 'beta', instance_id = 'i-beta')),
+                          contract = 'health-report/composition-recipe/2')
+html_v2 <- compose_report_html(b, v2_recipe, registry = registry)
+stopifnot(identical(section_ids(html_v2), c('i-alpha', 'i-beta')))
 
 # 3. Repeated stateless blocks are safe with distinct instance ids.
 repeated <- write_recipe(list(list(block = 'alpha', instance_id = 'i-one'),
@@ -405,6 +413,9 @@ stopifnot(grepl('href="#report-settings"', repro, fixed = TRUE))
 stopifnot(grepl('Open methods and source traceability', repro, fixed = TRUE))
 stopifnot(count_of(repro, 'href="data/metrics.csv"') == 1L)
 provenance_links <- provenance_summary(b_tech)
+stopifnot(grepl('Included topics', provenance_links, fixed = TRUE))
+stopifnot(grepl('not restricted (all eligible topics)', provenance_links, fixed = TRUE))
+stopifnot(grepl('Excluded topics', provenance_links, fixed = TRUE))
 stopifnot(grepl('View report provenance — JSON', provenance_links, fixed = TRUE))
 stopifnot(grepl('Download exact audience parameters — JSON', provenance_links, fixed = TRUE))
 stopifnot(grepl('Download bundle manifest — JSON', provenance_links, fixed = TRUE))
@@ -415,6 +426,12 @@ without_raw <- provenance_summary(b_tech, raw_links = FALSE)
 stopifnot(!grepl('href="data/stakeholder.json"', without_raw, fixed = TRUE))
 stopifnot(!grepl('href="data/bundle.json"', without_raw, fixed = TRUE))
 stopifnot(grepl('View report provenance — JSON', without_raw, fixed = TRUE))
+b_scoped <- b_tech
+b_scoped$cfg$include_topics <- c('virus', 'bacterium')
+b_scoped$cfg$exclude_topics <- c('other_signal')
+scoped_links <- provenance_summary(b_scoped)
+stopifnot(grepl('virus, bacterium', scoped_links, fixed = TRUE))
+stopifnot(grepl('other_signal', scoped_links, fixed = TRUE))
 
 cat('r-composition smoke passed\n')
 

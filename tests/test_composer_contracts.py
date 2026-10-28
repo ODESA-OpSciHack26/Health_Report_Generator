@@ -881,3 +881,53 @@ def test_multiple_monthly_raw_rows_with_zero_fraction_rows_stay_valid(tmp_path):
     _write_csv(lineage, header, rows)
     _refresh_manifest(bundle["bundle"])
     assert findings(bundle) == ()
+
+
+# ---------------------------------------------------------------------------
+# Optional report-level topic scope
+# ---------------------------------------------------------------------------
+
+def test_optional_topic_scope_present_changes_analytical_identity(tmp_path):
+    base = check(build_bundle(tmp_path / "base")).identities["analytical"]
+    bundle = build_bundle(tmp_path / "scoped", stakeholder_overrides={"include_topics": ["virus"]})
+    instance_doc, evidence_doc = block_documents(
+        bundle, patch_instance=lambda d: d["analysis"]["scope"].update(include_topics=["virus"]))
+    resolved = cc.resolve_instance(instance_doc, evidence_doc)
+    assert resolved.identities["analytical"] != base
+
+
+def test_omitted_topic_scope_is_not_an_empty_inclusion_list(tmp_path):
+    base = check(build_bundle(tmp_path / "base")).identities["analytical"]
+    bundle = build_bundle(tmp_path / "empty", stakeholder_overrides={"include_topics": []})
+    instance_doc, evidence_doc = block_documents(
+        bundle, patch_instance=lambda d: d["analysis"]["scope"].update(include_topics=[]))
+    resolved = cc.resolve_instance(instance_doc, evidence_doc)
+    loaded = cc.load_bundle(bundle["bundle"])
+    assert cc.verify_references(resolved, loaded, project_root=ROOT) == ()
+    assert resolved.identities["analytical"] != base
+
+
+def test_topic_scope_order_does_not_change_identity(tmp_path):
+    first = build_bundle(tmp_path / "first", stakeholder_overrides={"include_topics": ["virus", "bacterium"]})
+    second = build_bundle(tmp_path / "second", stakeholder_overrides={"include_topics": ["bacterium", "virus"]})
+    doc_a, ev_a = block_documents(
+        first, patch_instance=lambda d: d["analysis"]["scope"].update(include_topics=["bacterium", "virus"]))
+    doc_b, ev_b = block_documents(
+        second, patch_instance=lambda d: d["analysis"]["scope"].update(include_topics=["virus", "bacterium"]))
+    res_a = cc.resolve_instance(doc_a, ev_a)
+    res_b = cc.resolve_instance(doc_b, ev_b)
+    assert res_a.identities["analytical"] == res_b.identities["analytical"]
+    assert cc.verify_references(res_a, cc.load_bundle(first["bundle"]), project_root=ROOT) == ()
+
+
+def test_optional_scope_omission_mismatch_both_directions(tmp_path):
+    # Saved settings restrict scope, instance omits it.
+    restricted = build_bundle(tmp_path / "restricted", stakeholder_overrides={"include_topics": ["virus"]})
+    assert "scope_disagreement" in codes(findings(restricted))
+    # Instance restricts scope, saved settings omit it.
+    plain = build_bundle(tmp_path / "plain")
+
+    def add_scope(instance_doc):
+        instance_doc["analysis"]["scope"]["include_topics"] = ["virus"]
+
+    assert "scope_disagreement" in codes(findings(plain, patch_instance=add_scope))

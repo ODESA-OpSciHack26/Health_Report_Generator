@@ -839,7 +839,7 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
     stop('Composition recipe is missing: ', recipe_path)
   recipe <- tryCatch(jsonlite::fromJSON(recipe_path, simplifyVector=FALSE),
                      error=function(e) stop('Composition recipe is not valid JSON: ', conditionMessage(e)))
-  if(!identical(recipe$contract, 'health-report/composition-recipe/1'))
+  if(!recipe$contract %in% c('health-report/composition-recipe/1','health-report/composition-recipe/2'))
     stop('Unsupported composition contract: ', paste(recipe$contract, collapse=''))
   blocks <- recipe$blocks
   if(!is.list(blocks) || !length(blocks)) stop('Composition recipe needs a non-empty blocks list')

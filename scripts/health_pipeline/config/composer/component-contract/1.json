@@ -65,6 +65,14 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "include_topics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude_topics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "sensitivity_exclude": {
           "type": "array",
           "items": { "type": "string" }

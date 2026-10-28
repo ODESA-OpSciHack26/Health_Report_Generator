@@ -399,7 +399,9 @@ provenance_summary <- function(b, raw_links=TRUE) {
              row('Comparison year', esc(cfg$years[2])),
              row('Measures', esc(v(cfg$measures_preferred))),
              row('Excluded from group sums', esc(paste(label_topic(b, cfg$exclude_from_group_totals), collapse=', '))),
-             row('Sensitivity comparison without', esc(paste(label_topic(b, cfg$sensitivity_exclude), collapse=', '))))
+             row('Sensitivity comparison without', esc(paste(label_topic(b, cfg$sensitivity_exclude), collapse=', '))),
+             row('Included topics', esc(if('include_topics' %in% names(cfg)) paste(unlist(cfg$include_topics), collapse=', ') else 'not restricted (all eligible topics)')),
+             row('Excluded topics', esc(if(length(cfg$exclude_topics)) paste(unlist(cfg$exclude_topics), collapse=', ') else 'none')))
   if(!is.null(pr)) {
     rng <- function(x) if(is.null(x)) 'not recorded' else esc(paste(unique(substr(unlist(x), 1, 10)), collapse=' to '))
     input_location <- if(is.null(pr$data$canonical_root)) pr$data$snapshot_manifest else pr$data$canonical_root

@@ -50,6 +50,12 @@ Canonical audience folders also hold methods.html, PDFs, provenance.json (embedd
 
 For existing canonical IDD audiences, copy a stakeholder file in scripts/health_pipeline/config/stakeholders/, change its validated communication settings and list its ID in workflow/config.yaml. No audience-specific QMD is needed. Standard release audiences retain matching analytical scope. This is not a claim that a dynamic generic registry, composer or arbitrary new method is shipped.
 
+## Report scope and block binding (experimental)
+
+Stakeholder settings accept two optional arrays: `include_topics` (if present, only those topic identifiers are candidates; must be non-empty and valid) and `exclude_topics` (removes topics from the analytical selection). Omitted fields preserve the existing eligibility policy; the two lists may not overlap. Topic identifiers are validated against `scripts/health_pipeline/config/pathogen_class.csv`, and every dataset keeps an explicit selection reason. `exclude_from_group_totals`, `sensitivity_exclude` and `classes_in_main_comparison` keep their separate meanings.
+
+Changing this scope is an analysis change: regenerate the bundle through the canonical workflow (for example `snakemake --cores 2` or `analyse.py` against a validated harmonised output). Rendering a retained bundle only changes presentation. Composed recipes use `health-report/composition-recipe/2`, where `reference-comparison` requires an explicit `topic` bound to a saved included topic; contract v1 remains readable with its historical deterministic binding.
+
 ## Composed audience reports (experimental, HTML-only)
 
 One command composes all three audience reports from their own retained analysis bundles and audience recipes:

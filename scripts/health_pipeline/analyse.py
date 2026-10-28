@@ -10,7 +10,7 @@ SECTIONS = ['headline','group_index','group_totals','small_multiples','change_ta
 FIELDS = {'id','title','question','needs_roles','period_type','years','reference_year','geography',
           'measures_preferred','compare_by','classes_in_main_comparison','exclude_from_group_totals',
           'outputs','index_base_year','sensitivity_exclude','source_priority','group_source_systems',
-          'dimension_filters','exclusion_notes','presentation'}
+          'dimension_filters','exclusion_notes','presentation','include_topics','exclude_topics'}
 LINEAGE_COLUMNS = ['metric_id','input_kind','input_id','source_file','source_row','source_column','sha256','metadata_sha256']
 
 
@@ -47,16 +47,38 @@ def load_config(path):
     if len(set(c['source_priority'])) != len(c['source_priority']): raise ValueError('Duplicate source priority')
     for topic, rule in c.get('dimension_filters', {}).items():
         if not rule.get('reason') or not rule.get('values'): raise ValueError(f'Filter needs values and rationale: {topic}')
+    include = c.get('include_topics')
+    exclude = c.get('exclude_topics')
+    for name, values in (('include_topics', include), ('exclude_topics', exclude)):
+        if values is None: continue
+        if name == 'include_topics' and not values:
+            raise ValueError('include_topics must be non-empty when present')
+        if len(values) != len(set(values)):
+            raise ValueError(f'Duplicate topic in {name}')
+        if any(not isinstance(v, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', v) for v in values):
+            raise ValueError(f'Invalid topic identifier in {name}')
+    if include is not None and exclude:
+        overlap = sorted(set(include) & set(exclude))
+        if overlap:
+            raise ValueError(f'Contradictory topic scope: present in both include_topics and exclude_topics: {overlap}')
     return c
 
 
 def select_series(d, cfg, classes):
     years = sorted(set(range(cfg['years'][0],cfg['years'][1]+1)) | {cfg['reference_year'],cfg['index_base_year']})
+    include = set(cfg['include_topics']) if 'include_topics' in cfg else None
+    exclude = set(cfg.get('exclude_topics') or [])
     candidates, decisions = [], []
     def reject(ds, topic, source, reason):
         decisions.append(dict(dataset_id=ds, topic=topic, source_system=source, status='excluded', reason=reason))
     for ds,g in d.groupby('dataset_id', sort=True):
         topic,source=g.topic.iloc[0],g.source_system.iloc[0]
+        # Explicit report scope is decided before completeness so every dataset keeps a
+        # recorded decision instead of disappearing silently.
+        if topic in exclude:
+            reject(ds,topic,source,'Excluded by exclude_topics report scope'); continue
+        if include is not None and topic not in include:
+            reject(ds,topic,source,'Not in include_topics report scope'); continue
         cls=classes.get(topic,{}).get('pathogen_class','unclassified')
         if cls not in ['viral','bacterial','syndromic']:
             reject(ds,topic,source,f'{cls}: not a classified count series'); continue
@@ -123,9 +145,28 @@ def analyse(out, stakeholder, classes_file, dest):
     if ct.topic.duplicated().any(): raise ValueError('Duplicate pathogen classifications')
     if not set(ct.pathogen_class) <= {'viral','bacterial','syndromic','surveillance_signal'}: raise ValueError('Invalid pathogen class')
     classes=ct.set_index('topic').to_dict('index')
+    include_topics=list(cfg['include_topics']) if 'include_topics' in cfg else []
+    exclude_topics=list(cfg.get('exclude_topics') or [])
+    unknown_topics=sorted((set(include_topics)|set(exclude_topics))-set(ct.topic))
+    if unknown_topics:
+        raise ValueError(f'Topic(s) not in supported topic catalogue (pathogen_class.csv): {unknown_topics}')
     used,selection=select_series(pd.read_parquet(out/'harmonised.parquet'),cfg,classes)
     selection.to_csv(dest/'selection.csv',index=False)
-    if not used: raise ValueError('No complete series eligible')
+    if 'include_topics' in cfg:
+        requested=set(include_topics); fulfilled={u['topic'] for u in used}
+        missing=sorted(requested-fulfilled)
+        if missing:
+            details=[]
+            for topic in missing:
+                rows=selection[(selection.topic==topic)&(selection.status=='excluded')]
+                if rows.empty:
+                    details.append(f'{topic}: no input dataset in this snapshot')
+                else:
+                    details.append(f"{topic}: {'; '.join(sorted(set(rows.reason.astype(str))))}")
+            raise ValueError('Requested include_topics not fulfilled: '+ ' | '.join(details))
+    if not used:
+        scope=f"include_topics={include_topics if include_topics else 'omitted'}, exclude_topics={exclude_topics}"
+        raise ValueError(f'No complete series eligible after report scope ({scope})')
     metrics=[]; lineage=[]; series=[]; values={}
     def metric(mid,typ,subject,year,unit,value,formula='raw_sum',inputs=None):
         inputs=inputs or []
@@ -161,7 +202,8 @@ def analyse(out, stakeholder, classes_file, dest):
         for variant,drop in [('main',set(cfg['exclude_from_group_totals'])),('sensitivity',set(cfg['exclude_from_group_totals'])|set(cfg['sensitivity_exclude']))]:
             members=[u['topic'] for u in used if u['cls']==cls and u['topic'] not in drop and u['source_system'] in cfg['group_source_systems'] and u['measure']=='cases']
             if not members:
-                raise ValueError(f'No eligible members for {cls}/{variant}')
+                scope=f"include_topics={include_topics if include_topics else 'omitted'}, exclude_topics={exclude_topics}"
+                raise ValueError(f'No eligible members for {cls}/{variant} after report scope ({scope}); adjust topic scope or classes_in_main_comparison')
             subject=f'{cls}:{variant}'
             for year in years:
                 ids=[f'{t}:{year}:count' for t in members]

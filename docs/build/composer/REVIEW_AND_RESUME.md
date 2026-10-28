@@ -647,6 +647,92 @@ docker --context rootless run --rm --pull never --user 0:0 \
   executed inspection example. No ZIP/export mechanism, no new block, no analysis change.
   G0/G1/R02 and challenge acceptance remain unchanged.
 
+### Candidate entry G1-SCOPE-01: explicit report scope and recipe v2 topic binding
+
+- Anchor `459e6c7947a014348cfdab48ca124934cc6c7fc2`; candidate is **uncommitted**. Paths:
+  `workflow/config.schema.json`, `scripts/health_pipeline/analyse.py`,
+  `scripts/health_pipeline/composer_contracts.py`, `scripts/health_pipeline/publish.py`,
+  `scripts/health_pipeline/config/composer/component-contract/1.json`,
+  `config/composer/compositions/{researcher,health_institution,public}.json`,
+  `templates/report_helpers.R`, `templates/audience_reports.R`,
+  `tests/{test_pipeline,test_composition,test_composer_contracts}.py`,
+  `tests/r_composition_smoke.R`, `README.md`, this record. No Snakefile, verifier,
+  scientific-formula, series-contract, block-type or dependency change.
+- Scope semantics implemented: optional `include_topics` (non-empty, unique, valid ids) and
+  `exclude_topics` (unique, valid ids; default none). Omission keeps the historical eligible
+  policy; lists may not overlap; unknown ids fail. Scope is applied before completeness so
+  every dataset keeps a recorded decision: 49 of 56 rows in the narrowed run carry
+  “Not in include_topics report scope”. `exclude_from_group_totals`, `sensitivity_exclude`
+  and `classes_in_main_comparison` are untouched.
+- Supported-topic boundary: `scripts/health_pipeline/config/pathogen_class.csv` is the
+  catalogue. Identifiers absent from it are “not in supported topic catalogue”, not
+  “nonexistent”; a catalogue topic with no snapshot dataset reports “no input dataset in this
+  snapshot”; eligible-catalogue topics rejected by completeness/source rules keep their
+  reasons; explicit configuration exclusions read “Excluded by exclude_topics report scope”.
+  `include_topics` requests must all be fulfilled — otherwise analysis fails listing each
+  missing topic and its recorded reason (no implicit partial success).
+- Periods/completeness unchanged: the reporting window stays contiguous and annual;
+  `reference_year` and `index_base_year` are still unioned into required source years
+  (2022–2024 with defaults requires 2019). Empty required class/variant groups fail with the
+  class, variant and scope in the message; no synthetic zeros.
+- Identity: optional topic scope is hashed only when present; mandatory historical scope is
+  unchanged. Topic list order is canonicalised (sorted) for identity and verification.
+  Omission versus an empty include list produces different identities; omission on one side
+  and a value on the other is a `scope_disagreement`, both directions covered by tests.
+- Recipe v2 (`health-report/composition-recipe/2`) requires `topic` for
+  `reference-comparison`; v1 remains readable and records `binding:"deterministic"`.
+  Explicit bindings validate against saved `selection.csv`, use the saved result metric and
+  its `inputs_json` count metrics, and never fall back. Provenance records `topic`,
+  `binding:"explicit"`, checked instance id/status/identity; rendered subject equals the
+  bound and checked subject. A failed explicit binding renders the honest unavailable panel
+  and then fails the report/batch with a nonzero exit. Repeated reference blocks remain
+  rejected. The three audience recipes now use v2 with `campylobacteriosis`, preserving
+  instance ids, order and values.
+- Real narrowed analysis (unchanged baseline, pinned image, `--out /baseline`), exact
+  executed command:
+  `docker --context rootless run --rm --pull never --user 0:0 --network none
+  --cpus 2 --memory 4g --memory-swap 5g --pids-limit 512 -e PYTHONDONTWRITEBYTECODE=1
+  -v /home/builder/composer-sandbox:/app:ro
+  -v /home/builder/.local/state/composer-bootstrap/baseline-lJXSvvGc/output:/baseline:ro
+  -v /home/builder/.local/state/composer-bootstrap/g1-scope-20261028T213031:/evidence:rw
+  -w /app sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8
+  python scripts/health_pipeline/analyse.py --out /baseline
+  --stakeholder /evidence/narrowed-config.json
+  --classes /app/scripts/health_pipeline/config/pathogen_class.csv
+  --dest /evidence/narrowed/reports/researcher/data`
+  Exit 0. Requested `include_topics` = aids, campylobacteriosis, ehec, gonorrhea,
+  hepatitis_a, hepatitis_b, shigellosis (7 included at disease level); 49 of 56 selection
+  rows excluded with “Not in include_topics report scope”; series years 2019, 2021–2025.
+  The four required groups are retained precisely as: `viral:main` and `viral:sensitivity`
+  (members hepatitis_a, hepatitis_b; aids is included at disease level but excluded from
+  group sums), and `bacterial:main` and `bacterial:sensitivity` (members
+  campylobacteriosis, ehec, gonorrhea, shigellosis) — six diseases in the group sums.
+  A rejected config excluding all viral topics exited 1 with “No eligible members for
+  viral/main after report scope (include_topics=omitted, exclude_topics=[aids, covid19,
+  hepatitis_a, hepatitis_b, hepatitis_c, hepatitis_e, hiv, influenza]); adjust topic scope
+  or classes_in_main_comparison”.
+- Evidence distinction: the narrowed-analysis **bundle** and its analysis evidence remain
+  `~/.local/state/composer-bootstrap/g1-scope-20261028T213031/narrowed/reports/researcher/data`
+  with `narrowed-analyse.log`, `rejected-analyse.log` and the demonstration configs; its
+  first render (pre-visible-scope-rows) is superseded. The current render of that unchanged
+  bundle is `g1-scope-final-20261028T214645/narrowed/report.html` (+ methods, provenance,
+  data), where `narrowed-render.log`, verification and link logs are exit 0. The
+  `g1-scope-batch-20261028T213858` batch is superseded by
+  `g1-scope-final-20261028T214645/batch`; both older directories are retained unchanged.
+  Final batch logs: `batch.log` exit 0, structural/quality/repro verification exit 0,
+  three executed example logs exit 0, maintained suite 507 passed (31.52s) exit 0.
+- **Scoped user review (narrowed methods output, accepted):** the user confirmed the
+  six-disease group comparison is correct — seven topics are included in disease-level
+  analysis while AIDS is excluded from group sums — and that the visible selection
+  explanation distinguishes those meanings; reporting years 2021–2025 and reference year
+  2019 are clearly separated. This is scoped user review of the inspected narrowed methods
+  output only: it is not comprehensive browser/accessibility review, not a visual/layout
+  acceptance and not scientific acceptance. G0/G1/R02 remain open.
+- Remaining limits: canonical stakeholder configs keep the omitted-scope default; the
+  narrowed run is a separate demonstration config. No per-block measure/period range, no
+  time-trend block (Gate B2 not authorized), no browser/visual validation. G0/G1/R02 and
+  challenge acceptance unchanged.
+
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 

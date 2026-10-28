@@ -1,8 +1,8 @@
 {
-  "contract": "health-report/composition-recipe/1",
+  "contract": "health-report/composition-recipe/2",
   "audience": "health_institution",
   "blocks": [
-    { "block": "reference-comparison", "instance_id": "hi-reference-0001" },
+    { "block": "reference-comparison", "instance_id": "hi-reference-0001", "topic": "campylobacteriosis" },
     { "block": "intro", "instance_id": "hi-intro-0001" },
     { "block": "limitations", "instance_id": "hi-limitations-0001" },
     { "block": "reproduction", "instance_id": "hi-reproduction-0001" }

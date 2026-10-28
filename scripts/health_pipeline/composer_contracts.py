@@ -68,6 +68,25 @@ SCOPE_FIELDS = (
     "dimension_filters",
 )
 
+# Optional report-scope fields. They are hashed only when present so historical bundles
+# keep their original analytical identity. Topic-list order is not significant.
+TOPIC_SCOPE_FIELDS = ("include_topics", "exclude_topics")
+
+
+def canonical_scope(field, value):
+    if field in TOPIC_SCOPE_FIELDS and isinstance(value, list):
+        return sorted(value)
+    return value
+
+
+def scope_of(stakeholder: dict) -> dict:
+    """Mandatory historical scope plus any explicitly recorded topic scope."""
+    scope = {field: stakeholder[field] for field in SCOPE_FIELDS}
+    for field in TOPIC_SCOPE_FIELDS:
+        if field in stakeholder:
+            scope[field] = stakeholder[field]
+    return scope
+
 COMPONENT_DEFAULTS = {
     "presentation": {"digits": 0},
     "disclosure": {"initial": "collapsed"},
@@ -320,11 +339,13 @@ def _value_token(value):
 def analytical_identity(instance: dict, evidence: dict) -> str:
     """Snapshot + validated analytical scope + method/version + resolved parameters."""
     scope = instance["analysis"]["scope"]
+    fields = [field for field in SCOPE_FIELDS if field in scope]
+    fields += [field for field in TOPIC_SCOPE_FIELDS if field in scope]
     return _identity(
         "analytical/1",
         {
             "snapshot_id": instance["analysis"]["snapshot_id"],
-            "scope": {field: scope[field] for field in SCOPE_FIELDS},
+            "scope": {field: canonical_scope(field, scope[field]) for field in fields},
             "method": {
                 "id": evidence["calculation"]["method_id"],
                 "version": evidence["calculation"]["method_version"],
@@ -751,6 +772,17 @@ def verify_references(resolved: ResolvedInstance, bundle: BundleEvidence, *, pro
                 f"contract value {scope[field]!r} differs from saved setting {bundle.stakeholder[field]!r}",
             )
 
+    # Optional topic scope must agree in both directions: absence on one side must not
+    # bypass an explicit restriction on the other.
+    for field in TOPIC_SCOPE_FIELDS:
+        in_scope, in_bundle = field in scope, field in bundle.stakeholder
+        if in_scope != in_bundle:
+            add("scope_disagreement", f"scope.{field}",
+                "topic scope is recorded in only one of the instance and the saved settings")
+        elif in_scope and canonical_scope(field, scope[field]) != canonical_scope(field, bundle.stakeholder[field]):
+            add("scope_disagreement", f"scope.{field}",
+                "recorded topic scope differs from the saved settings")
+
     if instance["analysis"]["snapshot_id"] != bundle.snapshot.get("snapshot_id"):
         add("snapshot_disagreement", "analysis.snapshot_id", "contract snapshot id differs from the saved snapshot")
     declared_snapshot = evidence["reproduction"].get("snapshot_id")
@@ -1023,7 +1055,9 @@ __all__ = [
     "ResolvedComposition",
     "ResolvedInstance",
     "SCOPE_FIELDS",
+    "TOPIC_SCOPE_FIELDS",
     "analytical_identity",
+    "canonical_scope",
     "check_block",
     "composition_identity",
     "contract_schema",
@@ -1033,6 +1067,7 @@ __all__ = [
     "resolve_composition",
     "resolve_instance",
     "result_identity",
+    "scope_of",
     "validate_composition",
     "validate_evidence",
     "validate_instance",

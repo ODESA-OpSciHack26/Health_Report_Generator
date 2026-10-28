@@ -18,7 +18,7 @@ TEMPLATE='report_shared.qmd'
 PROVENANCE_SCHEMA='health-report-provenance/1.0'
 FILTER_KEYS=['period_type','years','reference_year','index_base_year','geography','measures_preferred','compare_by',
              'classes_in_main_comparison','exclude_from_group_totals','sensitivity_exclude','source_priority',
-             'group_source_systems','dimension_filters','needs_roles']
+             'group_source_systems','dimension_filters','needs_roles','include_topics','exclude_topics']
 
 def verify_bundle(bundle):
     bundle=Path(bundle); m=json.loads((bundle/'bundle.json').read_text())
@@ -194,22 +194,56 @@ def _select_block_subject(bundle):
     choices.sort(key=lambda item:item[0])
     return choices[0] if choices else None
 
-def build_block(bundle,results_root,project_root,instance_id='block-reference-comparison'):
+def _select_topic_subject(bundle,topic):
+    """Resolve one explicitly requested topic from saved bundle records only.
+
+    No fallback to another topic: missing, excluded or ambiguous saved records raise a
+    contract error with the recorded selection reasons.
+    """
+    import composer_contracts as contracts
+    metrics=_csv_rows(bundle/'metrics.csv'); selection=_csv_rows(bundle/'selection.csv')
+    included=[s for s in selection if s.get('topic')==topic and s.get('status')=='included']
+    if not included:
+        reasons=sorted({s.get('reason') or '' for s in selection if s.get('topic')==topic and s.get('reason')})
+        detail='; '.join(reasons) if reasons else 'no input dataset in this snapshot'
+        raise contracts.ContractError('selection', f'topic {topic!r} is not included in this saved bundle: {detail}')
+    matches=[r for r in metrics if r.get('metric_type')=='reference_change' and r.get('subject')==topic]
+    if not matches:
+        raise contracts.ContractError('selection', f'topic {topic!r} has no saved reference_change result')
+    if len(matches)>1:
+        raise contracts.ContractError('selection', f'topic {topic!r} has {len(matches)} saved reference_change results')
+    result=matches[0]; result_id=result['metric_id']
+    by_metric={row.get('metric_id'):row for row in metrics if row.get('metric_id')}
+    try: inputs=json.loads(result.get('inputs_json') or '[]')
+    except ValueError: raise contracts.ContractError('bindings', f'{result_id} has unparsable inputs')
+    if len(inputs)!=2 or any(i not in by_metric for i in inputs):
+        raise contracts.ContractError('bindings', f'{result_id} does not bind two saved count metrics')
+    for mid in inputs:
+        row=by_metric[mid]
+        if row.get('metric_type')!='count' or row.get('subject')!=topic:
+            raise contracts.ContractError('bindings', f'{result_id} input {mid} is not a {topic} count')
+    reference_id,latest_id=inputs
+    try: value=float(result.get('value') or '')
+    except ValueError: raise contracts.ContractError('results', f'{result_id} has no saved numeric value')
+    return topic,result_id,reference_id,latest_id,value
+
+def build_block(bundle,results_root,project_root,instance_id='block-reference-comparison',topic=None):
     """Resolve one reference-comparison block from saved bundle records only.
 
     No percentage is recalculated: the saved metric value, count bindings and lineage
     strings are carried through. A contract failure returns an explicit failed record
-    instead of a plausible-looking block.
+    instead of a plausible-looking block. An explicit topic never falls back to another
+    topic.
     """
     import composer_contracts as contracts
     bundle=Path(bundle); results_root=Path(results_root)
     try:
-        selected=_select_block_subject(bundle)
+        selected=_select_topic_subject(bundle,topic) if topic is not None else _select_block_subject(bundle)
         if selected is None:
             raise contracts.ContractError('selection','no eligible disease-level reference_change metric')
         subject,result_id,reference_id,latest_id,value=selected
         loaded=contracts.load_bundle(bundle)
-        scope={key:loaded.stakeholder[key] for key in contracts.SCOPE_FIELDS}
+        scope=contracts.scope_of(loaded.stakeholder)
         parameters={'reference_year':scope['reference_year'],'latest_year':scope['years'][1],
                     'measure':loaded.metrics[reference_id]['unit']}
         instance={'contract':contracts.INSTANCE_CONTRACT,'instance_id':instance_id,
@@ -261,25 +295,41 @@ def build_block(bundle,results_root,project_root,instance_id='block-reference-co
 
 KNOWN_BLOCKS = ('intro','reference-comparison','limitations','reproduction')
 COMPOSITION_CONTRACT = 'health-report/composition-recipe/1'
+COMPOSITION_CONTRACT_V2 = 'health-report/composition-recipe/2'
+TOPIC_ID = re.compile(r'[a-z0-9][a-z0-9_-]*')
 
 def load_composition(path):
-    """Validate a block recipe. Order and membership are data, not renderer code."""
+    """Validate a block recipe. Order and membership are data, not renderer code.
+
+    v1 keeps the historical deterministic reference binding. v2 requires an explicit
+    topic for reference-comparison and rejects any other extra per-block options.
+    """
     recipe = json.loads(Path(path).read_text(encoding='utf-8'))
     if not isinstance(recipe, dict): raise ValueError('Composition recipe must be an object')
     unknown = set(recipe) - {'contract','audience','blocks'}
     if unknown: raise ValueError(f'Unsupported composition fields: {sorted(unknown)}')
-    if recipe.get('contract') != COMPOSITION_CONTRACT:
-        raise ValueError(f'Unsupported composition contract: {recipe.get("contract")!r}')
+    contract = recipe.get('contract')
+    if contract not in (COMPOSITION_CONTRACT, COMPOSITION_CONTRACT_V2):
+        raise ValueError(f'Unsupported composition contract: {contract!r}')
     blocks = recipe.get('blocks')
     if not isinstance(blocks, list) or not blocks:
         raise ValueError('Composition recipe needs a non-empty blocks list')
     seen = set()
     for entry in blocks:
-        if not isinstance(entry, dict) or set(entry) != {'block','instance_id'}:
-            raise ValueError('Each block needs exactly block and instance_id')
+        if not isinstance(entry, dict) or 'block' not in entry or 'instance_id' not in entry:
+            raise ValueError('Each block needs block and instance_id')
         block, instance = entry['block'], entry['instance_id']
         if block not in KNOWN_BLOCKS:
             raise ValueError(f'Unknown block type: {block!r}')
+        expected = {'block','instance_id'}
+        if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
+            expected = {'block','instance_id','topic'}
+        if set(entry) != expected:
+            raise ValueError(f'Invalid fields for block {block!r}: expected {sorted(expected)}')
+        if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
+            topic = entry['topic']
+            if not isinstance(topic, str) or not TOPIC_ID.fullmatch(topic):
+                raise ValueError(f'Invalid topic id for block instance {instance!r}: {topic!r}')
         if not isinstance(instance, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{2,39}', instance):
             raise ValueError(f'Invalid block instance id: {instance!r}')
         if instance in seen:
@@ -300,6 +350,8 @@ def composition_provenance(recipe, path, blocks):
         instance = {'block': entry['block'], 'instance_id': entry['instance_id']}
         record = checked.get(entry['instance_id']) if entry['block'] == 'reference-comparison' else None
         if record is not None:
+            instance['topic'] = entry.get('topic')
+            instance['binding'] = 'explicit' if entry.get('topic') else 'deterministic'
             instance['contract_instance_id'] = record['instance_id']
             instance['contract_status'] = record['status']
             instance['instance_identity'] = (record.get('identities') or {}).get('instance')
@@ -330,7 +382,7 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             if recipe is not None:
                 # Each recipe entry names its own checked record; the instance id is the
                 # same value the R renderer uses for its DOM identity.
-                records=[build_block(bundle,Path(bundle).parents[2],PROJECT,entry['instance_id'])
+                records=[build_block(bundle,Path(bundle).parents[2],PROJECT,entry['instance_id'],entry.get('topic'))
                          for entry in recipe['blocks'] if entry['block']=='reference-comparison']
                 provenance['blocks']=records
                 provenance['composition']=composition_provenance(recipe,composition,records)
@@ -367,6 +419,11 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             # artifacts and verify the final folder, not the temporary render workspace.
             publish_evidence(bundle,output.parent/'data')
             validate_published_evidence(output.parent)
+        if recipe is not None and provenance is not None and recipe.get('contract')==COMPOSITION_CONTRACT_V2:
+            failed=[r for r in provenance.get('blocks',[]) if r.get('status')!='verified']
+            if failed:
+                detail='; '.join(f"{r.get('instance_id')}: {r.get('code','failed')} {r.get('detail','')}".strip() for r in failed)
+                raise ValueError(f'Composed report has failed explicit reference binding(s): {detail}')
 
 BATCH_AUDIENCES=('researcher','health_institution','public')
 

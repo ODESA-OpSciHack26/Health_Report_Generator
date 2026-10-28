@@ -13,13 +13,21 @@ ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "scripts" / "health_pipeline" / "config" / "composer" / "compositions" / "researcher.json"
 
 
-def write_recipe(tmp_path, blocks, **extra):
-    payload = {"contract": "health-report/composition-recipe/1", "audience": "researcher",
+def write_recipe(tmp_path, blocks, contract=publish.COMPOSITION_CONTRACT, **extra):
+    payload = {"contract": contract, "audience": "researcher",
                "blocks": blocks, **extra}
     path = tmp_path / "recipe.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload))
     return path
+
+
+def fixture_recipe(tmp_path, topic="virus"):
+    """v2 recipe bound to the fixture bundle's saved topic."""
+    return write_recipe(tmp_path, [{"block": "reference-comparison",
+                                    "instance_id": "block-reference-comparison",
+                                    "topic": topic}],
+                        contract=publish.COMPOSITION_CONTRACT_V2)
 
 
 def test_researcher_recipe_order_is_data():
@@ -68,7 +76,7 @@ def test_render_passes_recipe_path_only_to_report(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "package", fake_package)
     monkeypatch.setattr(publish.subprocess, "run", fake_run)
     publish.render(bundle["bundle"], tmp_path / "out" / "report.html", "html", "quarto",
-                   provenance={"schema": "test"}, composition=RECIPE)
+                   provenance={"schema": "test"}, composition=fixture_recipe(tmp_path))
     report = [c for c in commands if "report.qmd" in c][0]
     methods = [c for c in commands if "methods.qmd" in c][0]
     recipe_args = [arg for arg in report if arg.startswith("block_recipe:")]
@@ -127,7 +135,7 @@ def _capture(tmp_path, monkeypatch, fmt, **kwargs):
 
 def test_composed_html_suppresses_alternate_format_offer(tmp_path, monkeypatch):
     commands = _capture(tmp_path, monkeypatch, "html",
-                        provenance={"schema": "test"}, composition=RECIPE)
+                        provenance={"schema": "test"}, composition=fixture_recipe(tmp_path))
     report = [c for c in commands if "report.qmd" in c][0]
     methods = [c for c in commands if "methods.qmd" in c][0]
     assert ["-M", "format-links:false"] == report[report.index("-M"):report.index("-M") + 2]
@@ -138,7 +146,7 @@ def test_composed_html_suppresses_alternate_format_offer(tmp_path, monkeypatch):
 
 def test_composed_methods_render_without_pdf_offer(tmp_path, monkeypatch):
     commands = _capture(tmp_path, monkeypatch, "html",
-                        provenance={"schema": "test"}, composition=RECIPE)
+                        provenance={"schema": "test"}, composition=fixture_recipe(tmp_path))
     methods = [c for c in commands if "methods.qmd" in c][0]
     assert "html_only:true" in methods
     report = [c for c in commands if "report.qmd" in c][0]
@@ -245,10 +253,14 @@ AUDIENCE_ORDER = {
 def test_three_audience_recipes_declare_their_own_audience():
     for audience, order in AUDIENCE_ORDER.items():
         recipe = publish.load_composition(RECIPES / f"{audience}.json")
+        assert recipe["contract"] == publish.COMPOSITION_CONTRACT_V2
         assert recipe["audience"] == audience
         assert [entry["block"] for entry in recipe["blocks"]] == order
         ids = [entry["instance_id"] for entry in recipe["blocks"]]
         assert len(ids) == len(set(ids)) == 4
+        reference = next(entry for entry in recipe["blocks"]
+                         if entry["block"] == "reference-comparison")
+        assert reference["topic"] == "campylobacteriosis"
 
 
 def _fake_bundle(bundle_root, audience, recorded=None):
@@ -414,7 +426,7 @@ def test_render_publishes_exact_evidence_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr(publish.subprocess, "run", fake_run)
     publish.render(bundle["bundle"], out, "html", "quarto",
                    provenance={"schema": "test"},
-                   provenance_out=out.parent / "provenance.json", composition=RECIPE)
+                   provenance_out=out.parent / "provenance.json", composition=fixture_recipe(tmp_path))
 
     manifest = json.loads((bundle["bundle"] / "bundle.json").read_text())
     data = out.parent / "data"
@@ -500,3 +512,124 @@ def test_publish_evidence_does_not_invent_absent_artifacts(tmp_path):
     (tmp_path / "published" / "provenance.json").write_text("{}")
     with pytest.raises(ValueError, match="unresolved local evidence links"):
         publish.validate_published_evidence(tmp_path / "published")
+
+
+# --- recipe v2: explicit reference-comparison topic -------------------------
+
+def _render_with_fakes(tmp_path, monkeypatch, bundle, recipe):
+    out = tmp_path / "render" / "report.html"
+    commands = []
+
+    def fake_package(source, dest):
+        Path(dest).mkdir(parents=True, exist_ok=True)
+
+    def fake_run(command, cwd=None, check=True, env=None):
+        commands.append(list(command))
+        (Path(cwd) / (command[2].replace(".qmd", ".html"))).write_text("<html></html>")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(publish, "package", fake_package)
+    monkeypatch.setattr(publish.subprocess, "run", fake_run)
+    publish.render(bundle["bundle"], out, "html", "quarto",
+                   provenance={"schema": "test"},
+                   provenance_out=out.parent / "provenance.json", composition=recipe)
+    return out, commands
+
+
+def test_v2_requires_topic_for_reference_comparison(tmp_path):
+    with pytest.raises(ValueError, match=r"expected \['block', 'instance_id', 'topic'\]"):
+        publish.load_composition(write_recipe(
+            tmp_path, [{"block": "reference-comparison", "instance_id": "ref-x"}],
+            contract=publish.COMPOSITION_CONTRACT_V2))
+
+
+def test_v2_rejects_topic_on_other_blocks(tmp_path):
+    with pytest.raises(ValueError, match="Invalid fields"):
+        publish.load_composition(write_recipe(
+            tmp_path, [{"block": "intro", "instance_id": "intro-x", "topic": "virus"}],
+            contract=publish.COMPOSITION_CONTRACT_V2))
+
+
+def test_v1_rejects_topic_field(tmp_path):
+    with pytest.raises(ValueError, match="Invalid fields"):
+        publish.load_composition(write_recipe(
+            tmp_path, [{"block": "reference-comparison", "instance_id": "ref-x", "topic": "virus"}]))
+
+
+def test_v2_rejects_invalid_topic_id(tmp_path):
+    with pytest.raises(ValueError, match="Invalid topic id"):
+        publish.load_composition(write_recipe(
+            tmp_path, [{"block": "reference-comparison", "instance_id": "ref-x", "topic": "Virus!"}],
+            contract=publish.COMPOSITION_CONTRACT_V2))
+
+
+def test_v2_explicit_topic_binds_requested_saved_records(tmp_path):
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
+    record = publish.build_block(bundle["bundle"], bundle["results"], ROOT, "ref-x", "virus")
+    assert record["status"] == "verified"
+    assert record["subject"] == "virus"
+    assert record["result"]["metric_id"] == "virus:reference_change"
+    assert record["result"]["value"] == 60.0
+    assert record["reference_count"] == {"metric_id": "virus:2019:count", "value": "10"}
+    assert record["latest_count"] == {"metric_id": "virus:2025:count", "value": "16"}
+
+
+def test_v2_unknown_topic_fails_without_fallback(tmp_path):
+    bundle = build_bundle(tmp_path, archive=True)
+    record = publish.build_block(bundle["bundle"], bundle["results"], ROOT, "ref-x", "bacterium")
+    assert record["status"] == "failed"
+    assert record["code"] == "selection"
+    assert "bacterium" in record["detail"]
+    assert "subject" not in record and "result" not in record
+
+
+def test_v2_excluded_topic_fails_with_recorded_reason(tmp_path):
+    bundle = build_bundle(tmp_path, archive=True, selection_status="excluded")
+    record = publish.build_block(bundle["bundle"], bundle["results"], ROOT, "ref-x", "virus")
+    assert record["status"] == "failed"
+    assert record["code"] == "selection"
+    assert "not included" in record["detail"]
+    assert "Complete compatible series" in record["detail"]
+
+
+def test_v2_failed_explicit_binding_fails_render(tmp_path, monkeypatch):
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
+    with pytest.raises(ValueError, match="failed explicit reference binding"):
+        _render_with_fakes(tmp_path, monkeypatch, bundle, fixture_recipe(tmp_path, "bacterium"))
+    sidecar = json.loads((tmp_path / "render" / "provenance.json").read_text())
+    assert sidecar["blocks"][0]["status"] == "failed"
+    assert (tmp_path / "render" / "report.html").is_file()
+
+
+def test_v2_provenance_records_explicit_topic_and_identity(tmp_path, monkeypatch):
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
+    _render_with_fakes(tmp_path, monkeypatch, bundle, fixture_recipe(tmp_path, "virus"))
+    sidecar = json.loads((tmp_path / "render" / "provenance.json").read_text())
+    reference = next(entry for entry in sidecar["composition"]["instances"]
+                     if entry["block"] == "reference-comparison")
+    assert reference["topic"] == "virus"
+    assert reference["binding"] == "explicit"
+    assert reference["contract_instance_id"] == reference["instance_id"]
+    assert reference["instance_identity"] == sidecar["blocks"][0]["identities"]["instance"]
+    assert sidecar["blocks"][0]["subject"] == "virus"
+
+
+def test_v1_provenance_records_deterministic_binding(tmp_path, monkeypatch):
+    bundle = build_bundle(tmp_path, archive=True, stakeholder_overrides={"id": "researcher"})
+    recipe = write_recipe(tmp_path, [{"block": "reference-comparison",
+                                      "instance_id": "block-reference-comparison"}])
+    _render_with_fakes(tmp_path, monkeypatch, bundle, recipe)
+    sidecar = json.loads((tmp_path / "render" / "provenance.json").read_text())
+    reference = next(entry for entry in sidecar["composition"]["instances"]
+                     if entry["block"] == "reference-comparison")
+    assert reference["topic"] is None
+    assert reference["binding"] == "deterministic"
+    assert sidecar["blocks"][0]["subject"] == "virus"
+
+
+def test_v2_repeated_reference_comparison_still_rejected(tmp_path):
+    with pytest.raises(ValueError, match="Repeated reference-comparison"):
+        publish.load_composition(write_recipe(
+            tmp_path, [{"block": "reference-comparison", "instance_id": "ref-one", "topic": "virus"},
+                       {"block": "reference-comparison", "instance_id": "ref-two", "topic": "virus"}],
+            contract=publish.COMPOSITION_CONTRACT_V2))

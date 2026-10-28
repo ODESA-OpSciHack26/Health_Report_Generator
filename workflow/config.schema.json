@@ -103,6 +103,25 @@
       },
       "uniqueItems": true
     },
+    "include_topics": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      }
+    },
+    "exclude_topics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      }
+    },
     "sensitivity_exclude": {
       "type": "array",
       "items": {
