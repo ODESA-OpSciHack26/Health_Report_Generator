@@ -220,12 +220,34 @@ def load_composition(path):
         if instance in seen:
             raise ValueError(f'Duplicate block instance id: {instance!r}')
         seen.add(instance)
+    # A reference-comparison block carries a checked contract record. One saved record can
+    # only be bound to one instance, so repeated reference blocks are refused rather than
+    # silently reusing or relabelling the same identity.
+    if sum(1 for entry in blocks if entry['block'] == 'reference-comparison') > 1:
+        raise ValueError('Repeated reference-comparison blocks are not supported yet')
     return recipe
+
+def composition_provenance(recipe, path, blocks):
+    """Record the recipe and the checked instance identity behind every block entry."""
+    checked = {record['instance_id']: record for record in blocks}
+    instances = []
+    for entry in recipe['blocks']:
+        instance = {'block': entry['block'], 'instance_id': entry['instance_id']}
+        record = checked.get(entry['instance_id']) if entry['block'] == 'reference-comparison' else None
+        if record is not None:
+            instance['contract_instance_id'] = record['instance_id']
+            instance['contract_status'] = record['status']
+            instance['instance_identity'] = (record.get('identities') or {}).get('instance')
+        instances.append(instance)
+    return {'contract': recipe['contract'], 'audience': recipe.get('audience'),
+            'recipe_path': Path(path).resolve().as_posix(), 'recipe_sha256': digest(path),
+            'effective_recipe': recipe['blocks'], 'instances': instances, 'mode': 'composed'}
 
 def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None,composition=None):
     if composition is not None and fmt != 'html':
         raise ValueError('PDF export of a composed report is not supported; '
                          'omit --composition for the legacy PDF')
+    recipe=load_composition(composition) if composition is not None else None
     output=Path(output).resolve(); output.parent.mkdir(parents=True,exist_ok=True)
     # Each format gets a separate build directory so concurrent rendering cannot race.
     with tempfile.TemporaryDirectory(prefix='health-report-') as tmp:
@@ -234,7 +256,15 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             # Resolve the block at render time from saved records, then embed the same
             # record in HTML and write it as the sidecar so both stay identical.
             provenance=dict(provenance)
-            provenance['blocks']=[build_block(bundle,Path(bundle).parents[2],PROJECT)]
+            if recipe is not None:
+                # Each recipe entry names its own checked record; the instance id is the
+                # same value the R renderer uses for its DOM identity.
+                records=[build_block(bundle,Path(bundle).parents[2],PROJECT,entry['instance_id'])
+                         for entry in recipe['blocks'] if entry['block']=='reference-comparison']
+                provenance['blocks']=records
+                provenance['composition']=composition_provenance(recipe,composition,records)
+            else:
+                provenance['blocks']=[build_block(bundle,Path(bundle).parents[2],PROJECT)]
             write_json(Path(tmp)/'provenance.json',provenance)
         env = os.environ.copy()
         project = HERE.parents[1]
@@ -274,12 +304,4 @@ if __name__=='__main__':
             if a.workflow_config and Path(a.workflow_config).is_file():
                 wf={'path':a.workflow_config,'sha256':digest(a.workflow_config)}
             record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,wf)
-            if a.composition:
-                recipe=load_composition(a.composition)
-                record['composition']={'contract':recipe['contract'],
-                                       'audience':recipe.get('audience'),
-                                       'recipe_path':Path(a.composition).resolve().as_posix(),
-                                       'recipe_sha256':digest(a.composition),
-                                       'effective_recipe':recipe['blocks'],
-                                       'mode':'composed'}
         render(a.bundle,a.output,a.action,a.quarto,record,a.provenance,a.composition)

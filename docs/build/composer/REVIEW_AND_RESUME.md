@@ -249,6 +249,67 @@ For G2/G4/G6 record review ID, source commit, base/build/task branch, fixture/in
 - Visual, accessibility and independent review remain **NOT REVIEWED**; styling and the
   instance-ID limitation are untouched; G0 open.
 
+### Checkpoint commit and follow-up G1-INSTANCE-01: recipe instance identity (author-run)
+
+- Checkpoint: commit `8ad03556c485f79be0cede28a5ea2fd690ffd13d` (parent
+  `09b1fea60693274101cee7787001580a06ea1def`, message
+  `feat: compose researcher HTML from an ordered block recipe`) stages exactly the seven
+  candidate paths: `docs/build/composer/REVIEW_AND_RESUME.md`,
+  `scripts/health_pipeline/publish.py`, `scripts/health_pipeline/report_shared.qmd`,
+  `scripts/health_pipeline/templates/report_helpers.R`,
+  `scripts/health_pipeline/config/composer/compositions/researcher.json`,
+  `tests/r_composition_smoke.R`, `tests/test_composition.py`. `git diff --cached --check`
+  exited 0. The only text correction at checkpoint time replaced the truncated human-review
+  path with the existing
+  `~/.local/state/composer-bootstrap/g1-pdf-htmlonly-render-20261028T071601/composed/report.html`.
+  No test or render was rerun for the checkpoint; the earlier evidence labels above are
+  unchanged history.
+- This follow-up is **uncommitted** on top of that commit and touches four paths
+  (`publish.py`, `report_helpers.R`, `tests/r_composition_smoke.R`,
+  `tests/test_composition.py`). No schema, analysis, metric, CSS, block-type or
+  audience-recipe change.
+- Changes: every composition registry entry now carries explicit metadata
+  (`label`, `primary`, `render`) and the renderer is called with the recipe entry. The
+  section DOM id is the recipe `instance_id` and navigation is built from that metadata, not
+  from parsed HTML. `reference_block(variant='composed')` requires an instance id, selects
+  the matching checked record by `instance_id`, and emits `#<instance_id>-inspect`; the
+  legacy variant keeps its first-record selection, `#block-reference-comparison` panel and
+  `-inspector`/`block-data`/`block-method`/`block-implementation`/`block-reproduction` ids.
+  `publish.build_block` receives the recipe instance id, and
+  `provenance.composition.instances` records each entry's `contract_instance_id`,
+  `contract_status` and `instance_identity`. Repeated stateless blocks are allowed with
+  distinct ids; a second `reference-comparison` entry is rejected in both Python and R
+  (`Repeated reference-comparison blocks are not supported yet`) rather than reusing or
+  relabelling one checked record.
+- Commands/exits (image `sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8`,
+  rootless, `--network none`, `--cpus 2 --memory 4g --memory-swap 5g --pids-limit 512`,
+  repository and baseline read-only), all under
+  `~/.local/state/composer-bootstrap/g1-instance-20261028T120255`:
+  `focused.log` 114 passed exit 0; `r-composition-smoke.log` exit 0;
+  `r-dispatch-smoke.log` exit 0; `maintained-suite.log` 467 passed (29.23s) exit 0;
+  `composed/render.log` and `legacy/render.log` exit 0;
+  `rendered-verification.log`, `composed-rendered-checks.log` and
+  `legacy-rendered-checks.log` exit 0.
+- Verified on the rendered files (`composed/report.html`, `legacy/report.html`,
+  `provenance.json` in the same directory): composed section ids and navigation targets are
+  `intro-0001 → block-reference-comparison → limitations-0001 → reproduction-0001`, each
+  href and id exactly once, one primary card of four blocks, one
+  `block-reference-comparison-inspect`, no legacy `-inspector` id, no `href="report.pdf"`
+  and the availability note present. Embedded provenance equals the sidecar for both routes.
+  `composition.instances` order equals the recipe; the reference entry's
+  `contract_instance_id` equals its recipe id, its `instance_identity` equals the checked
+  block record, and that identity string appears in the composed HTML. Legacy section ids
+  are `overview, parameters, coverage, quality, methods, totals, trends, diseases,
+  block-reference-comparison, reproduction, limitations, provenance` — identical to the
+  previous legacy render; the only normalised differences are the render-code digest, git
+  commit and render timestamp. Legacy still carries its two PDF references.
+- Known limitations retained: repeated reference-comparison is refused rather than
+  supported (no per-instance subject/options); no per-block option objects; no second
+  audience composition; PDF remains legacy-only. Visual, accessibility, keyboard/focus and
+  independent review remain **NOT REVIEWED** (no browser or headless tooling); "rendered and
+  checked" is not a visual or scientific acceptance claim. G0 remains open; R02 is not
+  accepted.
+
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 

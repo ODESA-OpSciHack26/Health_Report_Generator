@@ -160,8 +160,11 @@ friendly_table <- function(b) {
   d
 }
 html_table <- function(d) paste0('<div class="table-scroll">',as.character(knitr::kable(d,format='html',escape=TRUE,row.names=FALSE,table.attr='class="report-table"')),'</div>')
-reference_block <- function(b,evidence_file='',variant='legacy') {
+reference_block <- function(b,evidence_file='',variant='legacy',instance_id=NULL) {
   composed <- identical(variant,'composed')
+  if(composed && (is.null(instance_id) || !nzchar(instance_id)))
+    stop('A composed reference-comparison block needs an instance id')
+  inspect_id <- if(composed) paste0(instance_id,'-inspect') else 'block-reference-comparison-inspector'
   panel <- function(inner) if(composed) inner else paste0('<section class="chart-panel full" id="block-reference-comparison">',inner,'</section>')
   if(!nzchar(evidence_file)) return('')
   unavailable <- function(reason) panel(paste0('<h2>Reference comparison unavailable</h2>',
@@ -172,7 +175,11 @@ reference_block <- function(b,evidence_file='',variant='legacy') {
   record <- tryCatch(jsonlite::fromJSON(evidence_file,simplifyVector=FALSE),error=function(e) NULL)
   if(is.null(record)) return(unavailable('evidence file is not valid JSON'))
   if(is.null(record$blocks) || !length(record$blocks)) return(unavailable('evidence file carries no reference-comparison block'))
-  block <- record$blocks[[1]]
+  if(!is.null(instance_id) && nzchar(instance_id)) {
+    matches <- Filter(function(x) identical(x$instance_id,instance_id),record$blocks)
+    if(!length(matches)) return(unavailable(paste('no checked record for block instance',instance_id)))
+    block <- matches[[1]]
+  } else block <- record$blocks[[1]]
   row <- function(k,v) paste0('<div class="audit-row"><span>',esc(k),'</span><strong>',esc(v),'</strong></div>')
   if(!identical(block$status,'verified')) {
     return(panel(paste0('<h2>Reference comparison unavailable</h2>',
@@ -190,7 +197,7 @@ reference_block <- function(b,evidence_file='',variant='legacy') {
       '<div class="finding-counts"><div><span>',esc(block$reference_year),'</span><strong>',fmt(block$reference_count$value),'</strong></div>',
       '<div><span>',esc(block$latest_year),'</span><strong>',fmt(block$latest_count$value),'</strong></div></div>',
       '<p class="finding-caution">Notification changes reflect surveillance and testing as well as disease occurrence; they do not establish disease severity or statistical significance.</p>',
-      '<details class="block-inspect" id="block-reference-comparison-inspect"><summary>Inspect this block</summary>',
+      '<details class="block-inspect" id="',esc(inspect_id),'"><summary>Inspect this block</summary>',
       row('Result metric',block$result$metric_id),
       row('Bound counts',paste(block$reference_count$metric_id,'and',block$latest_count$metric_id)),
       row('Formula',block$result$formula), row('Availability',block$result$availability),
@@ -373,25 +380,28 @@ technical_findings <- function(b) {
 source('audience_reports.R')
 
 # --- Block composition (experimental): order and membership come from a recipe file. ---
+# Each registry entry is explicit renderer metadata: label for navigation, whether the
+# block is the primary finding, and a renderer that receives the recipe entry. The entry's
+# instance_id is the section's DOM identity and is passed into the renderer so descendant
+# ids can be namespaced per instance.
 composition_labels <- c(intro = 'Context', 'reference-comparison' = 'Reference comparison',
                         limitations = 'Limitations', reproduction = 'Reproduction')
-composition_section_ids <- c(intro = 'overview', 'reference-comparison' = 'block-reference-comparison',
-                             limitations = 'limitations', reproduction = 'reproduction')
-composition_primary <- 'reference-comparison'
 
 composition_registry <- list(
-  intro = function(b, evidence_file='')
-    selection_intro(b),
-  'reference-comparison' = function(b, evidence_file='')
-    reference_block(b, evidence_file, variant='composed'),
-  limitations = function(b, evidence_file='')
-    document_limits(b),
-  reproduction = function(b, evidence_file='')
-    paste0(code_disclosure(annual_reproduction_code()),
-           '<p><a href="data/metrics.csv" download>Metrics CSV</a> · ',
-           '<a href="data/lineage.csv" download>Calculation lineage CSV</a></p>',
-           provenance_summary(b),
-           '<p class="composed-note">PDF export of this composed report is not yet available.</p>')
+  intro = list(label = composition_labels[['intro']], primary = FALSE,
+    render = function(b, entry, evidence_file='') selection_intro(b)),
+  'reference-comparison' = list(label = composition_labels[['reference-comparison']], primary = TRUE,
+    render = function(b, entry, evidence_file='')
+      reference_block(b, evidence_file, variant='composed', instance_id=entry$instance_id)),
+  limitations = list(label = composition_labels[['limitations']], primary = FALSE,
+    render = function(b, entry, evidence_file='') document_limits(b)),
+  reproduction = list(label = composition_labels[['reproduction']], primary = FALSE,
+    render = function(b, entry, evidence_file='')
+      paste0(code_disclosure(annual_reproduction_code()),
+             '<p><a href="data/metrics.csv" download>Metrics CSV</a> · ',
+             '<a href="data/lineage.csv" download>Calculation lineage CSV</a></p>',
+             provenance_summary(b),
+             '<p class="composed-note">PDF export of this composed report is not yet available.</p>'))
 )
 
 composition_style <- function() paste0('<style>',
@@ -426,19 +436,27 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
   inst <- vapply(blocks, function(x) x$instance_id, character(1))
   unknown <- setdiff(ids, names(registry))
   if(length(unknown)) stop('Unknown block type(s): ', paste(unknown, collapse=', '))
+  if(any(!grepl('^[a-z0-9][a-z0-9_-]{2,39}$', inst)))
+    stop('Invalid block instance id: ', paste(inst[!grepl('^[a-z0-9][a-z0-9_-]{2,39}$', inst)], collapse=', '))
   if(anyDuplicated(inst))
     stop('Duplicate block instance id: ', paste(unique(inst[duplicated(inst)]), collapse=', '))
+  # One checked contract record backs one instance; repetition is refused rather than
+  # reusing a record under a second identity.
+  if(sum(ids == 'reference-comparison') > 1L)
+    stop('Repeated reference-comparison blocks are not supported yet')
   sections <- list()
   for(i in seq_along(ids)) {
-    body <- registry[[ids[i]]](b, evidence_file=evidence_file)
-    if(!is.character(body) || !nzchar(body)) stop('Block rendered nothing: ', ids[i])
-    sid <- if(ids[i] %in% names(composition_section_ids)) composition_section_ids[[ids[i]]] else paste0(ids[i], '-block')
-    label <- if(ids[i] %in% names(composition_labels)) composition_labels[[ids[i]]] else ids[i]
-    primary <- identical(ids[i], composition_primary)
-    sections[[length(sections)+1L]] <- list(id=sid, label=label, html=paste0(
+    entry <- blocks[[i]]
+    spec <- registry[[entry$block]]
+    if(!is.list(spec) || !is.function(spec$render) || is.null(spec$label))
+      stop('Invalid renderer metadata for block: ', entry$block)
+    body <- spec$render(b, entry, evidence_file=evidence_file)
+    if(!is.character(body) || !nzchar(body)) stop('Block rendered nothing: ', entry$block)
+    primary <- isTRUE(spec$primary)
+    sections[[length(sections)+1L]] <- list(id=entry$instance_id, label=spec$label, html=paste0(
       '<section class="composed-block', if(primary) ' composed-block--primary' else '',
-      '" id="', esc(sid), '"><p class="composed-kicker">', if(primary) 'Primary finding' else 'Supporting block',
-      '</p><h2 class="composed-heading">', esc(label), '</h2>', body, '</section>'))
+      '" id="', esc(entry$instance_id), '"><p class="composed-kicker">', if(primary) 'Primary finding' else 'Supporting block',
+      '</p><h2 class="composed-heading">', esc(spec$label), '</h2>', body, '</section>'))
   }
   nav <- paste0('<nav class="composed-nav" aria-label="Report blocks">',
     paste(vapply(sections, function(s) paste0('<a href="#', esc(s$id), '">', esc(s$label), '</a>'),

@@ -17,6 +17,7 @@ def write_recipe(tmp_path, blocks, **extra):
     payload = {"contract": "health-report/composition-recipe/1", "audience": "researcher",
                "blocks": blocks, **extra}
     path = tmp_path / "recipe.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload))
     return path
 
@@ -138,3 +139,70 @@ def test_legacy_pdf_is_still_supported(tmp_path, monkeypatch):
     report = [c for c in commands if "report.qmd" in c][0]
     assert "-M" not in report
     assert not any(arg.startswith("block_recipe:") for arg in report)
+
+
+def test_repeated_reference_comparison_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="Repeated reference-comparison"):
+        publish.load_composition(write_recipe(tmp_path, [
+            {"block": "reference-comparison", "instance_id": "ref-first"},
+            {"block": "reference-comparison", "instance_id": "ref-second"}]))
+
+
+def test_repeated_stateless_blocks_are_allowed_with_distinct_ids(tmp_path):
+    recipe = publish.load_composition(write_recipe(tmp_path, [
+        {"block": "intro", "instance_id": "intro-first"},
+        {"block": "intro", "instance_id": "intro-second"},
+        {"block": "limitations", "instance_id": "limits-0001"}]))
+    assert [entry["instance_id"] for entry in recipe["blocks"]] == [
+        "intro-first", "intro-second", "limits-0001"]
+
+
+def _composed_sidecar(tmp_path, monkeypatch, blocks, name):
+    work = tmp_path / name
+    work.mkdir(parents=True, exist_ok=True)
+    bundle = build_bundle(work, archive=True)
+    recipe = write_recipe(work, blocks)
+    commands = []
+
+    def fake_package(source, dest):
+        Path(dest).mkdir(parents=True, exist_ok=True)
+
+    def fake_run(command, cwd=None, check=True, env=None):
+        commands.append(list(command))
+        (Path(cwd) / (command[2].replace(".qmd", ".html"))).write_text("<html></html>")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(publish, "package", fake_package)
+    monkeypatch.setattr(publish.subprocess, "run", fake_run)
+    out = work / "report.html"
+    sidecar = work / "provenance.json"
+    publish.render(bundle["bundle"], out, "html", "quarto",
+                   provenance={"schema": "test"}, provenance_out=sidecar, composition=recipe)
+    return json.loads(sidecar.read_text())
+
+
+def test_provenance_binds_recipe_instance_to_checked_contract_record(tmp_path, monkeypatch):
+    blocks = [{"block": "intro", "instance_id": "intro-0001"},
+              {"block": "reference-comparison", "instance_id": "ref-block-0001"}]
+    sidecar = _composed_sidecar(tmp_path, monkeypatch, blocks, "agree")
+    instances = sidecar["composition"]["instances"]
+    assert [entry["instance_id"] for entry in instances] == ["intro-0001", "ref-block-0001"]
+    assert sidecar["blocks"][0]["instance_id"] == "ref-block-0001"
+    reference = instances[1]
+    assert reference["contract_instance_id"] == "ref-block-0001"
+    assert reference["contract_status"] == "verified"
+    assert reference["instance_identity"] == sidecar["blocks"][0]["identities"]["instance"]
+    assert "contract_instance_id" not in instances[0]
+
+
+def test_reordering_keeps_contract_instance_identity(tmp_path, monkeypatch):
+    forward = [{"block": "intro", "instance_id": "intro-0001"},
+               {"block": "reference-comparison", "instance_id": "ref-block-0001"}]
+    backward = list(reversed(forward))
+    first = _composed_sidecar(tmp_path, monkeypatch, forward, "forward")
+    second = _composed_sidecar(tmp_path, monkeypatch, backward, "backward")
+    assert first["blocks"][0]["identities"] == second["blocks"][0]["identities"]
+    assert [entry["instance_id"] for entry in first["composition"]["instances"]] == [
+        "intro-0001", "ref-block-0001"]
+    assert [entry["instance_id"] for entry in second["composition"]["instances"]] == [
+        "ref-block-0001", "intro-0001"]
