@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import platform
+import re
 import importlib.metadata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -193,7 +194,38 @@ def build_block(bundle,results_root,project_root,instance_id='block-reference-co
             'lineage':{'source_file':lineage.get('source_file'),'source_row':lineage.get('source_row'),
                        'sha256':lineage.get('sha256')}}
 
-def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None):
+KNOWN_BLOCKS = ('intro','reference-comparison','limitations','reproduction')
+COMPOSITION_CONTRACT = 'health-report/composition-recipe/1'
+
+def load_composition(path):
+    """Validate a block recipe. Order and membership are data, not renderer code."""
+    recipe = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(recipe, dict): raise ValueError('Composition recipe must be an object')
+    unknown = set(recipe) - {'contract','audience','blocks'}
+    if unknown: raise ValueError(f'Unsupported composition fields: {sorted(unknown)}')
+    if recipe.get('contract') != COMPOSITION_CONTRACT:
+        raise ValueError(f'Unsupported composition contract: {recipe.get("contract")!r}')
+    blocks = recipe.get('blocks')
+    if not isinstance(blocks, list) or not blocks:
+        raise ValueError('Composition recipe needs a non-empty blocks list')
+    seen = set()
+    for entry in blocks:
+        if not isinstance(entry, dict) or set(entry) != {'block','instance_id'}:
+            raise ValueError('Each block needs exactly block and instance_id')
+        block, instance = entry['block'], entry['instance_id']
+        if block not in KNOWN_BLOCKS:
+            raise ValueError(f'Unknown block type: {block!r}')
+        if not isinstance(instance, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{2,39}', instance):
+            raise ValueError(f'Invalid block instance id: {instance!r}')
+        if instance in seen:
+            raise ValueError(f'Duplicate block instance id: {instance!r}')
+        seen.add(instance)
+    return recipe
+
+def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None,composition=None):
+    if composition is not None and fmt != 'html':
+        raise ValueError('PDF export of a composed report is not supported; '
+                         'omit --composition for the legacy PDF')
     output=Path(output).resolve(); output.parent.mkdir(parents=True,exist_ok=True)
     # Each format gets a separate build directory so concurrent rendering cannot race.
     with tempfile.TemporaryDirectory(prefix='health-report-') as tmp:
@@ -215,6 +247,11 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             if document == 'report' and provenance is not None:
                 # Explicit absolute path: no working-directory lookup in the template.
                 command += ['-P', f'evidence_file:{Path(tmp) / "provenance.json"}']
+            if document == 'report' and composition is not None:
+                command += ['-P', f'block_recipe:{Path(composition).resolve()}']
+                if fmt == 'html':
+                    # The composed report is HTML-only: suppress Quarto's alternate-format offer.
+                    command += ['-M', 'format-links:false']
             subprocess.run(command,cwd=tmp,check=True,env=env)
         # Publish the pair only after both have rendered successfully.
         shutil.copyfile(Path(tmp)/f'report.{fmt}',output)
@@ -227,6 +264,7 @@ if __name__=='__main__':
     ap.add_argument('--provenance',help='Write a machine-readable provenance sidecar here and embed it in HTML')
     ap.add_argument('--data-root',help='Canonical input root recorded in provenance')
     ap.add_argument('--workflow-config',help='Workflow configuration file recorded in provenance')
+    ap.add_argument('--composition',help='Block recipe JSON; omit for the legacy presentation')
     a=ap.parse_args()
     if a.action=='package': package(a.bundle,a.output)
     else:
@@ -236,4 +274,12 @@ if __name__=='__main__':
             if a.workflow_config and Path(a.workflow_config).is_file():
                 wf={'path':a.workflow_config,'sha256':digest(a.workflow_config)}
             record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,wf)
-        render(a.bundle,a.output,a.action,a.quarto,record,a.provenance)
+            if a.composition:
+                recipe=load_composition(a.composition)
+                record['composition']={'contract':recipe['contract'],
+                                       'audience':recipe.get('audience'),
+                                       'recipe_path':Path(a.composition).resolve().as_posix(),
+                                       'recipe_sha256':digest(a.composition),
+                                       'effective_recipe':recipe['blocks'],
+                                       'mode':'composed'}
+        render(a.bundle,a.output,a.action,a.quarto,record,a.provenance,a.composition)

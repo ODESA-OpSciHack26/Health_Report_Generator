@@ -22,6 +22,7 @@ params:
   input_kind: "canonical"
   tabular_document: "report"
   evidence_file: ""
+  block_recipe: ""
 ---
 
 ```{r}
@@ -47,7 +48,10 @@ if(is_tabular) {
 
 ```{r}
 #| results: asis
-if(!is_tabular && knitr::is_html_output()) cat(findings_html(b,evidence_file=params$evidence_file))
+if(!is_tabular && knitr::is_html_output()) {
+  if(nzchar(params$block_recipe)) cat(compose_report_html(b,params$block_recipe,params$evidence_file))
+  else cat(findings_html(b,evidence_file=params$evidence_file))
+}
 if(!is_tabular && knitr::is_html_output()) cat(provenance_script(), interactive_tables_script())
 if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial') {
   p <- presentation_profile(b)

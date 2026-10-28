@@ -67,6 +67,188 @@ For G2/G4/G6 record review ID, source commit, base/build/task branch, fixture/in
   should not be accumulated in the old layout; the next slice is block composition, not
   another planning round.
 
+## Candidate entry G1-COMPOSE-01: first block-composition slice (author-run, visual review pending)
+
+- Base commit `09b1fea60693274101cee7787001580a06ea1def` on `design/contracts`; candidate is
+  **uncommitted** working-tree state. No acceptance status changed.
+- Changed paths (6 implementation/test files, all uncommitted):
+  `M scripts/health_pipeline/publish.py db50d0bb6412635bca6c1b9fae94e4d57a0f5a86f45ccd3e7a30b06210dc4b50`,
+  `M scripts/health_pipeline/report_shared.qmd ca9f63d417d258aac0cd1a68d3acca027e726aa18ecaa16b5ae462b94ef26b76`,
+  `M scripts/health_pipeline/templates/report_helpers.R c4897781bf3ce120036feba711227dadd4b1aa433b974f7852b88b68825c91ff`,
+  `A scripts/health_pipeline/config/composer/compositions/researcher.json b627a058f211ec42be9e5880eba3c67f482f5c98f94b620e55c6b875386b5c2d`,
+  `A tests/test_composition.py 18fa7fefd79d618f3617a84f17eaf4d41d306cd07539917eafc7ff32cdf3ee03`,
+  `A tests/r_composition_smoke.R 405c47d38ecf6459cdfc04adbeefaf80f25a575b8812d2ad0f5b7cfe843fa6cf`.
+  (Earlier turns' six-path count for G1-REFBLOCK-01 referred to a different candidate; this entry
+  lists the composition candidate's actual paths.)
+- Composition mechanism: recipe document `health-report/composition-recipe/1` with ordered
+  `{block, instance_id}` entries; `publish.load_composition` rejects unknown fields, wrong
+  contract, empty list, unknown block type, unsafe or duplicate instance ids; `publish.render`
+  forwards `-P block_recipe:<absolute path>` to `report.qmd` only; `report_shared.qmd` dispatches
+  to `compose_report_html` when a recipe is supplied and otherwise to the unchanged legacy
+  `findings_html` route; `composition_registry` in `report_helpers.R` holds four renderers
+  (`intro`, `reference-comparison`, `limitations`, `reproduction`) that reuse existing helpers;
+  navigation is derived from the rendered section ids.
+- Recipe handoff is an explicit CLI parameter (`--composition`), not a stakeholder setting:
+  `workflow/config.schema.json` has `additionalProperties: false` and `analyse.load_config`
+  rejects unknown keys, so the stakeholder schema was **not** changed and no `composition` key
+  was added to `config/stakeholders/*.json`. Provenance records `composition.mode`,
+  `recipe_path`, `recipe_sha256` and `effective_recipe`.
+- Commands/exits (recorded image `sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8`,
+  rootless, `--network none`, `--cpus 2 --memory 4g --memory-swap 5g --pids-limit 512`,
+  repository and baseline read-only):
+  - `~/.local/state/composer-bootstrap/g1-compose-checks-20261028T065016/focused.log`
+    — 107 passed (2.52s), exit 0
+  - `~/.local/state/composer-bootstrap/g1-compose-checks-20261028T065016/r-composition-smoke.log`
+    — `r-composition smoke passed`, exit 0
+  - `~/.local/state/composer-bootstrap/g1-compose-checks-20261028T065016/maintained-suite.log`
+    — 460 passed (30.82s), exit 0
+  - `~/.local/state/composer-bootstrap/g1-compose-render-20261028T065107/composed/`
+    — researcher composition render, exit 0 (`report.html`, `methods.html`, `provenance.json`, `render.log`)
+  - `~/.local/state/composer-bootstrap/g1-compose-render-20261028T065107/legacy/`
+    — explicit legacy-mode render, exit 0 (same artifacts)
+- Composed verification: sections in recipe order
+  `overview → block-reference-comparison → limitations → reproduction`; navigation targets equal
+  those four ids; exactly one reference-comparison section; embedded provenance equals the
+  sidecar; provenance `composition.mode = composed` with `effective_recipe` in the same order and
+  `recipe_sha256` starting `b627a058f211`.
+- Legacy verification: section ids and order identical to the pre-composition researcher render;
+  no `composition` record in provenance; 16 changed lines (8 added, 8 removed), attributable to
+  git commit, template/helper digests and render timestamps; embedded provenance equals the
+  sidecar. The legacy route therefore remains available and retains its prior content.
+- Human review files: composed
+  `~/.local/state/composer-bootstrap/g1-compose-render-20261028T065107/composed/report.html`;
+  legacy `~/.local/state/composer-bootstrap/g1-compose-render-20261028T065107/legacy/report.html`.
+- **Limitation recorded plainly:** recipe `instance_id` values are validated for syntax and
+  uniqueness, but the renderer dispatch does **not** consume them — every renderer still emits a
+  fixed DOM id (`overview`, `block-reference-comparison`, `limitations`, `reproduction`).
+  Repeated block types with distinct instance ids have therefore **not** been demonstrated as
+  safe (duplicate DOM ids and duplicate navigation targets would occur). This is a known gap of
+  this slice, deliberately not repaired here.
+- Also unproven: per-instance parameters beyond the block type (no block-level option objects),
+  block-local ordering inside a type, and any second audience composition. Health institution and
+  public remain on their existing shared-template route.
+- Visual review: **NOT REVIEWED** — no browser or headless tooling is available; viewport,
+  keyboard/focus, inspector open/closed and overflow checks remain pending. Independent review:
+  **NOT REVIEWED**. G0 remains open; R02 is not accepted; "rendered successfully" is not a
+  scientific verification claim.
+
+### Follow-up G1-COMPOSE-01a: visible block-based composition (author-run, visual review pending)
+
+- Design-direction correction recorded: the first candidate "is now a well rendered old
+  report". Rendering and recipe ordering worked; the block experience was not visible.
+- Changes (same six paths, uncommitted; `dashboard.css` deliberately untouched, no new
+  production path): 1) `compose_report_html` no longer uses `presentation_open`,
+  `report_metadata` or the legacy `dash-footer`; it emits a self-contained
+  `<div class="composed-report">` shell with an inline `<style>` scoped to `.composed-*`
+  classes, a short introduction line and a block navigation. 2) The section wrapper and
+  its navigation target are now produced by the composer from
+  `composition_section_ids` (no substring extraction, no nested `<section>`). 3) The
+  registry returns block *body* only; each block is wrapped in a `composed-block` card
+  with a kicker (“Primary finding” / “Supporting block”) and a readable heading from
+  `composition_labels` (Context, Reference comparison, Limitations, Reproduction).
+  4) `reference_block` gained `variant='composed'`; the default `'legacy'` output is
+  unchanged and still used by the legacy route. 5) The composed variant returns body
+  content only: large saved percentage, subject, comparison years, counts and units, a
+  caution that notification changes do not establish disease severity or statistical
+  significance, and one secondary native `<details>` “Inspect this block” carrying the
+  existing metric ids, formula, availability, snapshot, effective settings,
+  implementation digests, identities, reproduction entry point and lineage record.
+- Known limitation retained unchanged: recipe `instance_id` values are validated but not
+  consumed by the renderer; fixed DOM ids per block type remain, so repeated block types
+  with distinct instance ids are still not demonstrated safe. Not resolved here.
+- Evidence (recorded image, rootless, no network, read-only repo/baseline):
+  - `~/.local/state/composer-bootstrap/g1-compose-visual-checks-20261028T070316` —
+    `focused.log` 107 passed (exit 0), `r-composition-smoke.log` exit 0,
+    `r-dispatch-smoke.log` exit 0, `maintained-suite.log` 460 passed (exit 0). The first
+    smoke attempts failed on test-side fixtures only (navigation regex attribute, and a
+    style-block occurrence count); both were fixed in the smoke, not in the renderer.
+  - `~/.local/state/composer-bootstrap/g1-compose-visual-render-20261028T070414` —
+    `composed/render.log` exit 0, `legacy/render.log` exit 0.
+- Verified on the actual composed HTML: sections `overview → block-reference-comparison →
+  limitations → reproduction` (recipe order); navigation reads “Context / Reference
+  comparison / Limitations / Reproduction” with hrefs equal to the section ids; exactly one
+  primary card and three supporting cards; exactly one “Inspect this block” disclosure;
+  finding value `+20.2%`; caution text present; no duplicate DOM ids in this recipe;
+  embedded provenance equals the sidecar for both views. Legacy HTML contains no
+  `composed-report`/`composed-block` markup and keeps its prior section sequence.
+- Human review file (composed):
+  `~/.local/state/composer-bootstrap/g1-compose-visual-render-20261028T065107/composed/report.html`
+- Visual review and independent review remain **NOT REVIEWED**; no screenshots or browser
+  checks were produced. G0 remains open; no acceptance status changed.
+
+### PDF diagnosis after the composed candidate (G1-PDF-01, author-run)
+
+- User-reported feedback recorded for scope: the block-based direction looks good;
+  expandable data information is useful where appropriate; rendering/layout quality is poor
+  but functionality has priority; PDF export no longer works. This is **not** visual or
+  accessibility acceptance, and no styling work was performed.
+- What the user-facing action is: the composed page carries no PDF control of its own. The
+  only PDF action is Quarto's automatic "Other Formats → PDF" link
+  (`<a href="report.pdf">`) injected by Quarto from the `pdf:` format declaration in
+  `report_shared.qmd`; it appears inside `#quarto-alternate-formats`, not from the
+  templates. The composed shell's blocks add only CSV, methods and lineage links.
+- Demonstrated failure cause: that link resolves to `report.pdf` in the same directory, and
+  the composed evidence directory
+  `~/.local/state/composer-bootstrap/g1-compose-visual-render-20261028T070414/composed/`
+  contains only `report.html`, `methods.html`, `provenance.json` and `render.log` — no
+  `report.pdf`. The link is therefore dead in any HTML-only render. This is a missing
+  co-located artifact for the preview, not evidence that the PDF renderer broke.
+- Canonical PDF generation still works: `publish.py pdf` with the retained bundle ran once
+  in `~/.local/state/composer-bootstrap/g1-pdf-diagnose-20261028T071159` (created by this
+  turn's single PDF run) and exited 0, producing a 40,544-byte `report.pdf`, a 30,790-byte
+  `methods.pdf` and `provenance.pdf.json`. Text extraction tooling (`pdftotext`) is absent in the image, so
+  the PDF's pagination/content was **not** independently inspected; content type below is
+  established from source, not from the artifact.
+- Composed PDF is **not supported**: `report_shared.qmd` dispatches the composer only under
+  `knitr::is_html_output()`. For LaTeX output the researcher (`technical`) layout goes to
+  `audience_document_pdf(b)` and the editorial layout to its own LaTeX branch, so a PDF is
+  always the legacy document even when `--composition` is supplied. `publish.py` does pass
+  `-P block_recipe:` to the `report` document for both formats, but the PDF path ignores it.
+  Linking a composed HTML to that PDF without a label would misrepresent the artifact.
+- Smallest proposed repair (not implemented in this turn, because it cannot be
+  render-verified within the remaining budget): in `compose_report_html`, next to the
+  composer's closing note, state plainly that the PDF export is the legacy layout and is
+  only present when the release route generates it; alternatively suppress the alternate
+  formats block for composed renders via the `report_shared.qmd` format options. Both stay
+  inside existing candidate paths. A composition-aware PDF would require a separate
+  LaTeX/PDF renderer path and an explicit format decision, which is out of scope here.
+- Evidence for this diagnosis:
+  `~/.local/state/composer-bootstrap/g1-compose-visual-render-20261028T070414/composed/report.html`
+  (verified path, exists) and the PDF run directory named above.
+
+### Follow-up G1-PDF-01a: composed report is HTML-only (author-run)
+
+- Decision: the composed report is HTML-only. Its HTML must not offer the legacy PDF as if
+  it exported the composed report, and the diagnostic PDF was **not** copied beside any
+  preview to make a link resolve. The legacy HTML/PDF route and its existing PDF link
+  behaviour are unchanged.
+- Implementation (existing candidate paths only): `publish.render` passes
+  `-M format-links:false` to the `report` document when a recipe is supplied and the
+  format is HTML, which suppresses Quarto's automatic alternate-format offer for composed
+  HTML without removing the `pdf:` format globally and without CSS hiding or HTML
+  post-processing. The reproduction block now carries the visible note “PDF export of this
+  composed report is not yet available.” An explicit PDF request with `--composition`
+  raises `ValueError('PDF export of a composed report is not supported; omit
+  --composition for the legacy PDF')` before any renderer runs, so the recipe cannot be
+  silently ignored.
+- Checks: `~/.local/state/composer-bootstrap/g1-pdf-htmlonly-checks-20261028T071548` —
+  focused Python 110 passed (exit 0), R composition smoke exit 0, R dispatch smoke exit 0.
+  (New tests: composed HTML sends `format-links:false` to `report.qmd` only, composed PDF
+  is rejected before `package`/`run`, legacy PDF still renders without the flag.)
+- Renders: `~/.local/state/composer-bootstrap/g1-pdf-htmlonly-render-20261028T071601` —
+  composed exit 0, legacy exit 0. On the actual HTML: composed has **0** `href="report.pdf"`
+  links, contains the availability note once, and embedded provenance equals the sidecar;
+  legacy still has its 2 PDF references (navigation header plus Quarto alternate formats)
+  and embedded provenance equals the sidecar. An empty `#quarto-alternate-formats`
+  container remains in the composed page but carries no PDF offer.
+- No PDF rerun in this turn; the earlier diagnostic PDF run at
+  `~/.local/state/composer-bootstrap/g1-pdf-diagnose-20261028T071159` remains the record,
+  with its stated limitation that PDF content was not text-extracted.
+- Composed HTML for review:
+  `~/.local/state/composer-bootstrap/g1-pdf-htmlonly-render-20261028T071601/composed/report.html`.
+- Visual, accessibility and independent review remain **NOT REVIEWED**; styling and the
+  instance-ID limitation are untouched; G0 open.
+
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 

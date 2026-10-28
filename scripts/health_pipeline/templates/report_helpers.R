@@ -160,11 +160,13 @@ friendly_table <- function(b) {
   d
 }
 html_table <- function(d) paste0('<div class="table-scroll">',as.character(knitr::kable(d,format='html',escape=TRUE,row.names=FALSE,table.attr='class="report-table"')),'</div>')
-reference_block <- function(b,evidence_file='') {
+reference_block <- function(b,evidence_file='',variant='legacy') {
+  composed <- identical(variant,'composed')
+  panel <- function(inner) if(composed) inner else paste0('<section class="chart-panel full" id="block-reference-comparison">',inner,'</section>')
   if(!nzchar(evidence_file)) return('')
-  unavailable <- function(reason) paste0('<section class="chart-panel full" id="block-reference-comparison"><h2>Reference comparison unavailable</h2>',
+  unavailable <- function(reason) panel(paste0('<h2>Reference comparison unavailable</h2>',
     '<p class="caption">The retained block record could not be used, so no values are shown.</p>',
-    '<div class="audit-row"><span>Reason</span><strong>',esc(reason),'</strong></div></section>')
+    '<div class="audit-row"><span>Reason</span><strong>',esc(reason),'</strong></div>'))
   if(!knitr::is_html_output()) return('')
   if(!file.exists(evidence_file)) return(unavailable(paste('evidence file is missing:',evidence_file)))
   record <- tryCatch(jsonlite::fromJSON(evidence_file,simplifyVector=FALSE),error=function(e) NULL)
@@ -173,13 +175,36 @@ reference_block <- function(b,evidence_file='') {
   block <- record$blocks[[1]]
   row <- function(k,v) paste0('<div class="audit-row"><span>',esc(k),'</span><strong>',esc(v),'</strong></div>')
   if(!identical(block$status,'verified')) {
-    return(paste0('<section class="chart-panel full" id="block-reference-comparison"><h2>Reference comparison unavailable</h2>',
+    return(panel(paste0('<h2>Reference comparison unavailable</h2>',
       '<p class="caption">The saved block did not pass its contract checks, so no values are shown.</p>',
-      row('Reason',paste0(block$code,': ',block$detail)),'</section>'))
+      row('Reason',paste0(block$code,': ',block$detail)))))
   }
   fmt <- function(x) format(as.numeric(x),big.mark=',',scientific=FALSE,trim=TRUE)
   pct <- if(identical(block$result$availability,'available')) sprintf('%+.1f%%',as.numeric(block$result$value)) else 'Not available'
   trace <- paste(vapply(block$trace,function(t) paste0(t$field,' = ',t$value,' (',t$source,')'),character(1)),collapse='; ')
+  if(composed) {
+    return(paste0('<div class="finding">',
+      '<p class="finding-value">',esc(pct),'</p>',
+      '<p class="finding-meta">',esc(label_topic(b,block$subject)),' · reported cases in ',esc(block$latest_year),
+      ' compared with ',esc(block$reference_year),' · measure ',esc(block$measure),'</p>',
+      '<div class="finding-counts"><div><span>',esc(block$reference_year),'</span><strong>',fmt(block$reference_count$value),'</strong></div>',
+      '<div><span>',esc(block$latest_year),'</span><strong>',fmt(block$latest_count$value),'</strong></div></div>',
+      '<p class="finding-caution">Notification changes reflect surveillance and testing as well as disease occurrence; they do not establish disease severity or statistical significance.</p>',
+      '<details class="block-inspect" id="block-reference-comparison-inspect"><summary>Inspect this block</summary>',
+      row('Result metric',block$result$metric_id),
+      row('Bound counts',paste(block$reference_count$metric_id,'and',block$latest_count$metric_id)),
+      row('Formula',block$result$formula), row('Availability',block$result$availability),
+      row('Reported measure',block$measure), row('Snapshot',block$snapshot$snapshot_id),
+      row('Snapshot path',block$snapshot$snapshot_path), row('Reference year',block$reference_year),
+      row('Latest year',block$latest_year), row('Effective settings',trace),
+      row('Analysis code',paste0(block$implementation$analysis$file,' · ',substr(block$implementation$analysis$sha256,1,16))),
+      row('Render code',paste0(block$implementation$presentation$file,' · ',substr(block$implementation$presentation$sha256,1,16))),
+      row('Analytical identity',block$identities$analytical), row('Result identity',block$identities$result),
+      row('Instance identity',block$identities$instance), row('Entry point',block$reproduction$entry_point),
+      row('Retained source record',paste0(block$lineage$source_file,' record ',block$lineage$source_row)),
+      '<p class="caption">Identities show that these records agree with each other; they do not prove the numbers are correct. Opening this panel performs no calculation.</p>',
+      '</details></div>'))
+  }
   paste0('<section class="chart-panel full" id="block-reference-comparison">',
     '<h2>',esc(label_topic(b,block$subject)),': ',esc(pct),' in ',esc(block$latest_year),' compared with ',esc(block$reference_year),'</h2>',
     '<p class="caption">Saved comparison read from the analysis bundle. This report does not recalculate it.</p>',
@@ -346,3 +371,82 @@ technical_findings <- function(b) {
 }
 
 source('audience_reports.R')
+
+# --- Block composition (experimental): order and membership come from a recipe file. ---
+composition_labels <- c(intro = 'Context', 'reference-comparison' = 'Reference comparison',
+                        limitations = 'Limitations', reproduction = 'Reproduction')
+composition_section_ids <- c(intro = 'overview', 'reference-comparison' = 'block-reference-comparison',
+                             limitations = 'limitations', reproduction = 'reproduction')
+composition_primary <- 'reference-comparison'
+
+composition_registry <- list(
+  intro = function(b, evidence_file='')
+    selection_intro(b),
+  'reference-comparison' = function(b, evidence_file='')
+    reference_block(b, evidence_file, variant='composed'),
+  limitations = function(b, evidence_file='')
+    document_limits(b),
+  reproduction = function(b, evidence_file='')
+    paste0(code_disclosure(annual_reproduction_code()),
+           '<p><a href="data/metrics.csv" download>Metrics CSV</a> · ',
+           '<a href="data/lineage.csv" download>Calculation lineage CSV</a></p>',
+           provenance_summary(b),
+           '<p class="composed-note">PDF export of this composed report is not yet available.</p>')
+)
+
+composition_style <- function() paste0('<style>',
+  '.composed-report{max-width:980px;margin:0 auto;padding:28px 20px 40px;background:#fff}',
+  '.composed-intro{color:#52656b;margin:4px 0 18px;font-size:17px}',
+  '.composed-nav{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 26px}',
+  '.composed-nav a{font-size:14px;color:#247c85;text-decoration:none}',
+  '.composed-block{border:1px solid #dfe6e5;border-radius:14px;padding:22px 24px;margin:0 0 20px;background:#fff}',
+  '.composed-block--primary{border:2px solid #247c85}',
+  '.composed-kicker{margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#52656b}',
+  '.composed-heading{margin:0 0 12px;font-size:21px;color:#18343c}',
+  '.finding-value{margin:6px 0 2px;font-size:44px;line-height:1;font-weight:700;color:#247c85}',
+  '.finding-meta{margin:6px 0 0;color:#52656b}',
+  '.finding-counts{display:flex;gap:34px;margin:16px 0 4px}',
+  '.finding-counts span{display:block;font-size:12px;color:#52656b}',
+  '.finding-counts strong{font-size:20px;color:#18343c}',
+  '.finding-caution{margin:14px 0 0;color:#52656b;font-size:14px}',
+  '.block-inspect{margin-top:16px;border-top:1px dashed #dfe6e5;padding-top:10px}',
+  '.block-inspect summary{cursor:pointer;color:#247c85;font-weight:600}',
+  '</style>')
+
+compose_report_html <- function(b, recipe_path, evidence_file='', registry=composition_registry) {
+  if(!nzchar(recipe_path) || !file.exists(recipe_path))
+    stop('Composition recipe is missing: ', recipe_path)
+  recipe <- tryCatch(jsonlite::fromJSON(recipe_path, simplifyVector=FALSE),
+                     error=function(e) stop('Composition recipe is not valid JSON: ', conditionMessage(e)))
+  if(!identical(recipe$contract, 'health-report/composition-recipe/1'))
+    stop('Unsupported composition contract: ', paste(recipe$contract, collapse=''))
+  blocks <- recipe$blocks
+  if(!is.list(blocks) || !length(blocks)) stop('Composition recipe needs a non-empty blocks list')
+  ids <- vapply(blocks, function(x) x$block, character(1))
+  inst <- vapply(blocks, function(x) x$instance_id, character(1))
+  unknown <- setdiff(ids, names(registry))
+  if(length(unknown)) stop('Unknown block type(s): ', paste(unknown, collapse=', '))
+  if(anyDuplicated(inst))
+    stop('Duplicate block instance id: ', paste(unique(inst[duplicated(inst)]), collapse=', '))
+  sections <- list()
+  for(i in seq_along(ids)) {
+    body <- registry[[ids[i]]](b, evidence_file=evidence_file)
+    if(!is.character(body) || !nzchar(body)) stop('Block rendered nothing: ', ids[i])
+    sid <- if(ids[i] %in% names(composition_section_ids)) composition_section_ids[[ids[i]]] else paste0(ids[i], '-block')
+    label <- if(ids[i] %in% names(composition_labels)) composition_labels[[ids[i]]] else ids[i]
+    primary <- identical(ids[i], composition_primary)
+    sections[[length(sections)+1L]] <- list(id=sid, label=label, html=paste0(
+      '<section class="composed-block', if(primary) ' composed-block--primary' else '',
+      '" id="', esc(sid), '"><p class="composed-kicker">', if(primary) 'Primary finding' else 'Supporting block',
+      '</p><h2 class="composed-heading">', esc(label), '</h2>', body, '</section>'))
+  }
+  nav <- paste0('<nav class="composed-nav" aria-label="Report blocks">',
+    paste(vapply(sections, function(s) paste0('<a href="#', esc(s$id), '">', esc(s$label), '</a>'),
+                 character(1)), collapse=''), '</nav>')
+  paste0('<div class="composed-report">', composition_style(),
+    '<p class="composed-intro">', esc(b$cfg$title), ' · ', esc(paste(b$cfg$years, collapse='–')),
+    ' · reference year ', esc(b$cfg$reference_year), '</p>', nav,
+    paste(vapply(sections, function(s) s$html, character(1)), collapse='\n'),
+    '<p class="caption">Composed from saved analysis outputs. The companion ',
+    '<a href="methods.html">methods report</a> retains the full selection, lineage and verification detail.</p></div>')
+}
