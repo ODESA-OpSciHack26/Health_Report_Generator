@@ -94,4 +94,71 @@ valid <- run(composed(list(list(block = 'reference-comparison', instance_id = 'r
 stopifnot(grepl('+60.0%', valid, fixed = TRUE))
 stopifnot(grepl('virus:reference_change', valid, fixed = TRUE))
 
+# Source-state wording comes from the recorded provenance only: never re-derived from a SHA, and
+# never guessed as clean when the Git state is absent or unreadable.
+run_state <- function(code, blocks = list(ref_record('ref-a'))) {
+  dir <- tempfile(); dir.create(dir)
+  prov <- list(blocks = blocks, code = code)
+  writeLines(toJSON(prov, auto_unbox = TRUE, null = 'null', na = 'null'),
+             file.path(dir, 'provenance.json'))
+  owd <- setwd(dir); on.exit(setwd(owd), add = TRUE)
+  methods_html(b, navigation = FALSE)
+}
+state <- function(label, detail, availability)
+  list(git_commit = 'abc123def456', git_worktree_clean = TRUE,
+       source_state = list(state = 'clean', commit = 'abc123def456', label = label,
+                           detail = detail, availability = availability))
+
+clean_text <- run_state(state('clean worktree at the recorded commit',
+                              'FIXTURE clean detail for commit abc123def456.',
+                              'FIXTURE availability: supply the checkout separately.'))
+stopifnot(grepl('FIXTURE clean detail for commit abc123def456.', clean_text, fixed = TRUE))
+stopifnot(grepl('FIXTURE availability: supply the checkout separately.', clean_text, fixed = TRUE))
+stopifnot(!grepl('candidate source is uncommitted', clean_text, fixed = TRUE))
+stopifnot(!grepl('not determined', clean_text, fixed = TRUE))
+
+dirty <- state('uncommitted changes present',
+               'FIXTURE dirty detail: uncommitted changes present.',
+               'FIXTURE availability: supply the checkout separately.')
+dirty_text <- run_state(dirty)
+stopifnot(grepl('FIXTURE dirty detail: uncommitted changes present.', dirty_text, fixed = TRUE))
+stopifnot(!grepl('clean worktree', dirty_text, fixed = TRUE))
+
+unknown <- state('source state not determined',
+                 'FIXTURE unknown detail: not determined and not evidence of a clean tree.',
+                 'FIXTURE availability: supply the checkout separately.')
+unknown_text <- run_state(unknown)
+stopifnot(grepl('not determined and not evidence of a clean tree', unknown_text, fixed = TRUE))
+
+# A provenance that predates the recorded field must not imply clean.
+legacy_text <- run_state(list(git_commit = 'abc123def456', git_worktree_clean = NULL))
+stopifnot(grepl('Source state was not recorded in this provenance record', legacy_text, fixed = TRUE))
+stopifnot(grepl('Neither the source checkout nor the container image is part of this package',
+                legacy_text, fixed = TRUE))
+stopifnot(!grepl('clean worktree', legacy_text, fixed = TRUE))
+
+# The composed settings panel reads the same recorded label and availability.
+summary_dir <- tempfile(); dir.create(summary_dir)
+summary_prov <- list(
+  code = list(git_commit = 'abc123def456',
+              source_state = list(state = 'clean', commit = 'abc123def456',
+                                  label = 'clean worktree at the recorded commit',
+                                  detail = 'FIXTURE detail.',
+                                  availability = 'FIXTURE availability: supply the checkout separately.')),
+  data = list(publisher = 'FOPH/BAG IDD', canonical_root = '/baseline/snapshots/x',
+              snapshot_manifest = NULL, publishing_date_range = list('2026-01-01'),
+              retrieved_at_utc_range = list('2026-01-02T00:00:00Z')),
+  rendered_at_utc = '2026-01-02T00:00:00Z')
+writeLines(toJSON(summary_prov, auto_unbox = TRUE, null = 'null'), file.path(summary_dir, 'provenance.json'))
+old_summary <- setwd(summary_dir)
+b_summary <- b
+b_summary$cfg$id <- 'researcher'
+b_summary$cfg$title <- 'Researcher'
+b_summary$cfg$presentation <- list(layout = 'technical', detail_level = 'full', display_name = 'Researcher')
+summary_html <- provenance_summary(b_summary, raw_links = FALSE)
+setwd(old_summary)
+stopifnot(grepl('clean worktree at the recorded commit', summary_html, fixed = TRUE))
+stopifnot(grepl('FIXTURE availability: supply the checkout separately.', summary_html, fixed = TRUE))
+stopifnot(!grepl('uncommitted changes present', summary_html, fixed = TRUE))
+
 cat('r-methods-boundary smoke passed\n')

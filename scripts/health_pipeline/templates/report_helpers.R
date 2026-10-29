@@ -301,10 +301,25 @@ findings_html <- function(b,navigation=TRUE,evidence_file='') {
   parts<-c(parts,'<footer class="dash-footer"><span>Notifications reflect surveillance and testing as well as disease occurrence.</span><a href="methods.html">Read the methods &amp; source report →</a></footer></div>')
   paste(parts,collapse='\n')
 }
+# Source state is recorded once, in provenance (publish.py), and only read here. A record that
+# predates the field is reported as not recorded; this helper never re-derives cleanliness from a
+# Git SHA. Availability is a separate statement and is always reported beside the state.
+source_state_note <- function(pr) {
+  s <- if(!is.null(pr$code)) pr$code$source_state else NULL
+  list(
+    state = if(!is.null(s$state)) as.character(s$state) else 'unknown',
+    label = if(!is.null(s$label)) as.character(s$label) else 'source state not recorded',
+    detail = if(!is.null(s$detail)) as.character(s$detail) else
+      'Source state was not recorded in this provenance record, so source identity is unverified.',
+    availability = if(!is.null(s$availability)) as.character(s$availability) else
+      'Neither the source checkout nor the container image is part of this package; both must be supplied separately.')
+}
+
 methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
     y <- report_year(b)
   ref <- b$cfg$reference_year
   pr_m <- read_provenance()
+  note_m <- source_state_note(pr_m)
   comp_m <- if(!is.null(pr_m$composition)) pr_m$composition else NULL
   recs_m <- if(!is.null(pr_m$blocks)) pr_m$blocks else list()
   ok_m <- function(x, type) identical(x$status,'verified') && identical(x$component$type, type)
@@ -450,8 +465,7 @@ methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
     '(2) the original analysis that produced the saved bundle; (3) the published integrity/inspection example, ',
     'which verifies saved files and does not rerun analysis. The rendering entry point recorded for each block ',
     'is shown in its inspector; the effective recipe digest appears under “Report settings and source files”.</p>',
-    '<p class="table-note">Source identity limitation: the candidate source is uncommitted. The recorded Git SHA ',
-    'plus a dirty-worktree flag does not identify the full candidate source, and no source archive is published.</p></section>'))
+    '<p class="table-note">', esc(note_m$detail), ' ', esc(note_m$availability), '</p></section>'))
   if(show_section(b,'excluded'))parts<-c(parts,paste0('<section class="audit-panel full"><h2>Dataset selection</h2>',html_table(selected),'<div class="table-note">Source: the saved selection table. “Included” means eligible for disease-level analysis; “In main group” additionally applies the configured source and disease exclusions.</div></section>'))
   if(show_section(b,'quality'))parts<-c(parts,quality_methods_html(b))
   if(show_section(b,'sources'))parts<-c(parts,paste0('<section class="audit-panel full"><h2>Sources and audit files</h2>',html_table(sources),'<div class="table-note">Source: the dataset registry and original export descriptions. Dates are publisher release dates. Full paths, data and metadata fingerprints are retained in the downloadable source registry.</div><div class="download-links">',paste(vapply(c('sources.csv','selection.csv','lineage.csv','metrics.csv','checks.csv','snapshot.json'),function(n)paste0('<a download href="',prefix,n,'">',esc(n),'</a>'),character(1)),collapse=''),'</div><details><summary>Technical identifiers and exact snapshot</summary><p class="snapshot">',esc(b$manifest$snapshot_id),'</p><p>Full metric identifiers are in metrics.csv. The findings report uses human-readable names instead of printed M-codes. CSV record numbers count the header as record 1; multiline CSV fields may span several text lines.</p></details></section>'))
@@ -491,7 +505,7 @@ methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
       rec$instance_id, 'Descriptive latest values and saved comparisons; sparklines are not implemented.'))
   }
   if(length(block_items)) parts<-c(parts,'<section class="audit-panel full" id="displayed-blocks"><h2>Methods for the displayed blocks</h2>', block_items, '</section>')
-  repro_text <- '<p>The package publishes its effective recipe at <a href="reproduction/composition.json">reproduction/composition.json</a> and a rendering record at <a href="reproduction/reproduction.json">reproduction/reproduction.json</a>. The record gives the supported rendering invocation with labelled placeholders, the recipe digest, the pinned environment and the original-analysis entry point; placeholders must be supplied from a retained checkout, published saved bundle and original snapshot root. The analysis-bundle files listed in bundle.json, plus the manifest, do not contain raw snapshot exports.</p><p>Integrity/inspection example: verifying saved files and digests is not production-analysis reproduction. A portable replay of the original analysis is not currently possible from the published package alone, and the uncommitted dirty worktree is not fully identified by a Git SHA.</p>'
+  repro_text <- paste0('<p>The package publishes its effective recipe at <a href="reproduction/composition.json">reproduction/composition.json</a> and a rendering record at <a href="reproduction/reproduction.json">reproduction/reproduction.json</a>. The record gives the supported rendering invocation with labelled placeholders, the recipe digest, the pinned environment and the original-analysis entry point; placeholders must be supplied from a retained checkout, published saved bundle and original snapshot root. The analysis-bundle files listed in bundle.json, plus the manifest, do not contain raw snapshot exports.</p><p>Integrity/inspection example: verifying saved files and digests is not production-analysis reproduction. A portable replay of the original analysis is not currently possible from the published package alone.</p><p class="table-note">', esc(note_m$detail), ' ', esc(note_m$availability), '</p>')
   parts<-c(parts, paste0('<section class="audit-panel full" id="reproduction-access"><h2>Reproduction access</h2>', repro_text, '</section>'))
   parts<-c(parts,'<footer class="dash-footer"><span>Descriptive comparisons do not establish causes, severity or statistical significance.</span><a href="report.html">← Back to findings</a></footer></div>');paste(parts,collapse='\n')
 }

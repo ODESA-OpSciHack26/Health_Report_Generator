@@ -403,6 +403,7 @@ provenance_summary <- function(b, raw_links=TRUE) {
              row('Included topics', esc(if('include_topics' %in% names(cfg)) paste(unlist(cfg$include_topics), collapse=', ') else 'not restricted (all eligible topics)')),
              row('Excluded topics', esc(if(length(cfg$exclude_topics)) paste(unlist(cfg$exclude_topics), collapse=', ') else 'none')))
   if(!is.null(pr)) {
+    state <- source_state_note(pr)
     rng <- function(x) if(is.null(x)) 'not recorded' else esc(paste(unique(substr(unlist(x), 1, 10)), collapse=' to '))
     input_location <- if(is.null(pr$data$canonical_root)) pr$data$snapshot_manifest else pr$data$canonical_root
     items <- c(items,
@@ -411,8 +412,9 @@ provenance_summary <- function(b, raw_links=TRUE) {
       row('Downloaded from the API', rng(pr$data$retrieved_at_utc_range)),
       row('Build-time input location', paste0('<code>', esc(input_location), '</code><br>',
         '<span class="table-note">Recorded on the build machine; readers are not expected to have this path locally.</span>')),
-      row('Code version', paste0('<code>', esc(if(is.null(pr$code$git_commit)) 'not recorded' else pr$code$git_commit), '</code>',
-                                 if(isFALSE(pr$code$git_worktree_clean)) ' (uncommitted changes present)' else '')),
+      row('Code version', paste0('<code>', esc(if(is.null(pr$code$git_commit)) 'not recorded' else pr$code$git_commit),
+                                 '</code> (', esc(state$label), ')')),
+      row('Source availability', paste0('<span class="table-note">', esc(state$availability), '</span>')),
       row('Rendered', esc(pr$rendered_at_utc)))
   }
   paste0('<dl class="provenance-list">', paste(items, collapse=''), '</dl>',

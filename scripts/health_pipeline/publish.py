@@ -115,6 +115,47 @@ def _retrieval(path):
     try: return json.loads(Path(path).read_text())
     except (OSError,ValueError): return None
 
+# Source *availability* is a property of the package, not of the recorded Git state: a clean
+# commit identifies a revision but does not give a reader the source checkout or the image.
+SOURCE_STATE_AVAILABILITY=('This package contains neither the source checkout nor the container image; '
+                          'both must be supplied separately before either can be inspected.')
+
+def source_state_record(code):
+    """Reader-facing source-state wording from the recorded Git state only.
+
+    Three states are possible: clean committed source, source with uncommitted changes, and
+    unknown. Cleanliness is never inferred from a commit hash, and an unreadable or missing Git
+    state is "unknown", never "clean". Availability is reported separately, so a clean commit is
+    never presented as proof that a reader has the source.
+    """
+    code=code if isinstance(code,dict) else {}
+    commit=code.get('git_commit'); clean=code.get('git_worktree_clean')
+    short=commit[:12] if isinstance(commit,str) and commit else None
+    if clean is True and short:
+        state,label='clean','clean worktree at the recorded commit'
+        detail=(f'Source state recorded at render time: clean worktree at commit {short}. '
+                'A clean commit identifies the source revision; it does not by itself provide the source.')
+    elif clean is False:
+        state,label='uncommitted','uncommitted changes present'
+        detail=(f'Source state recorded at render time: commit {short or "not recorded"} with uncommitted '
+                'changes present. The Git SHA alone does not identify the full working-tree source.')
+    else:
+        state,label='unknown','source state not determined'
+        detail=('Source state recorded at render time: not determined, because the Git state could not be '
+                'read. Source identity is therefore unverified; this is not evidence of a clean tree.')
+    return {'state':state,'commit':commit,'label':label,'detail':detail,
+            'availability':SOURCE_STATE_AVAILABILITY}
+
+def reproduction_source_state(provenance):
+    """The recorded source state used by the published reproduction record.
+
+    Reuses the provenance record rather than re-deriving: without one, the state is recorded as
+    not determined instead of being guessed.
+    """
+    code=(provenance or {}).get('code') if isinstance(provenance,dict) else None
+    recorded=(code or {}).get('source_state') if isinstance(code,dict) else None
+    return recorded or source_state_record(code or {})
+
 def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=None,extra=None):
     """Machine-readable record of what was rendered, from which data, with which parameters."""
     bundle=Path(bundle); m=verify_bundle(bundle)
@@ -139,6 +180,10 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
     toolchain=PROJECT/'workflow/toolchain.json'
     git_commit=_command(['git','rev-parse','HEAD'])
     git_status=_command(['git','status','--porcelain','--untracked-files=no'])
+    code={'git_commit':git_commit,'git_worktree_clean':None if git_status is None else git_status=='',
+          'workflow_config':workflow_config}
+    # One derived, reader-facing record; every output reads this instead of restating the state.
+    code['source_state']=source_state_record(code)
     record={
         'schema':PROVENANCE_SCHEMA,
         'rendered_at_utc':datetime.now(timezone.utc).isoformat(timespec='seconds'),
@@ -166,8 +211,7 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
                     'toolchain_contract':'workflow/toolchain.json','toolchain_contract_sha256':digest(toolchain) if toolchain.is_file() else None,
                     'r_lockfile_sha256':digest(PROJECT/'renv.lock') if (PROJECT/'renv.lock').is_file() else None,
                     'python_lockfile_sha256':digest(HERE/'requirements.lock.txt')},
-        'code':{'git_commit':git_commit,'git_worktree_clean':None if git_status is None else git_status=='',
-                'workflow_config':workflow_config},
+        'code':code,
     }
     if record['software']['R']: record['software']['R']=record['software']['R'][0]
     if extra: record['request']=extra
@@ -1108,6 +1152,8 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             if composition is not None:
                 reproduction=output.parent/'reproduction'; reproduction.mkdir(exist_ok=True)
                 shutil.copyfile(Path(composition),reproduction/'composition.json')
+                # Same recorded wording as the methods page; never a separate claim.
+                source_state=reproduction_source_state(provenance)
                 write_json(reproduction/'reproduction.json',{
                     'entry_point':'python scripts/health_pipeline/publish.py batch',
                     'rendering_command':'python scripts/health_pipeline/publish.py html --bundle <published-saved-bundle>/data --output <output-dir>/report.html --provenance <output-dir>/provenance.json --composition <package>/reproduction/composition.json --data-root <original-snapshot-root>/snapshots/<snapshot-id> --workflow-config <retained-checkout>/workflow/config.yaml',
@@ -1122,7 +1168,9 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
                     'analysis_bundle_files':len(json.loads((Path(bundle)/'bundle.json').read_text()).get('files',{})),
                     'input_note':'Rendering needs the published saved bundle data/ files, a retained source checkout and the original snapshot root; raw snapshot exports are not part of this package.',
                     'environment_note':'Use the pinned composer-report container recorded in provenance/software; the image identifier does not by itself grant access.',
-                    'source_state':'Candidate source is uncommitted; a Git SHA alone does not identify it and no source archive is published.'})
+                    'source_state':f"{source_state['detail']} {source_state['availability']}",
+                    'source_state_status':source_state['state'],
+                    'source_availability':source_state['availability']})
             validate_published_evidence(output.parent)
         if recipe is not None and provenance is not None and recipe.get('contract')==COMPOSITION_CONTRACT_V2:
             failed=[r for r in provenance.get('blocks',[]) if r.get('status')!='verified']

@@ -413,7 +413,11 @@ def test_published_package_carries_effective_recipe_and_reproduction_record(tmp_
     assert published["recipe_sha256"] == sidecar["composition"]["recipe_sha256"]
     assert published["recipe_file"] == "reproduction/composition.json"
     assert published["analysis_bundle_files"] == 6
-    assert "uncommitted" in published["source_state"]
+    # Source state comes from the provenance passed to the render. This fixture passes none, so
+    # the honest record is "unknown" — never a guess at clean or dirty.
+    assert published["source_state_status"] == "unknown"
+    assert "not evidence of a clean tree" in published["source_state"]
+    assert published["source_availability"] == publish.SOURCE_STATE_AVAILABILITY
     for field in ("rendering_command", "placeholder_note", "required_inputs",
                   "original_analysis", "integrity_example"):
         assert field in published
