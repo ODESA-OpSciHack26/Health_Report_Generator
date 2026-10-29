@@ -33,7 +33,7 @@ def fixture_recipe(tmp_path, topic="virus"):
 def test_researcher_recipe_order_is_data():
     recipe = publish.load_composition(RECIPE)
     assert [entry["block"] for entry in recipe["blocks"]] == [
-        "intro", "series-trend", "coverage-selection", "sensitivity-comparison",
+        "intro", "series-collection", "coverage-selection", "sensitivity-comparison",
         "reference-comparison", "limitations", "reproduction"]
     assert len({entry["instance_id"] for entry in recipe["blocks"]}) == 7
 
@@ -245,12 +245,12 @@ def test_reordering_keeps_contract_instance_identity(tmp_path, monkeypatch):
 
 RECIPES = ROOT / "scripts" / "health_pipeline" / "config" / "composer" / "compositions"
 AUDIENCE_ORDER = {
-    "researcher": ["intro", "series-trend", "coverage-selection",
+    "researcher": ["intro", "series-collection", "coverage-selection",
                    "sensitivity-comparison", "reference-comparison",
                    "limitations", "reproduction"],
-    "health_institution": ["intro", "monitoring-overview", "series-trend",
+    "health_institution": ["intro", "monitoring-overview", "series-collection",
                            "reference-comparison", "limitations", "reproduction"],
-    "public": ["intro", "reference-comparison", "series-trend",
+    "public": ["intro", "reference-comparison", "series-collection",
                "limitations", "reproduction"],
 }
 
@@ -287,6 +287,8 @@ def _named_recipe(directory, audience, block_order, declared=None, prefix=None):
             entry["topic"] = "campylobacteriosis"
         if block == "series-trend":
             entry.update({"topic": "campylobacteriosis", "measure": "cases"})
+        if block == "series-collection":
+            entry.update({"topics": ["campylobacteriosis"], "measure": "cases"})
         blocks.append(entry)
     path.write_text(json.dumps({"contract": "health-report/composition-recipe/2",
                                 "audience": declared or audience, "blocks": blocks}))

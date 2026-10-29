@@ -1100,6 +1100,83 @@ Uncommitted, tests only; no render, ledger or acceptance change in this checkpoi
 - History preserved: the earlier evidence-overwrite incident (round 2 reusing the round-1
   directory) remains recorded above; the accepted packages and all prior logs are untouched.
 
+### Candidate entry B2-COLLECTION-01: multi-topic annual series collection (author-run)
+
+- Base `6bbca7d399b56644bde785af5aadd4323aa76943`; uncommitted development tree, so every
+  render records `source_state: uncommitted`. No acceptance or ledger state changed.
+- One new composite block, `series-collection`, over the existing single-topic builder. Each
+  member is a separately checked `health-report/series-component/1` record produced by
+  `build_series_block`; there is no second resolver, and `series-trend` stays a supported
+  single-topic block. A recipe may not combine the two, and at most one collection is allowed.
+- Recipe interface (closed): `{block, instance_id, topics: "eligible"|[{topic}], measure,
+  years?, presentation?: {style, default_topic?}}`. `eligible` means the saved bundle's
+  included topics in ascending topic order; an explicit list keeps author order. Unknown,
+  excluded or otherwise unresolvable members fail the collection; there is no partial mode.
+  Defaults: style `standard`, default topic = first resolved topic.
+- Identity: members keep their own analytical/rows/instance identities (stable under
+  reordering and independent of the default topic). A versioned
+  `series-collection-identity/1` covers the collection instance, the ordered member
+  references/statuses/instance identities, measure, effective periods, style and default
+  topic — so reordering or changing the default changes only the collection identity.
+  Member block ids are `sc-<10 hex>-<topic tail>` (≤40 chars, digest-stable, no manual map).
+- Presentation: one native `<details>` panel per topic, default topic open, all panels
+  available without JavaScript, each panel carrying its own heading, chart, exact-value
+  table and inspector, reusing `series_body_html`. Panels are independent: no shared axis,
+  overlay, normalisation or indexing. Collection inspector lists members, ids and identities.
+- Scope/titles: `display_scope` now reports `collection_topics` and
+  `collection_default_topic` separately from `standalone_topics` and `monitoring_topics`;
+  `displayed_topics` is their union. Titles are collection-aware: researcher “Annual reported
+  cases for N notifiable diseases”; institution keeps the monitoring overview with a
+  default-topic focus subtitle; public leads with the default topic and labels exploration.
+- Recipes: researcher (standard, campylobacteriosis open, coverage/sensitivity/reference),
+  institution (compact, monitoring + reference), public (standard, exploration labelled,
+  plain-language reference first).
+- Checks (pinned image, rootless, `--pull never --network none --cpus 3`, repo and inputs
+  read-only): maintained suite 629 passed; `r_collection_smoke.R`, `r_series_smoke.R`,
+  `r_composition_smoke.R`, `r_block_dispatch_smoke.R`, `r_methods_boundary_smoke.R` exit 0;
+  three-audience batch exit 0 (252 s); narrowed render exit 0 (81 s); package verifier 0
+  problems (12/12/12/7 members, one open panel each, unique ids, anchors, member/metric
+  binding, display scope, recipe bytes); link check 0 problems; saved-file inspection OK.
+- Observed effect: `report.html` grows from ~1.0 MB to ~1.5 MB per 12-topic collection
+  (12 embedded PNGs); methods pages are ~1.6 MB. No browser geometry, keyboard or phone
+  review was performed — the CSS/summary assertions are structural only.
+- Limits: single measure per collection; one collection per recipe; no sparklines,
+  monitoring cross-links, configurator, PDF or second-snapshot use. Synthetic gap/zero/
+  single-observation cases are fixtures, not findings in the retained data.
+
+### User acceptance B2-COLLECTION-01a: time-trend collection PASS (user-reported)
+
+- User statement: “It works — PASS.” Scope is the time-trend collection portion of the
+  Phase B candidate as the user inspected it. No audience, device, viewport size, keyboard
+  interaction or individual topic is claimed as checked beyond that statement.
+- Reviewed evidence:
+  `~/.local/state/composer-bootstrap/g2-phase-b-collection-20261029T134448Z-219075`
+  (three audience packages + narrowed researcher case, logs, exits, verifier, checksums).
+- Source correspondence: the packages were rendered from the uncommitted working tree on
+  base `6bbca7d399b56644bde785af5aadd4323aa76943`, so every package records
+  `source_state: uncommitted`. All 84 implementation references (contracts, binding,
+  presentation, schema, analysis) and the presentation-helper digests match the current
+  files; no reference is missing.
+- Gap clarification: the plot preparation groups observations into segments and restarts a
+  segment whenever the next year is not adjacent
+  (`d$segment <- cumsum(c(TRUE, diff(d$year) > 1L))`, `report_helpers.R`), and the line
+  layer draws solid segments only (`geom_line(aes(group = segment))`, no linetype). A missing
+  year therefore produces a complete break, not a dashed bridge; `r_series_smoke.R` asserts
+  `segment == c(1, 2, 2)` for years 2021/2023/2024 with 2022 missing. The earlier verbal
+  description “dashed segment” was inaccurate and appears in no repository text. This PASS
+  does not accept the synthetic gap behaviour; that remains fixture-only evidence.
+- Verified test-evidence scope: maintained suite 629 passed (14:56), `r_collection_smoke.R`,
+  `r_series_smoke.R`, `r_composition_smoke.R`, `r_block_dispatch_smoke.R` and
+  `r_methods_boundary_smoke.R` exit 0, batch exit 0 (252 s), narrowed render exit 0 (81 s),
+  package verifier 0 problems, link check 0 problems, saved-file inspection OK. Those runs
+  cover the final code tree; the documentation-only edits that follow this entry were not
+  part of that run and do not affect implementation digests.
+- Remaining limitations: no independent source or scientific review; no accessibility,
+  cross-browser, keyboard or phone certification; one measure per collection; one collection
+  per recipe; no sparklines, monitoring cross-links, configurator, PDF or second-snapshot
+  use. This entry records a scoped presentation/functional PASS only — it does not accept
+  other Phase B review items or any requirement-ledger state.
+
 ## Feedback and revision
 
 Use F-001 onward. Record candidate, affected requirement/block, requested change, rationale and blocking/nonblocking status. Classify presentation, behavior, scientific/contract, disclosure or scope; assign one owner and acceptance check. Never change metric meaning to satisfy visual preference.

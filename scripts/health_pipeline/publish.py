@@ -486,6 +486,132 @@ def build_series_block(bundle,project_root,instance_id,topic,measure,years=None,
             'reproduction':{'entry_point':'snakemake --cores 2',
                             'snapshot_id':loaded.snapshot['snapshot_id']}}
 
+COLLECTION_CONTRACT='health-report/series-collection/1'
+COLLECTION_IDENTITY_CONTRACT='series-collection-identity/1'
+MEMBER_ID_PREFIX='sc'
+IDENTIFIER_RE=re.compile(r'[a-z0-9][a-z0-9_-]{2,39}')
+
+def _member_instance_id(collection_instance, topic):
+    """Bounded, deterministic member block id: readable topic tail plus a stable digest.
+
+    The id is derived only from the collection instance and the topic, so it is stable when
+    the collection is reordered. The digest keeps it unique for long or similar topic slugs;
+    the length stays inside the existing 40-character identifier limit.
+    """
+    token=hashlib.sha256(f'{collection_instance}\x00{topic}'.encode('utf-8')).hexdigest()[:10]
+    prefix=f'{MEMBER_ID_PREFIX}-{token}-'
+    room=40-len(prefix)
+    slug=re.sub(r'[^a-z0-9]+','-',str(topic).lower()).strip('-') or 'topic'
+    slug=slug[:max(room,1)].strip('-') or 'topic'
+    candidate=f'{prefix}{slug}'
+    if len(candidate)>40 or not IDENTIFIER_RE.fullmatch(candidate):
+        raise ValueError(f'cannot derive a bounded member instance id for topic {topic!r}')
+    return candidate
+
+def _collection_identity(payload):
+    """Versioned collection presentation identity; order is an explicit input."""
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def build_series_collection(bundle,project_root,instance_id,topics,measure,years=None,presentation=None):
+    """One checked collection over per-topic series records built by the existing core.
+
+    This adds aggregation only: every member is a separately checked
+    health-report/series-component/1 document produced by build_series_block(). An explicit
+    request must resolve completely; a partly resolvable request fails the collection. A member
+    with a genuine internal gap stays valid and keeps its gap semantics.
+    """
+    import composer_contracts as contracts
+    bundle=Path(bundle)
+    style='standard'; default_topic=None
+    try:
+        if presentation is not None:
+            if not isinstance(presentation,dict) or not set(presentation)<={'style','default_topic'}:
+                raise contracts.ContractError('presentation',
+                    'presentation accepts only style and default_topic')
+            style=presentation.get('style','standard')
+            if style not in SERIES_STYLES:
+                raise contracts.ContractError('presentation',
+                    f'unsupported presentation style {style!r}; supported {list(SERIES_STYLES)}')
+            default_topic=presentation.get('default_topic')
+        loaded=contracts.load_bundle(bundle)
+        eligible=sorted({row.get('topic') for row in loaded.selection
+                         if (row.get('status') or '').lower()=='included'})
+        if topics=='eligible':
+            requested=list(eligible); ordering='eligible-ascending'
+        elif isinstance(topics,list) and topics:
+            requested=[str(topic) for topic in topics]; ordering='author'
+        else:
+            raise contracts.ContractError('selection',
+                'topics must be "eligible" or a non-empty list of topic ids')
+        unknown=[topic for topic in requested if topic not in eligible]
+        if unknown:
+            raise contracts.ContractError('selection',
+                'requested topic(s) are not eligible in this saved bundle: '+', '.join(unknown))
+        if len(set(requested))!=len(requested):
+            raise contracts.ContractError('selection','requested topics contain a duplicate')
+        default_topic=default_topic or requested[0]
+        if default_topic not in requested:
+            raise contracts.ContractError('presentation',
+                f'default_topic {default_topic!r} is not one of the resolved topics')
+
+        members=[]
+        for topic in requested:
+            member_id=_member_instance_id(instance_id,topic)
+            record=build_series_block(bundle,project_root,member_id,topic,measure,years,
+                                      {'style':style})
+            if record.get('status')!='verified':
+                detail=f"{record.get('code','failed')}: {record.get('detail','')}".strip()
+                raise contracts.ContractError('member',
+                    f'member topic {topic!r} did not resolve ({detail})')
+            if (record.get('selection') or {}).get('topic')!=topic:
+                raise contracts.ContractError('member_mismatch',
+                    f'member record topic {(record.get("selection") or {}).get("topic")!r} '
+                    f'does not equal the requested topic {topic!r}')
+            if (record.get('selection') or {}).get('measure')!=measure:
+                raise contracts.ContractError('member_mismatch',
+                    f'member record measure {record["selection"].get("measure")!r} differs from {measure!r}')
+            members.append(record)
+        member_ids=[member['instance_id'] for member in members]
+        if len(set(member_ids))!=len(member_ids):
+            raise contracts.ContractError('member','derived member instance ids are not unique')
+        periods=[member['periods']['requested'] for member in members]
+        if len({tuple(item) for item in periods})!=1:
+            raise contracts.ContractError('periods','members resolved different requested periods')
+        start,end=periods[0]
+        effective=sorted({int(year) for member in members
+                          for year in member['periods']['effective']})
+
+        payload={'contract':COLLECTION_IDENTITY_CONTRACT,'instance_id':instance_id,
+                 'measure':measure,'style':style,'default_topic':default_topic,
+                 'periods':{'requested':[int(start),int(end)],'effective':effective},
+                 'members':[{'instance_id':member['instance_id'],
+                             'topic':member['selection']['topic'],
+                             'status':member['status'],
+                             'instance_identity':member['identities']['instance']}
+                            for member in members]}
+        record={'status':'verified','instance_id':instance_id,
+            'component':{'type':'series-collection','version':'1'},
+            'contract':{'series':contracts.SERIES_CONTRACT,'collection':COLLECTION_CONTRACT},
+            'topics':requested,'ordering':ordering,'measure':measure,
+            'presentation':{'style':style,'default_topic':default_topic},
+            'periods':payload['periods'],'members':members,
+            'identities':{'collection':_collection_identity(payload),
+                          'contract':COLLECTION_IDENTITY_CONTRACT,
+                          'members':payload['members']},
+            'snapshot':{'snapshot_id':loaded.snapshot['snapshot_id'],
+                        'snapshot_path':loaded.snapshot.get('snapshot_path')},
+            'implementation':dict(members[0].get('implementation') or {}),
+            'reproduction':{'entry_point':'snakemake --cores 2',
+                            'snapshot_id':loaded.snapshot['snapshot_id']}}
+    except contracts.ContractError as exc:
+        return {'status':'failed','instance_id':instance_id,
+                'component':{'type':'series-collection','version':'1'},
+                'contract':{'collection':COLLECTION_CONTRACT},
+                'code':exc.code,'detail':str(exc),
+                'findings':[{'code':item.code,'subject':item.subject,'detail':item.detail}
+                            for item in getattr(exc,'findings',())]}
+    return record
+
 def _block_identity(tag, payload):
     canonical = json.dumps([tag, payload], sort_keys=True, separators=(',', ':'),
                             ensure_ascii=False)
@@ -872,9 +998,16 @@ def _monitoring_instance_identity(analytical, instance_id, rows):
 
 
 def _resolved_scope(recipe, records):
-    """What the recipe actually displays: standalone topics, monitoring rows, groups."""
+    """What the recipe actually displays, kept as separate facts.
+
+    ``standalone_topics`` are bound by single-topic blocks (reference, series-trend);
+    ``collection_topics`` are the verified members of a series collection; ``monitoring_topics``
+    are rows of the monitoring table. None of them is folded into another, so a consumer can
+    state what is shown and how.
+    """
     by_id = {record['instance_id']: record for record in records}
-    standalone, monitored, groups = set(), set(), []
+    standalone, collected, monitored, groups = set(), set(), set(), []
+    collection_default = None
     for entry in recipe['blocks']:
         record = by_id.get(entry['instance_id'])
         if not record or record.get('status') != 'verified':
@@ -882,6 +1015,11 @@ def _resolved_scope(recipe, records):
         kind = (record.get('component') or {}).get('type')
         if kind == 'series-trend':
             standalone.add(record['selection']['topic'])
+        elif kind == 'series-collection':
+            collected.update((member.get('selection') or {}).get('topic')
+                             for member in (record.get('members') or [])
+                             if member.get('status') == 'verified')
+            collection_default = (record.get('presentation') or {}).get('default_topic')
         elif kind == 'reference-comparison':
             standalone.add(record['subject'])
         elif kind == 'monitoring-overview':
@@ -894,13 +1032,20 @@ def _resolved_scope(recipe, records):
                                    'specification': spec['role'],
                                    'members': spec['members']})
     return {'standalone_topics': sorted(standalone),
+            'collection_topics': sorted(collected),
+            'collection_default_topic': collection_default,
             'monitoring_topics': sorted(monitored),
-            'displayed_topics': sorted(standalone | monitored),
+            'displayed_topics': sorted(standalone | collected | monitored),
             'group_summaries': groups}
 
 
 def _effective_titles(bundle, scope):
-    """Reader-facing title/subtitle from the resolved scope; saved metadata is untouched."""
+    """Reader-facing title/subtitle from the resolved scope; saved metadata is untouched.
+
+    A collection is described as a collection, never by joining every member name into the
+    title. The default-open topic carries the focus where a focus is wanted.
+    """
+    collected = scope.get('collection_topics') or []
     topics = scope['standalone_topics'] or scope['displayed_topics']
     if not topics:
         return None, None
@@ -911,15 +1056,25 @@ def _effective_titles(bundle, scope):
         labels.setdefault(row.get('topic'), row.get('label') or row.get('topic'))
     names = [labels.get(topic) or topic.replace('_', ' ') for topic in topics]
     geography = 'Switzerland and Liechtenstein' if contracts.scope_of(loaded.stakeholder).get('geography') == 'CHFL' else 'Switzerland'
+    layout = (loaded.stakeholder.get('presentation') or {}).get('layout')
+    default_topic = scope.get('collection_default_topic') or (collected[0] if collected else None)
+    default_label = labels.get(default_topic) or (default_topic or '').replace('_', ' ')
     if scope['monitoring_topics']:
+        focus = default_label or names[0]
         return ('Notifiable disease monitoring overview',
-                f"{geography} · {', '.join(names)} focus")
+                f"{geography} · {focus} focus")
+    if len(collected) > 1:
+        if layout == 'editorial':
+            return (f'{default_label}: reported cases and saved comparisons',
+                    f'{geography} · {len(collected)} topics available to explore')
+        return (f'Annual reported cases for {len(collected)} notifiable diseases',
+                f'{geography} · {len(collected)} topics')
     return ', '.join(names) + ': reported cases and saved comparisons', None
 
 
 COMPOSITE_BLOCKS = ('coverage-selection', 'monitoring-overview', 'sensitivity-comparison')
-KNOWN_BLOCKS = ('intro','series-trend','reference-comparison','limitations','reproduction',
-                *COMPOSITE_BLOCKS)
+KNOWN_BLOCKS = ('intro','series-trend','series-collection','reference-comparison','limitations',
+                'reproduction',*COMPOSITE_BLOCKS)
 COMPOSITE_BINDING = 'saved-records/1'
 COMPOSITION_CONTRACT = 'health-report/composition-recipe/1'
 COMPOSITION_CONTRACT_V2 = 'health-report/composition-recipe/2'
@@ -990,6 +1145,15 @@ def load_composition(path):
                 expected.add('years')
             if 'presentation' in entry:
                 expected.add('presentation')
+        if block == 'series-collection':
+            if contract != COMPOSITION_CONTRACT_V2:
+                raise ValueError('Block series-collection requires composition contract '
+                                 f'{COMPOSITION_CONTRACT_V2}')
+            expected = {'block','instance_id','topics','measure'}
+            if 'years' in entry:
+                expected.add('years')
+            if 'presentation' in entry:
+                expected.add('presentation')
         if set(entry) != expected:
             raise ValueError(f'Invalid fields for block {block!r}: expected {sorted(expected)}')
         if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
@@ -1012,6 +1176,37 @@ def load_composition(path):
                 if presentation['style'] not in SERIES_STYLES:
                     raise ValueError(f'Unsupported presentation style for block instance {instance!r}: '
                                      f'{presentation["style"]!r}; supported {list(SERIES_STYLES)}')
+        if block == 'series-collection':
+            topics = entry['topics']
+            if topics != 'eligible':
+                if not isinstance(topics, list) or not topics:
+                    raise ValueError(f'Invalid topics for block instance {instance!r}: '
+                                     'expected "eligible" or a non-empty list')
+                if any(not isinstance(topic, str) or not TOPIC_ID.fullmatch(topic) for topic in topics):
+                    raise ValueError(f'Invalid topic id for block instance {instance!r}')
+                if len(set(topics)) != len(topics):
+                    raise ValueError(f'Duplicate topic in block instance {instance!r}')
+            measure = entry['measure']
+            if not isinstance(measure, str) or not MEASURE_ID.fullmatch(measure):
+                raise ValueError(f'Invalid measure for block instance {instance!r}: {measure!r}')
+            _recipe_years(entry, instance)
+            presentation = entry.get('presentation')
+            if presentation is not None:
+                if (not isinstance(presentation, dict)
+                        or not set(presentation) <= {'style', 'default_topic'}):
+                    raise ValueError(f'Invalid presentation for block instance {instance!r}: '
+                                     'expected style and optionally default_topic')
+                if 'style' in presentation and presentation['style'] not in SERIES_STYLES:
+                    raise ValueError(f'Unsupported presentation style for block instance {instance!r}: '
+                                     f'{presentation["style"]!r}; supported {list(SERIES_STYLES)}')
+                if 'default_topic' in presentation:
+                    default_topic = presentation['default_topic']
+                    if not isinstance(default_topic, str) or not TOPIC_ID.fullmatch(default_topic):
+                        raise ValueError(f'Invalid default_topic for block instance {instance!r}: '
+                                         f'{default_topic!r}')
+                    if topics != 'eligible' and default_topic not in topics:
+                        raise ValueError(f'default_topic {default_topic!r} is not one of the '
+                                         f'topics requested by block instance {instance!r}')
         if block in COMPOSITE_BLOCKS and contract != COMPOSITION_CONTRACT_V2:
             raise ValueError(f'Block {block} requires composition contract '
                              f'{COMPOSITION_CONTRACT_V2}')
@@ -1027,6 +1222,13 @@ def load_composition(path):
         raise ValueError('Repeated reference-comparison blocks are not supported yet')
     if sum(1 for entry in blocks if entry['block'] == 'series-trend') > 1:
         raise ValueError('Repeated series-trend blocks are not supported yet')
+    # A collection binds the same saved rows a standalone series block would; allowing both (or
+    # two collections) in one recipe would duplicate the same chart under different identities.
+    if sum(1 for entry in blocks if entry['block'] == 'series-collection') > 1:
+        raise ValueError('Repeated series-collection blocks are not supported yet')
+    if (any(entry['block'] == 'series-collection' for entry in blocks)
+            and any(entry['block'] == 'series-trend' for entry in blocks)):
+        raise ValueError('A recipe cannot combine series-trend and series-collection blocks')
     return recipe
 
 def composition_provenance(recipe, path, blocks):
@@ -1036,7 +1238,16 @@ def composition_provenance(recipe, path, blocks):
     for entry in recipe['blocks']:
         instance = {'block': entry['block'], 'instance_id': entry['instance_id']}
         record = checked.get(entry['instance_id'])
-        if record is not None and entry['block'] == 'series-trend':
+        if record is not None and entry['block'] == 'series-collection':
+            instance.update({'topics': record.get('topics'), 'measure': record.get('measure'),
+                             'presentation': record.get('presentation'),
+                             'ordering': record.get('ordering'),
+                             'member_instance_ids': [member['instance_id']
+                                                     for member in (record.get('members') or [])],
+                             'contract': (record.get('contract') or {}).get('collection'),
+                             'contract_status': record.get('status'),
+                             'collection_identity': (record.get('identities') or {}).get('collection')})
+        elif record is not None and entry['block'] == 'series-trend':
             periods = record.get('periods') or {}
             instance.update({
                 'topic': entry['topic'], 'measure': entry['measure'],
@@ -1087,27 +1298,51 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
                 # Each recipe entry names its own checked record; the instance id is the
                 # same value the R renderer uses for its DOM identity. Records carry their
                 # component type so consumers can select without positional fallback.
-                records=[]
-                displayed_topics=sorted({str(e['topic']) for e in recipe['blocks']
-                                         if e['block'] in ('reference-comparison','series-trend')
-                                         and e.get('topic')})
+                # Two passes: coverage needs the topics the other blocks actually resolved
+                # (a collection resolves its members at build time), while the published order
+                # still follows the recipe.
+                built={}
                 for entry in recipe['blocks']:
+                    if entry['block']=='coverage-selection': continue
                     if entry['block']=='reference-comparison':
-                        records.append(build_block(bundle,Path(bundle).parents[2],PROJECT,
-                                                   entry['instance_id'],entry.get('topic')))
+                        built[entry['instance_id']]=build_block(
+                            bundle,Path(bundle).parents[2],PROJECT,
+                            entry['instance_id'],entry.get('topic'))
                     elif entry['block']=='series-trend':
-                        records.append(build_series_block(bundle,PROJECT,entry['instance_id'],
-                                                          entry['topic'],entry['measure'],
-                                                          entry.get('years'),entry.get('presentation')))
-                    elif entry['block']=='coverage-selection':
-                        records.append(build_coverage_block(
-                            bundle,PROJECT,entry['instance_id'],displayed_topics,
-                            any(item['block']=='sensitivity-comparison'
-                                for item in recipe['blocks'])))
+                        built[entry['instance_id']]=build_series_block(
+                            bundle,PROJECT,entry['instance_id'],entry['topic'],entry['measure'],
+                            entry.get('years'),entry.get('presentation'))
+                    elif entry['block']=='series-collection':
+                        built[entry['instance_id']]=build_series_collection(
+                            bundle,PROJECT,entry['instance_id'],entry['topics'],entry['measure'],
+                            entry.get('years'),entry.get('presentation'))
                     elif entry['block']=='monitoring-overview':
-                        records.append(build_monitoring_block(bundle,PROJECT,entry['instance_id']))
+                        built[entry['instance_id']]=build_monitoring_block(
+                            bundle,PROJECT,entry['instance_id'])
                     elif entry['block']=='sensitivity-comparison':
-                        records.append(build_sensitivity_block(bundle,PROJECT,entry['instance_id']))
+                        built[entry['instance_id']]=build_sensitivity_block(
+                            bundle,PROJECT,entry['instance_id'])
+                displayed_topics=set()
+                for record in built.values():
+                    if record.get('status')!='verified': continue
+                    kind=(record.get('component') or {}).get('type')
+                    if kind=='series-trend': displayed_topics.add(record['selection']['topic'])
+                    elif kind=='series-collection':
+                        displayed_topics.update((member.get('selection') or {}).get('topic')
+                                                for member in (record.get('members') or []))
+                    elif kind=='reference-comparison': displayed_topics.add(record['subject'])
+                has_sensitivity=any(item['block']=='sensitivity-comparison'
+                                    for item in recipe['blocks'])
+                records=[]
+                for entry in recipe['blocks']:
+                    if entry['block']=='coverage-selection':
+                        records.append(build_coverage_block(
+                            bundle,PROJECT,entry['instance_id'],sorted(displayed_topics),
+                            has_sensitivity))
+                    else:
+                        record=built.get(entry['instance_id'])
+                        if record is not None:      # intro/limitations/reproduction are not records
+                            records.append(record)
                 provenance['blocks']=records
                 provenance['composition']=composition_provenance(recipe,composition,records)
                 scope=_resolved_scope(recipe,records)
@@ -1180,11 +1415,16 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
                     for r in items)
                 references=[r for r in failed if (r.get('component') or {}).get('type')=='reference-comparison']
                 series=[r for r in failed if (r.get('component') or {}).get('type')=='series-trend']
+                collections=[r for r in failed
+                             if (r.get('component') or {}).get('type')=='series-collection']
                 if references:
                     raise ValueError('Composed report has failed explicit reference binding(s): '
                                      + detail(references))
                 if series:
                     raise ValueError('Composed report has failed series binding(s): ' + detail(series))
+                if collections:
+                    raise ValueError('Composed report has failed series collection binding(s): '
+                                     + detail(collections))
                 composites=[r for r in failed
                             if (r.get('component') or {}).get('type') in COMPOSITE_BLOCKS]
                 if composites:

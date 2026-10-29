@@ -248,6 +248,35 @@ Rules:
   labelled synthetic fixtures, not findings in the retained data. Missing years are gaps, not
   zero. A snapshot hash beside a chart does not prove row selection.
 
+### 6.3a Multi-topic annual series collection
+
+- **Identity and status.** Block type `series-collection`, implementation on top of
+  `health-report/series-component/1`; implemented in all three persistent recipes
+  (researcher standard, institution compact, public standard). One collection per recipe;
+  a recipe cannot combine it with a standalone `series-trend` block.
+- **Reader purpose.** Answers “What happened for each selected disease?” without implying a
+  cross-disease comparison. Researcher default; institution temporal context behind the
+  monitoring table; public default topic with clearly labelled exploration.
+- **Inputs and parameters.** `{topics: "eligible" | [{topic}], measure, years?, presentation?:
+  {style, default_topic?}}`. `eligible` resolves the saved bundle's included topics in
+  ascending topic order; an explicit list keeps author order and must resolve completely.
+  One measure per collection; `years` is an inclusive range inside the reporting window;
+  defaults are style `standard` and the first resolved topic.
+- **Main presentation.** One native disclosure panel per topic, default topic open, each with
+  its own heading, chart, exact-value table and inspector. Independent panels; no shared
+  axis, overlay, normalisation or index. Collection inspector lists members, member ids and
+  the collection identity.
+- **Expandable evidence.** Per-member saved-row bindings, gaps, artifact digest, snapshot,
+  quality context and identities; collection-level measure, periods, ordering and
+  `series-collection-identity/1`.
+- **Interaction.** Native `<details>`/`<summary>`; all panels work without JavaScript; no
+  selector, filter or recalculation. Opening a panel performs no calculation.
+- **Provenance and failure.** Each member is separately checked; a mismatch between the
+  requested topic and the checked record fails the collection, and any failed member fails
+  the composed report rather than leaving a partial set. `display_scope` reports
+  `collection_topics` and `collection_default_topic` separately from standalone and
+  monitoring topics.
+
 ### 6.4 Analytical population / coverage and selection
 
 - **Identity and status.** Implemented composite `coverage-selection` (uncommitted,

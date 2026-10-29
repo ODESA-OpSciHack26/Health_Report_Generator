@@ -491,6 +491,16 @@ methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
              ', each bound through its saved count metric. Missing years are gaps, never zeros, and no ',
              'interpolation is performed across them.'), rec$instance_id,
       'Display of saved observations only; no trend model or smoothing.'))
+    if(identical(type,'series-collection')) block_items <- c(block_items, paste0(
+      '<h3>Annual series collection: ', length(rec$members), ' topics</h3>',
+      '<p>Displays saved annual rows for ', length(rec$members), ' topics from one collection record. ',
+      'Each member is a separately checked series record bound through its own count metrics; ',
+      'missing years are gaps, never zeros. Panels are display-only and open independently.</p>',
+      '<p><a href="report.html#', esc(rec$instance_id), '">Open the collection</a> &#183; topics: ',
+      paste(vapply(rec$members, function(m) paste0('<a href="report.html#', esc(m$instance_id), '">',
+        esc(label_topic(b, m$selection$topic)), '</a>'), character(1)), collapse = ', '), '</p>',
+      '<p class="table-note">Limitation: display of saved observations only; no trend model, smoothing, ',
+      'shared scale or cross-topic comparison.</p>'))
     if(identical(type,'coverage-selection')) block_items <- c(block_items, block_row(
       'Coverage and selection',
       'Summarises saved selection records: dataset decisions, included and excluded topics, saved observations and the topics this recipe binds. It is not a measure of disease occurrence.',
@@ -613,6 +623,7 @@ source('audience_reports.R')
 # instance_id is the section's DOM identity and is passed into the renderer so descendant
 # ids can be namespaced per instance.
 composition_labels <- c(intro = 'Context', 'series-trend' = 'Time trend',
+                        'series-collection' = 'Time trends by topic',
                         'coverage-selection' = 'What this report covers',
                         'monitoring-overview' = 'Monitoring overview',
                         'sensitivity-comparison' = 'Sensitivity comparison',
@@ -1103,6 +1114,12 @@ series_trend_block <- function(b, evidence_file = '', instance_id = NULL) {
     return(unavailable(paste0(if(is.null(block$code)) 'failed' else block$code, ': ',
                               if(is.null(block$detail)) '' else block$detail)))
 
+  series_body_html(b, block, instance_id)
+}
+
+# Body of one saved annual series panel: heading, chart, exact values, inspector. Reused by the
+# single-topic block and by each collection member, so there is exactly one series renderer.
+series_body_html <- function(b, block, instance_id) {
   req <- block$periods$requested
   years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
   label <- label_topic(b, block$selection$topic)
@@ -1215,6 +1232,101 @@ series_trend_block <- function(b, evidence_file = '', instance_id = NULL) {
     '<a href="data/metrics.csv" download>Download the bound count metrics — CSV</a></p>',
     '<p class="caption">Identities show that these records agree with each other; they do not ',
     'prove the numbers are correct. Opening this panel performs no calculation.</p></details>')
+}
+
+
+# --- Saved annual series collection: one native disclosure panel per topic ---
+series_panel_span <- function(block) {
+  req <- block$periods$requested
+  years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
+  paste0(years[[1]], '–', years[[length(years)]])
+}
+
+series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
+  if(is.null(instance_id) || !nzchar(instance_id))
+    stop('A composed series-collection block needs an instance id')
+  unavailable <- function(reason) paste0(
+    '<h3>Reported values over time unavailable</h3>',
+    '<p class="caption">The saved series collection record could not be used, so no values are shown.</p>',
+    '<div class="audit-row"><span>Reason</span><strong>', esc(reason), '</strong></div>')
+  if(!knitr::is_html_output()) return('')
+  if(!nzchar(evidence_file)) return(unavailable('the evidence file was not supplied'))
+  if(!file.exists(evidence_file)) return(unavailable(paste('evidence file is missing:', evidence_file)))
+  record <- tryCatch(jsonlite::fromJSON(evidence_file, simplifyVector = FALSE),
+                     error = function(e) NULL)
+  if(is.null(record)) return(unavailable('evidence file is not valid JSON'))
+  matches <- Filter(function(x) identical(x$instance_id, instance_id) &&
+                      identical(x$component$type, 'series-collection'), record$blocks)
+  if(!length(matches))
+    return(unavailable(paste('no checked series-collection record for block instance', instance_id)))
+  block <- matches[[1]]
+  if(!identical(block$status, 'verified'))
+    return(unavailable(paste0(if(is.null(block$code)) 'failed' else block$code, ': ',
+                              if(is.null(block$detail)) '' else block$detail)))
+  members <- block$members
+  if(is.null(members) || !length(members))
+    return(unavailable('the collection record carries no member series'))
+
+  default_topic <- if(!is.null(block$presentation$default_topic))
+    as.character(block$presentation$default_topic) else NULL
+  measure <- as.character(block$measure)
+  editorial <- identical(presentation_profile(b)$layout, 'editorial')
+  count <- length(members)
+  default_label <- NULL
+  for(m in members) if(identical(as.character(m$selection$topic), default_topic))
+    default_label <- label_topic(b, as.character(m$selection$topic))
+  if(is.null(default_label))
+    default_label <- label_topic(b, as.character(members[[1]]$selection$topic))
+  ordering_text <- if(identical(as.character(block$ordering), 'author')) 'author order'
+    else 'deterministic topic order'
+  intro <- if(editorial)
+    paste0('<p class="collection-intro">Reported ', esc(measure), ' for ', count,
+           ' notifiable diseases. <strong>', esc(default_label),
+           '</strong> is open first; open another disease to explore it. Each disease is shown on ',
+           'its own, not compared against a shared scale.</p>')
+  else
+    paste0('<p class="collection-intro">Saved annual series for ', count,
+           ' topics, one panel each bound through its own count metrics. Panels are independent: ',
+           'values, units and gaps belong to the topic in that panel. A missing year is a gap, not zero.</p>')
+
+  body <- character(0)
+  for(member in members) {
+    topic <- as.character(member$selection$topic)
+    label <- label_topic(b, topic)
+    open <- identical(topic, default_topic)
+    missing <- if(length(member$missing_years)) paste(member$missing_years, collapse = ', ') else NULL
+    meta <- paste0(esc(label), ' · ', esc(measure), ' · ', esc(series_panel_span(member)),
+                   if(!is.null(missing)) paste0(' · no saved observation for ', esc(missing)) else '')
+    body <- c(body, paste0(
+      '<details class="series-panel" id="', esc(member$instance_id), '"',
+      if(open) ' open' else '', '><summary>', meta, '</summary>',
+      series_body_html(b, member, member$instance_id),
+      '</details>'))
+  }
+  members_list <- paste(vapply(members, function(member) paste0(
+    '<li><a href="#', esc(member$instance_id), '">', esc(label_topic(b, member$selection$topic)),
+    '</a> · <code>', esc(member$instance_id), '</code> · instance ',
+    esc(substr(as.character(member$identities$instance), 1, 16)), '</li>'), character(1)),
+    collapse = '')
+  inspect <- paste0('<details class="block-inspect" id="', esc(paste0(instance_id, '-inspect')),
+    '"><summary>Inspect this collection</summary>',
+    '<div class="audit-row"><span>Topics</span><strong>', count, ' (', esc(ordering_text), ')</strong></div>',
+    '<div class="audit-row"><span>Measure</span><strong>', esc(measure), '</strong></div>',
+    '<div class="audit-row"><span>Style</span><strong>', esc(block$presentation$style), '</strong></div>',
+    '<div class="audit-row"><span>Default open topic</span><strong>', esc(default_topic), '</strong></div>',
+    '<div class="audit-row"><span>Requested years</span><strong>',
+    esc(paste(block$periods$requested, collapse = '–')), '</strong></div>',
+    '<div class="audit-row"><span>Method</span><strong>Display of saved annual observations; no ',
+    'source-count or scientific-result recalculation, no shared or normalised scale</strong></div>',
+    '<div class="audit-row"><span>Collection identity</span><strong><code>',
+    esc(block$identities$collection), '</code></strong></div>',
+    '<h4>Members</h4><ul class="collection-members">', members_list, '</ul>',
+    '<p><a href="data/series.csv" download>Download the saved series rows — CSV</a> · ',
+    '<a href="data/metrics.csv" download>Download the bound count metrics — CSV</a></p>',
+    '<p class="caption">Each member is a separately checked series record. Identities show that ',
+    'these records agree with each other; they do not prove the numbers are correct. Opening a ',
+    'panel performs no calculation.</p></details>')
+  paste0(intro, paste(body, collapse = '\n'), inspect)
 }
 
 # --- Composites of saved records: coverage, monitoring, sensitivity (no calculation) ---
@@ -1450,6 +1562,9 @@ composition_registry <- list(
   'series-trend' = list(label = composition_labels[['series-trend']], primary = FALSE,
     render = function(b, entry, evidence_file='')
       series_trend_block(b, evidence_file, instance_id=entry$instance_id)),
+  'series-collection' = list(label = composition_labels[['series-collection']], primary = FALSE,
+    render = function(b, entry, evidence_file='')
+      series_collection_block(b, evidence_file, instance_id=entry$instance_id)),
   'coverage-selection' = list(label = composition_labels[['coverage-selection']], primary = FALSE,
     render = function(b, entry, evidence_file='')
       coverage_selection_block(b, evidence_file, instance_id=entry$instance_id)),
@@ -1487,6 +1602,14 @@ composition_style <- function() paste0('<style>',
   '.composed-report .series-figure{margin:14px 0 8px;width:100%;max-width:680px}',
   '.composed-report .series-figure--compact{margin:10px 0 6px}',
   '.composed-report .series-figure img{display:block;width:100%;max-width:100%;height:auto}',
+  '.composed-report .series-panel{border:1px solid #e3eae9;border-radius:10px;margin:10px 0;padding:0 14px 6px}',
+  '.composed-report .series-panel>summary{cursor:pointer;padding:12px 2px;font-weight:600;color:#18343c;overflow-wrap:anywhere}',
+  '.composed-report .series-panel[open]>summary{border-bottom:1px solid #e3eae9;margin-bottom:10px}',
+  '.composed-report summary:focus-visible{outline:3px solid #b95d35;outline-offset:4px}',
+  '.composed-report .collection-intro{margin:6px 0 12px}',
+  '.composed-report .collection-members{margin:8px 0 12px;padding-left:20px}',
+  '.composed-report .collection-members code{overflow-wrap:anywhere}',
+  '@media (max-width:480px){.composed-report .series-panel{padding:0 8px 4px}}',
   '.composed-report .table-scroll{overflow-x:auto;max-width:100%}',
   '.composed-report .report-table{max-width:100%}',
   '@media (max-width:480px){.composed-report{padding:20px 12px 28px}.composed-report .finding-counts{gap:18px;flex-wrap:wrap}}',

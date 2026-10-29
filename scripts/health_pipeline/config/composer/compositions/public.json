@@ -4,7 +4,7 @@
   "blocks": [
     { "block": "intro", "instance_id": "pub-intro-0001" },
     { "block": "reference-comparison", "instance_id": "pub-reference-0001", "topic": "campylobacteriosis" },
-    { "block": "series-trend", "instance_id": "pub-series-trend", "topic": "campylobacteriosis", "measure": "cases", "presentation": { "style": "standard" } },
+    { "block": "series-collection", "instance_id": "pub-series-collection", "topics": "eligible", "measure": "cases", "presentation": { "style": "standard", "default_topic": "campylobacteriosis" } },
     { "block": "limitations", "instance_id": "pub-limitations-0001" },
     { "block": "reproduction", "instance_id": "pub-reproduction-0001" }
   ]

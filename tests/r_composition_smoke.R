@@ -116,7 +116,7 @@ stopifnot(grepl('Supporting block', html_p, fixed = TRUE))
 stopifnot(identical(nav_targets(html_p), c('i-ref', 'i-b')))
 stopifnot(!any(grepl('-', composition_labels, fixed = TRUE)))
 stopifnot(identical(unname(composition_labels),
-                    c('Context', 'Time trend', 'What this report covers',
+                    c('Context', 'Time trend', 'Time trends by topic', 'What this report covers',
                       'Monitoring overview', 'Sensitivity comparison',
                       'Reference comparison', 'Limitations', 'Reproduction')))
 stopifnot(!grepl('dash-footer', html_a, fixed = TRUE))
@@ -124,7 +124,7 @@ stopifnot(!grepl('presentation_open', html_a, fixed = TRUE))
 
 # 8. Real registry shape and persistent researcher recipe blocks.
 stopifnot(identical(sort(names(composition_registry)),
-                    sort(c('intro', 'series-trend', 'coverage-selection',
+                    sort(c('intro', 'series-trend', 'series-collection', 'coverage-selection',
                            'monitoring-overview', 'sensitivity-comparison',
                            'reference-comparison', 'limitations', 'reproduction'))))
 stopifnot(all(vapply(composition_registry, function(spec)
@@ -132,23 +132,23 @@ stopifnot(all(vapply(composition_registry, function(spec)
 recipe <- jsonlite::fromJSON(file.path(project, 'scripts', 'health_pipeline', 'config', 'composer',
                                        'compositions', 'researcher.json'), simplifyVector = FALSE)
 stopifnot(identical(vapply(recipe$blocks, function(x) x$block, character(1)),
-                    c('intro', 'series-trend', 'coverage-selection',
+                    c('intro', 'series-collection', 'coverage-selection',
                       'sensitivity-comparison', 'reference-comparison',
                       'limitations', 'reproduction')))
 instance_ids <- vapply(recipe$blocks, function(x) x$instance_id, character(1))
 stopifnot(identical(instance_ids,
-                    c('intro-0001', 'block-series-trend', 'block-coverage-selection',
+                    c('intro-0001', 'researcher-series-collection', 'block-coverage-selection',
                       'block-sensitivity-comparison', 'block-reference-comparison',
                       'limitations-0001', 'reproduction-0001')))
 
 # 8b. The three audience recipes declare themselves and keep evidence/limitations.
 expected_orders <- list(
-  researcher = c('intro', 'series-trend', 'coverage-selection',
+  researcher = c('intro', 'series-collection', 'coverage-selection',
                  'sensitivity-comparison', 'reference-comparison',
                  'limitations', 'reproduction'),
-  health_institution = c('intro', 'monitoring-overview', 'series-trend',
+  health_institution = c('intro', 'monitoring-overview', 'series-collection',
                          'reference-comparison', 'limitations', 'reproduction'),
-  public = c('intro', 'reference-comparison', 'series-trend',
+  public = c('intro', 'reference-comparison', 'series-collection',
              'limitations', 'reproduction'))
 for (audience in names(expected_orders)) {
   one <- jsonlite::fromJSON(file.path(project, 'scripts', 'health_pipeline', 'config', 'composer',

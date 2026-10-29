@@ -58,6 +58,8 @@ Changing this scope is an analysis change: regenerate the bundle through the can
 
 Composed recipes may also include one `series-trend` block (`topic`, `measure`, optional inclusive `years` defaulting to the reporting window, and an optional closed `presentation` object with `style` `standard` or `compact`). It displays saved annual observations for one included topic, leaves a missing year as a gap rather than zero, and refuses a second instance. The style changes figure size and wording only, never the saved rows or the analytical identity. Like the comparison, it only selects among saved results and cannot broaden analytical scope.
 
+A composed recipe may bind one `series-collection` block instead of a single trend: `topics` is `"eligible"` (every included topic in the saved bundle, in topic order) or an explicit non-empty list (author order, which must resolve completely), with one `measure`, optional inclusive `years`, and an optional `{style, default_topic}` presentation. Each topic becomes a separately checked series record and its own native disclosure panel; the default topic is open first, and all panels work without JavaScript. A recipe cannot combine a collection with a single `series-trend` block, and only one collection is allowed. Unknown or excluded topics fail the collection rather than being dropped.
+
 Composed recipes may also include one `coverage-selection` summary of the saved selection decisions, one institutional `monitoring-overview` of each included topic's latest saved value, and one `sensitivity-comparison` of the saved main and sensitivity group specifications. These read saved records only; they add no calculation and no new contract.
 
 ## Composed audience reports (experimental, HTML-only)
