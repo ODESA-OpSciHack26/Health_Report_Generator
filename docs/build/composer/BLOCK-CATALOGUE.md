@@ -342,6 +342,16 @@ Rules:
   inspectors.
 - **Interaction.** Topic search/sort only for sufficiently large tables; explicit sort
   criterion.
+- **Row navigation (C1, uncommitted candidate).** A row offers “View annual series” only when a
+  checked `series-collection` record in the same report has a member with the same topic,
+  measure, geography and saved dataset, and the collection's effective years equal the
+  monitoring reporting window. The target is that member's rendered panel id, read from the
+  checked record; reader-facing labels, saved CSV order and panel order are never used. Rows
+  without a compatible member stay plain text with a short reason (this topic, another
+  measure/source/period, ambiguous target, collection not checked). The link is a same-page
+  anchor, so it works without JavaScript; a small no-library script opens the collapsed panel
+  and focuses its summary. Other panels stay independently openable, and link targets are
+  presentation metadata that enter no analytical, rows or instance identity.
 - **Provenance and failure.** No red/amber/green alerts without approved threshold policy.
   A large percentage change is not an outbreak or recommendation. Annual national data
   supports retrospective national monitoring, not real-time institutional surveillance.

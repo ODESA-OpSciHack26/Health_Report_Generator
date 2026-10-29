@@ -1177,6 +1177,86 @@ Uncommitted, tests only; no render, ledger or acceptance change in this checkpoi
   use. This entry records a scoped presentation/functional PASS only — it does not accept
   other Phase B review items or any requirement-ledger state.
 
+### Development entry C1-MONITORING-LINKS: institutional monitoring rows open their series panel
+
+- Base `eb23ed783a01de12e3fcd122cf6a645c19142b97` (`design/contracts`); uncommitted working tree,
+  so every package records `source_state: uncommitted` (commit `eb23ed78` with uncommitted changes
+  present). No acceptance or ledger state changed.
+- Matching rule, presentation only: a row links only when a verified `series-collection` record in
+  the same rendered provenance has a member with identical topic, equal measure, equal geography and
+  equal saved dataset id, and that collection's effective years equal the monitoring reporting
+  window. The href is the member's checked `instance_id`, which is the panel id the collection
+  renderer emits from the same record; reader-facing labels, saved CSV order and panel order are
+  never used. `publish.py`, contracts, schemas, saved values and every analytical/rows/instance
+  identity are untouched — link targets are presentation metadata and enter no identity.
+- Unlinked rows keep their plain text plus a short reason: this topic, no saved observation, another
+  measure, another source, another period, ambiguous target, invalid target, collection not checked.
+  A report with no collection renders the unchanged table (no link, no note, no script). A present
+  but failed collection is reported as unchecked, never treated as absent, and the collection
+  block's own failure propagation is unchanged.
+- Reader behaviour: “View annual series” sits under the topic label in the existing topic cell. The
+  same-page href works without JavaScript and reaches the native `<details>` summary; a `<noscript>`
+  line states that the panel then needs opening. With scripting, a scoped IIFE (no library, guarded
+  against double installation) opens the target panel if collapsed, focuses its summary, keeps the
+  fragment, ignores modified clicks and leaves default navigation alone (no `preventDefault`). It
+  validates that the target is a `series-panel` `details`, never closes a panel, never imposes an
+  accordion, and does not touch unrelated links.
+- Methods: the monitoring block account gains one sentence stating the link rule.
+- Checks (pinned image, rootless, `--pull never --network none --cpus 3`, repository and inputs
+  read-only, `PYTHONDONTWRITEBYTECODE=1`): focused pytest 163 passed; new
+  `r_monitoring_links_smoke.R` exit 0 (exact topic identity, reordering, explicit subset,
+  no-collection parity, measure/source/window mismatch, failed and ambiguous/invalid records,
+  script scope); `r_series_smoke` (monitoring without collection stays unlinked),
+  `r_collection_smoke`, `r_composition_smoke`, `r_block_dispatch_smoke`,
+  `r_methods_boundary_smoke` exit 0; maintained suite 629 passed; three-audience batch exit 0
+  (342 s); subset variant exit 0 (105 s: 3 links, 9 “No panel: this topic”); window variant exit 0
+  (117 s: 0 links, 12 “No panel: another period”); `verify_c1.py` 0 problems over all five
+  packages (12/12 institution links, every target a checked member with a rendered panel, one open
+  panel = default topic, unique ids, resolvable anchors and `data/` targets, embedded provenance
+  equal to the sidecar, implementation digests equal to the working tree).
+- Unchanged content: researcher and public `report.html` bodies equal the Phase B package except the
+  recorded commit, the render-code digest of the edited helper, the render timestamp and the
+  container input-root mount name; institution monitoring values, row bindings, section ids and
+  report size (1445 KB vs 1442 KB) are otherwise unchanged.
+- Limits: no browser is available here (no chromium/chrome/firefox, no playwright/puppeteer, no
+  installs), so click, focus, fragment and phone behaviour are structurally asserted only and need
+  user review. The collection inspector's own member anchors still jump to a collapsed panel; that
+  is pre-existing and deliberately unchanged by this slice.
+- Evidence: `~/.local/state/composer-bootstrap/g2-phase-c1-monitoring-links-final-20261029T150158Z-236162`
+  (supersedes the intermediate round `…-20261029T143119Z-229032`, kept unmodified). Logs, exits,
+  `verify_c1.py`, the two variant recipes and `sha256sums.txt` are in that directory.
+- Changed paths (uncommitted, unstaged): `scripts/health_pipeline/templates/report_helpers.R`
+  (+165/−6: `read_composed_records`, `panel_link_plan`, `panel_link_cell`, `panel_link_script`,
+  the monitoring row cell, scoped CSS and the methods sentence), `tests/r_monitoring_links_smoke.R`
+  (new), `tests/r_series_smoke.R` (+4), `docs/build/composer/BLOCK-CATALOGUE.md` §6.6 row-navigation
+  bullet. `git diff --check` exits 0.
+
+### User acceptance C1-MONITORING-LINKS-a: browser checks PASS (user-reported)
+
+- Automated/structural results stand exactly as recorded in the entry above and were not rerun for
+  this note: focused pytest 163 passed, the six R smokes including `r_monitoring_links_smoke.R`,
+  maintained suite 629 passed, the three-audience batch and both variants exit 0, `verify_c1.py`
+  0 problems. Those checks cover markup, records and artifacts only.
+- User-reported browser review: PASS. All requested checks were completed in Brave — a closed
+  non-default topic opens with the panel's summary focused; closing it and activating the same
+  monitoring link again opens and focuses again; panels stay independently usable; direct fragment
+  arrival and reload open the target without programmatic focus theft; Enter and Space activate
+  links with visible focus; modified clicks keep native behaviour; with JavaScript disabled the
+  anchor remains usable and the expansion instruction is shown; at roughly 375 px the link stays
+  readable and the table overflow stays contained; the subset and mismatched-window variants
+  explain unlinked rows accurately. No failures were reported.
+- Browser version was not supplied, so none is recorded. This is user-reported presentation and
+  functional acceptance of the interaction only — not independent verification, accessibility or
+  cross-browser/device certification, and not scientific review.
+- Pre-existing limitation, out of scope for C1 and deliberately unchanged: the collection
+  inspector's own member anchors and the methods-page topic links still jump to a collapsed panel;
+  the enhancement handles monitoring-row links only.
+- Evidence note: this closeout is a documentation edit made after the final render round. The
+  packages in `g2-phase-c1-monitoring-links-final-20261029T150158Z-236162` and their recorded
+  digests predate this text and are retained unchanged; their `sha256sums.txt` does not cover this
+  document, and no claim is made that it does.
+- Browser review complete. Commit authorization for the five-path C1 scope is still pending.
+
 ## Feedback and revision
 
 Use F-001 onward. Record candidate, affected requirement/block, requested change, rationale and blocking/nonblocking status. Classify presentation, behavior, scientific/contract, disclosure or scope; assign one owner and acceptance check. Never change metric meaning to satisfy visual preference.

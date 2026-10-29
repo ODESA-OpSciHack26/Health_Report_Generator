@@ -511,7 +511,8 @@ methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
       rec$instance_id, 'No robustness, significance or uncertainty assessment is made.'))
     if(identical(type,'monitoring-overview')) block_items <- c(block_items, block_row(
       'Monitoring overview',
-      'Shows each included topic’s latest saved observation inside the reporting window, with any saved reference and period comparisons resolved separately and endpoint counts read from their bound input metrics.',
+      paste0('Shows each included topic’s latest saved observation inside the reporting window, with any saved reference and period comparisons resolved separately and endpoint counts read from their bound input metrics. ',
+             'A row links to its annual-series panel only when a checked collection in this report has a member with the same topic, measure, saved source and reporting window; following the link opens that panel.'),
       rec$instance_id, 'Descriptive latest values and saved comparisons; sparklines are not implemented.'))
   }
   if(length(block_items)) parts<-c(parts,'<section class="audit-panel full" id="displayed-blocks"><h2>Methods for the displayed blocks</h2>', block_items, '</section>')
@@ -1330,16 +1331,22 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
 }
 
 # --- Composites of saved records: coverage, monitoring, sensitivity (no calculation) ---
-composed_record <- function(evidence_file, instance_id, type) {
-  if(is.null(instance_id) || !nzchar(instance_id)) return(list(error = 'block instance id is missing'))
+read_composed_records <- function(evidence_file) {
   if(!nzchar(evidence_file)) return(list(error = 'the evidence file was not supplied'))
   if(!file.exists(evidence_file)) return(list(error = paste('evidence file is missing:', evidence_file)))
   record <- tryCatch(jsonlite::fromJSON(evidence_file, simplifyVector = FALSE),
                      error = function(e) NULL)
   if(is.null(record)) return(list(error = 'evidence file is not valid JSON'))
   if(is.null(record$blocks) || !length(record$blocks)) return(list(error = 'evidence file carries no blocks'))
+  list(blocks = record$blocks)
+}
+
+composed_record <- function(evidence_file, instance_id, type) {
+  if(is.null(instance_id) || !nzchar(instance_id)) return(list(error = 'block instance id is missing'))
+  parsed <- read_composed_records(evidence_file)
+  if(!is.null(parsed$error)) return(list(error = parsed$error))
   matches <- Filter(function(x) identical(x$instance_id, instance_id) &&
-                      identical(x$component$type, type), record$blocks)
+                      identical(x$component$type, type), parsed$blocks)
   if(!length(matches)) return(list(error = paste('no checked', type, 'record for block instance', instance_id)))
   block <- matches[[1]]
   if(!identical(block$status, 'verified'))
@@ -1347,6 +1354,143 @@ composed_record <- function(evidence_file, instance_id, type) {
                                if(is.null(block$detail)) '' else block$detail)))
   list(block = block)
 }
+
+# --- Monitoring rows: link to the checked collection panel for the same topic ---
+# The row -> panel map comes from the checked series-collection record only (topic and member
+# instance id). Reader-facing labels, saved CSV row order and panel order are never used, and a
+# member is offered only when it describes the same measure, the same saved dataset/source and
+# the same effective reporting window as the row. These are presentation targets: they enter no
+# analytical, rows or instance identity.
+component_type <- function(block) {
+  component <- block$component
+  if(is.null(component) || is.null(component$type)) '' else as.character(component$type)
+}
+
+panel_link_notes <- function(code) switch(code,
+  absent = 'No panel: this topic',
+  empty = 'No panel: no saved observation',
+  ambiguous = 'No panel: ambiguous target',
+  unchecked = 'No panel: collection not checked',
+  measure = 'No panel: another measure',
+  source = 'No panel: another source',
+  period = 'No panel: another period',
+  invalid = 'No panel: invalid target',
+  'No panel')
+
+panel_link_plan <- function(evidence_file, rows, geography, years) {
+  plan <- list(present = FALSE, targets = vector('list', length(rows)),
+               notes = rep(NA_character_, length(rows)))
+  parsed <- read_composed_records(evidence_file)
+  if(!is.null(parsed$error)) return(plan)
+  collections <- Filter(function(block) identical(component_type(block), 'series-collection'),
+                        parsed$blocks)
+  if(!length(collections)) return(plan)      # a report without a collection renders no links
+  plan$present <- TRUE
+  verified <- Filter(function(block) identical(block$status, 'verified'), collections)
+  if(!length(verified)) {
+    # A present but unchecked collection is reported as such, never treated as absent.
+    plan$notes[] <- 'unchecked'
+    return(plan)
+  }
+  window <- seq.int(as.integer(min(unlist(years))), as.integer(max(unlist(years))))
+  candidates <- list()
+  for(collection in verified) {
+    effective <- sort(unique(as.integer(unlist(collection$periods$effective))))
+    members <- collection$members
+    if(is.null(members)) members <- list()
+    years_match <- length(effective) > 0L && identical(effective, window)
+    for(member in members)
+      candidates[[length(candidates) + 1L]] <- list(member = member, years_match = years_match)
+  }
+  for(index in seq_along(rows)) {
+    item <- rows[[index]]
+    topic <- as.character(item$topic)
+    same <- Filter(function(candidate)
+      identical(as.character(candidate$member$selection$topic), topic), candidates)
+    if(!length(same)) { plan$notes[[index]] <- 'absent'; next }
+    # Two checked collections claiming the same topic would mean two panels for one topic, so
+    # the row is left unlinked instead of picking one.
+    if(length(same) > 1L) { plan$notes[[index]] <- 'ambiguous'; next }
+    target_id <- as.character(same[[1]]$member$instance_id)
+    if(length(target_id) != 1L || !grepl('^[a-z0-9][a-z0-9_-]{2,39}$', target_id)) {
+      plan$notes[[index]] <- 'invalid'; next }
+    member <- same[[1]]$member
+    if(!identical(member$status, 'verified')) { plan$notes[[index]] <- 'unchecked'; next }
+    measure <- item$measure
+    if(is.null(measure) || !nzchar(as.character(measure))) { plan$notes[[index]] <- 'empty'; next }
+    if(!identical(as.character(measure), as.character(member$selection$measure))) {
+      plan$notes[[index]] <- 'measure'; next }
+    if(!identical(as.character(geography), as.character(member$selection$geography))) {
+      plan$notes[[index]] <- 'source'; next }
+    row_dataset <- item$dataset_id; member_dataset <- member$selection$dataset_id
+    if(!is.null(row_dataset) && !is.null(member_dataset) &&
+       !identical(as.character(row_dataset), as.character(member_dataset))) {
+      plan$notes[[index]] <- 'source'; next }
+    if(!isTRUE(same[[1]]$years_match)) { plan$notes[[index]] <- 'period'; next }
+    plan$targets[[index]] <- target_id
+  }
+  plan
+}
+
+panel_link_cell <- function(plan, index) {
+  if(!isTRUE(plan$present)) return('')
+  target <- plan$targets[[index]]
+  if(!is.null(target))
+    return(paste0('<a class="panel-link" href="#', esc(target),
+                  '" data-panel-link="1">View annual series</a>'))
+  code <- plan$notes[[index]]
+  if(is.null(code) || is.na(code)) code <- 'absent'
+  paste0('<span class="panel-link-note">', esc(panel_link_notes(code)), '</span>')
+}
+
+panel_link_script <- function() paste0('<script>', "
+(function(){
+  if(window.__composedPanelLinkOpen) return;
+  var links=document.querySelectorAll('a[data-panel-link]');
+  if(!links.length) return;
+  window.__composedPanelLinkOpen=true;
+  var targets={};
+  Array.prototype.forEach.call(links,function(a){
+    var h=a.getAttribute('href')||'';
+    if(h.charAt(0)==='#') targets[h.slice(1)]=true;
+  });
+  function panel(id){
+    if(!id||!Object.prototype.hasOwnProperty.call(targets,id)) return null;
+    var el=null;
+    try{el=document.getElementById(id);}catch(e){return null;}
+    if(!el||el.tagName!=='DETAILS') return null;
+    if((' '+el.className+' ').indexOf(' series-panel ')===-1) return null;
+    return el;
+  }
+  function reveal(el,focus){
+    if(!el.open) el.open=true;
+    var summary=el.querySelector('summary');
+    if(focus&&summary) summary.focus({preventScroll:true});
+    el.scrollIntoView({block:'start'});
+  }
+  document.addEventListener('click',function(e){
+    if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;
+    var node=e.target;
+    while(node&&node!==document&&node.nodeType===1){
+      if(node.tagName==='A'&&node.hasAttribute('data-panel-link')) break;
+      node=node.parentElement;
+    }
+    if(!node||node.tagName!=='A') return;
+    var href=node.getAttribute('href')||'';
+    if(href.charAt(0)!=='#') return;
+    var el=panel(href.slice(1));
+    if(el) reveal(el,true);
+  });
+  function fromHash(focus){
+    var hash=window.location.hash||'';
+    if(hash.charAt(0)!=='#') return;
+    var el=panel(hash.slice(1));
+    if(el) reveal(el,focus);
+  }
+  window.addEventListener('hashchange',function(){fromHash(true);});
+  fromHash(false);
+})();
+", '</script>')
 
 composite_unavailable <- function(title, reason) paste0(
   '<h3>', esc(title), ' unavailable</h3>',
@@ -1453,6 +1597,10 @@ monitoring_overview_block <- function(b, evidence_file = '', instance_id = NULL)
   picked <- composed_record(evidence_file, instance_id, 'monitoring-overview')
   if(!is.null(picked$error)) return(composite_unavailable('Monitoring overview', picked$error))
   block <- picked$block
+  # Row -> topic-panel navigation is resolved from the checked collection record only; a row
+  # without a compatible member keeps its plain text and a short recorded reason.
+  plan <- panel_link_plan(evidence_file, block$rows, b$cfg$geography, b$cfg$years)
+  linked_count <- sum(!vapply(plan$targets, is.null, logical(1)))
   endpoint_rows <- paste(vapply(block$rows, function(item) paste0(vapply(item$comparisons, function(cmp) paste0(
       '<tr><td>', esc(label_topic(b, item$topic)), '</td><td>',
       esc(if(identical(cmp$type, 'reference_change')) 'Reference' else 'Period'), '</td><td>',
@@ -1462,13 +1610,14 @@ monitoring_overview_block <- function(b, evidence_file = '', instance_id = NULL)
       esc(cmp$reference$metric_id), ', ', esc(cmp$latest$metric_id), ', ',
       esc(cmp$metric_id), '</td></tr>'), character(1)), collapse = ''),
       character(1)), collapse = '')
-  row_html <- paste(vapply(block$rows, function(item) {
+  row_html <- paste(vapply(seq_along(block$rows), function(index) {
+    item <- block$rows[[index]]
     comparison <- if(!length(item$comparisons)) 'No saved comparison' else paste(
       vapply(item$comparisons, function(cmp) paste0(
         if(identical(cmp$type, 'reference_change')) 'Reference ' else 'Period ',
         fmt_pct(cmp$value), ' (', cmp$from_year, '→', cmp$to_year, ')'), character(1)),
       collapse = '; ')
-    paste0('<tr><td>', esc(label_topic(b, item$topic)), '</td><td>',
+    paste0('<tr><td>', esc(label_topic(b, item$topic)), panel_link_cell(plan, index), '</td><td>',
            esc(if(is.null(item$measure)) '—' else item$measure), '</td><td>',
            esc(if(is.null(item$latest_year)) '—' else item$latest_year), '</td><td>',
            esc(if(is.null(item$latest_value)) 'Not available' else fmt_num(item$latest_value)),
@@ -1503,6 +1652,13 @@ monitoring_overview_block <- function(b, evidence_file = '', instance_id = NULL)
     '<thead><tr><th scope="col">Topic</th><th scope="col">Latest count metric</th>',
     '<th scope="col">Comparison metric</th></tr></thead><tbody>', binding_rows,
     '</tbody></table></div></details>',
+    if(linked_count > 0L) paste0(
+      '<p class="table-note">Each link opens the saved annual series panel for that topic in ',
+      'this report, with the same topic, measure and saved source. Rows without a compatible ',
+      'panel say why and never point at another topic.</p>',
+      '<noscript><p class="table-note">Scripting is turned off in this browser: a row link jumps ',
+      'to its topic panel, which then needs to be opened with the panel summary.</p></noscript>',
+      panel_link_script()) else '',
     composite_inspector(block, instance_id))
 }
 
@@ -1606,6 +1762,9 @@ composition_style <- function() paste0('<style>',
   '.composed-report .series-panel>summary{cursor:pointer;padding:12px 2px;font-weight:600;color:#18343c;overflow-wrap:anywhere}',
   '.composed-report .series-panel[open]>summary{border-bottom:1px solid #e3eae9;margin-bottom:10px}',
   '.composed-report summary:focus-visible{outline:3px solid #b95d35;outline-offset:4px}',
+  '.composed-report .series-panel>summary:focus{outline:3px solid #b95d35;outline-offset:4px}',
+  '.composed-report .panel-link{display:block;margin-top:3px;font-size:13px;color:#247c85;overflow-wrap:anywhere}',
+  '.composed-report .panel-link-note{display:block;margin-top:3px;font-size:13px;color:#52656b;overflow-wrap:anywhere}',
   '.composed-report .collection-intro{margin:6px 0 12px}',
   '.composed-report .collection-members{margin:8px 0 12px;padding-left:20px}',
   '.composed-report .collection-members code{overflow-wrap:anywhere}',
