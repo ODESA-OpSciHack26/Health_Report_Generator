@@ -24,7 +24,9 @@ change_table <- function(b) {
 
 esc <- function(x) as.character(htmltools::htmlEscape(as.character(x)))
 metric_value <- function(b,id) { x<-b$metrics$value[match(id,b$metrics$metric_id)]; if(length(x)) x else NA_real_ }
-format_pct <- function(x,digits=0) ifelse(is.na(x),'Not available',sprintf(paste0('%+.',digits,'f%%'),x))
+format_pct <- function(x,digits=0) ifelse(is.na(x),'Not available',sprintf(paste0('%+.',digits,'f%%'),as.numeric(x)))
+fmt_num <- function(x) if(is.null(x) || is.na(x)) '—' else format(as.numeric(x), big.mark = ',', scientific = FALSE, trim = TRUE)
+fmt_pct <- function(x, digits = 1L) if(is.null(x) || is.na(x)) '—' else sprintf(paste0('%+.', as.integer(digits), 'f%%'), as.numeric(x))
 label_topic <- function(b,x) {
   labels<-setNames(b$classes$label,b$classes$topic)
   ifelse(x %in% names(labels),labels[x],gsub('_',' ',x,fixed=TRUE))
@@ -146,7 +148,17 @@ report_navigation <- function(b,methods=FALSE,format='html',pdf=TRUE) {
          if(pdf) paste0('<a href="',if(methods)'methods.pdf' else 'report.pdf','">PDF version</a>') else '',
          '</nav></header>')
 }
-report_metadata <- function(b) paste0('<div class="report-meta"><span>',length(group_topics(b)),' diseases in the group comparison</span><span>National case notifications</span><span class="snapshot">Snapshot ',substr(b$manifest$snapshot_id,1,16),'</span></div>')
+report_metadata <- function(b) {
+  pr <- read_provenance()
+  scope <- if(!is.null(pr$composition)) pr$composition$display_scope else NULL
+  label <- if(!is.null(scope))
+    paste0(length(scope$displayed_topics), ' topics displayed in this report; ',
+           length(group_topics(b)), ' contributing to underlying group sums')
+    else paste0(length(group_topics(b)), ' diseases in the group comparison')
+  paste0('<div class="report-meta"><span>', esc(label),
+         '</span><span>National case notifications</span><span class="snapshot">Snapshot ',
+         substr(b$manifest$snapshot_id,1,16),'</span></div>')
+}
 summary_cards <- function(b) {
   ids<-c('viral:main:reference_change','bacterial:main:reference_change');labels<-c('Viral notifications','Bacterial notifications')
   if(length(b$cfg$sensitivity_exclude)){ids<-c(ids,'viral:sensitivity:reference_change');labels<-c(labels,paste('Viral, without',sensitivity_label(b)))}
@@ -175,29 +187,42 @@ reference_block <- function(b,evidence_file='',variant='legacy',instance_id=NULL
   if(!file.exists(evidence_file)) return(unavailable(paste('evidence file is missing:',evidence_file)))
   record <- tryCatch(jsonlite::fromJSON(evidence_file,simplifyVector=FALSE),error=function(e) NULL)
   if(is.null(record)) return(unavailable('evidence file is not valid JSON'))
-  if(is.null(record$blocks) || !length(record$blocks)) return(unavailable('evidence file carries no reference-comparison block'))
+  if(is.null(record$blocks) || !length(record$blocks)) return(unavailable('evidence file carries no blocks'))
   if(!is.null(instance_id) && nzchar(instance_id)) {
-    matches <- Filter(function(x) identical(x$instance_id,instance_id),record$blocks)
-    if(!length(matches)) return(unavailable(paste('no checked record for block instance',instance_id)))
+    # Select by instance id AND expected block type. No first-record fallback.
+    matches <- Filter(function(x) identical(x$instance_id,instance_id) &&
+                        identical(x$component$type,'reference-comparison'),record$blocks)
+    if(!length(matches)) return(unavailable(paste('no checked reference-comparison record for block instance',instance_id)))
     block <- matches[[1]]
-  } else block <- record$blocks[[1]]
+  } else {
+    typed <- Filter(function(x) identical(x$component$type,'reference-comparison'),record$blocks)
+    if(!length(typed)) return(unavailable('evidence file carries no reference-comparison block'))
+    block <- typed[[1]]
+  }
   row <- function(k,v) paste0('<div class="audit-row"><span>',esc(k),'</span><strong>',esc(v),'</strong></div>')
+code_row <- function(k,v) paste0('<div class="audit-row"><span>',esc(k),'</span><strong><code>',
+                                 gsub('--','&#45;&#45;',esc(v),fixed=TRUE),'</code></strong></div>')
   if(!identical(block$status,'verified')) {
     return(panel(paste0('<h2>Reference comparison unavailable</h2>',
       '<p class="caption">The saved block did not pass its contract checks, so no values are shown.</p>',
       row('Reason',paste0(block$code,': ',block$detail)))))
   }
   fmt <- function(x) format(as.numeric(x),big.mark=',',scientific=FALSE,trim=TRUE)
-  pct <- if(identical(block$result$availability,'available')) sprintf('%+.1f%%',as.numeric(block$result$value)) else 'Not available'
+  pct_digits <- if(!is.null(block$effective$presentation$digits)) as.integer(block$effective$presentation$digits) else 1L
+  pct <- if(identical(block$result$availability,'available')) sprintf(paste0('%+.',pct_digits,'f%%'),as.numeric(block$result$value)) else 'Not available'
   trace <- paste(vapply(block$trace,function(t) paste0(t$field,' = ',t$value,' (',t$source,')'),character(1)),collapse='; ')
   if(composed) {
-    return(paste0('<div class="finding">',
+    editorial <- identical(presentation_profile(b)$layout, 'editorial')
+    plain <- composition_copy_for(b)$reference(b, block, pct, fmt)
+    return(paste0('<div class="finding', if(editorial) ' finding--editorial' else '', '">',
+      if(editorial) paste0('<div class="audience-explanation"><p>', plain, '</p></div>') else '',
       '<p class="finding-value">',esc(pct),'</p>',
       '<p class="finding-meta">',esc(label_topic(b,block$subject)),' · reported cases in ',esc(block$latest_year),
-      ' compared with ',esc(block$reference_year),' · measure ',esc(block$measure),'</p>',
+      ' compared with ',esc(block$reference_year),
+      if(editorial) '' else paste0(' · measure ', esc(block$measure)), '</p>',
       '<div class="finding-counts"><div><span>',esc(block$reference_year),'</span><strong>',fmt(block$reference_count$value),'</strong></div>',
       '<div><span>',esc(block$latest_year),'</span><strong>',fmt(block$latest_count$value),'</strong></div></div>',
-      '<div class="audience-explanation"><p>',composition_copy_for(b)$reference(b,block,pct,fmt),'</p></div>',
+      if(!editorial) paste0('<div class="audience-explanation"><p>', plain, '</p></div>') else '',
       '<p class="finding-caution">Notification changes reflect surveillance and testing as well as disease occurrence; they do not establish disease severity or statistical significance.</p>',
       '<details class="block-inspect" id="',esc(inspect_id),'"><summary>Inspect this block</summary>',
       row('Result metric',block$result$metric_id),
@@ -209,7 +234,7 @@ reference_block <- function(b,evidence_file='',variant='legacy',instance_id=NULL
       row('Analysis code',paste0(block$implementation$analysis$file,' · ',substr(block$implementation$analysis$sha256,1,16))),
       row('Render code',paste0(block$implementation$presentation$file,' · ',substr(block$implementation$presentation$sha256,1,16))),
       row('Analytical identity',block$identities$analytical), row('Result identity',block$identities$result),
-      row('Instance identity',block$identities$instance), row('Entry point',block$reproduction$entry_point),
+      row('Instance identity',block$identities$instance), code_row('Entry point',block$reproduction$entry_point),
       row('Retained source record',paste0(block$lineage$source_file,' record ',block$lineage$source_row)),
       '<p class="caption">Identities show that these records agree with each other; they do not prove the numbers are correct. Opening this panel performs no calculation.</p>',
       '</details></div>'))
@@ -240,7 +265,7 @@ reference_block <- function(b,evidence_file='',variant='legacy',instance_id=NULL
     row('Result identity',block$identities$result),
     row('Instance identity',block$identities$instance),
     '</div><div class="audit-panel" id="block-reproduction"><h3>Reproduction</h3>',
-    row('Entry point',block$reproduction$entry_point),
+    code_row('Entry point',block$reproduction$entry_point),
     row('Retained source record',paste0(block$lineage$source_file,' record ',block$lineage$source_row)),
     '<p class="caption">Identities show that these records agree with each other; they do not prove the numbers are correct. Opening this panel performs no calculation.</p>',
     '</div></details></section>')
@@ -279,6 +304,29 @@ findings_html <- function(b,navigation=TRUE,evidence_file='') {
 methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
     y <- report_year(b)
   ref <- b$cfg$reference_year
+  pr_m <- read_provenance()
+  comp_m <- if(!is.null(pr_m$composition)) pr_m$composition else NULL
+  recs_m <- if(!is.null(pr_m$blocks)) pr_m$blocks else list()
+  ok_m <- function(x, type) identical(x$status,'verified') && identical(x$component$type, type)
+  scope_m <- if(!is.null(comp_m)) comp_m$display_scope else NULL
+  standalone_m <- if(!is.null(scope_m)) unlist(scope_m$standalone_topics) else character(0)
+  composed_m <- !is.null(comp_m)
+  requested_ref_ids <- if(composed_m && length(comp_m$effective_recipe))
+    vapply(Filter(function(e) identical(as.character(e$block), 'reference-comparison'),
+                  comp_m$effective_recipe), function(e) as.character(e$instance_id), character(1))
+    else character(0)
+  refs_m <- Filter(function(x) identical(x$component$type, 'reference-comparison'), recs_m)
+  resolved_ref <- NULL
+  if(length(requested_ref_ids)) {
+    matched <- Filter(function(x) identical(x$instance_id, requested_ref_ids[[1]]) &&
+                        identical(x$status, 'verified'), refs_m)
+    if(length(matched) == 1L) resolved_ref <- matched[[1]]
+  }
+  requested_ref_unavailable <- length(requested_ref_ids) > 0L && is.null(resolved_ref)
+  series_m <- Filter(function(x) ok_m(x,'series-trend'), recs_m)
+  monitoring_m <- Filter(function(x) ok_m(x,'monitoring-overview'), recs_m)
+  resolved_series <- if(length(series_m)) series_m[[1]] else NULL
+  resolved_monitoring <- if(length(monitoring_m)) monitoring_m[[1]] else NULL
   available <- c('viral:main', 'bacterial:main')
   available <- available[
     paste0(available, ':reference_change') %in% b$metrics$metric_id
@@ -324,10 +372,127 @@ methods_html <- function(b,navigation=TRUE,prefix='data/',pdf=TRUE) {
       )
     )
   }
-  parts<-c(parts,paste0('<div class="chart-note">Excluded from group sums: ',esc(paste(label_topic(b,b$cfg$exclude_from_group_totals),collapse=', ')),'. Sentinel estimates are not pooled with mandatory case notifications.</div></section><section class="audit-panel" id="calculations"><h2>Trace a finding, not a code</h2><h3>',esc(trace_label),': ',format_pct(metric_value(b,paste0(trace_subject,':reference_change')),1),' versus ',ref,'</h3>'),row(paste('Selected cases in',y),fmt(z)),row(paste('Selected cases in',ref),fmt(a)),row('Calculation',paste0('(',fmt(z),' − ',fmt(a),') ÷ ',fmt(a),' × 100')),'<p class="caption">The lineage export links these totals to each disease, then to its original source records. It includes the population denominator for calculated rates.</p></section></div>')
+  trace_body <- if(!is.null(resolved_ref)) {
+    rr <- resolved_ref
+    paste0('<h3>', esc(label_topic(b, rr$subject)), ': ', fmt_pct(rr$result$value, rr$effective$presentation$digits),
+      ' in ', esc(rr$latest_year), ' versus ', esc(rr$reference_year), '</h3>',
+      row(paste('Saved cases in', rr$latest_year), fmt_num(rr$latest_count$value)),
+      row(paste('Saved cases in', rr$reference_year), fmt_num(rr$reference_count$value)),
+      row('Saved result metric', rr$result$metric_id),
+      row('Bound count metrics', paste(rr$reference_count$metric_id, 'and', rr$latest_count$metric_id)),
+      row('Formula recorded with the saved result', paste0('(', fmt_num(rr$latest_count$value), ' − ',
+        fmt_num(rr$reference_count$value), ') ÷ ', fmt_num(rr$reference_count$value), ' × 100')),
+      '<p class="caption">The saved percentage was produced by the analysis workflow with this formula; ',
+      'this report displays the saved value and does not recalculate it. The lineage export links the ',
+      'bound counts to each disease and to its original source records.</p>')
+  } else if(requested_ref_unavailable) {
+    paste0('<h3>Requested reference comparison unavailable</h3>',
+      '<p class="caption">This recipe requests reference-comparison instance ',
+      esc(requested_ref_ids[[1]]), ', but the published evidence contains no verified record ',
+      'with that instance id and type. No substitute finding is shown in methods.</p>')
+  } else if(!is.null(resolved_series)) {
+    sr <- resolved_series
+    paste0('<h3>', esc(label_topic(b, sr$selection$topic)), ': saved annual series</h3>',
+      row('Saved observation years', paste(sr$periods$effective, collapse = ', ')),
+      row('Requested years', paste(sr$periods$requested, collapse = '–')),
+      row('Missing years', if(length(sr$missing_years)) paste(sr$missing_years, collapse = ', ') else 'none'),
+      row('Series artifact', paste0(sr$artifact$file, ' · ', substr(sr$artifact$digest, 1, 16))),
+      '<p class="caption">Each displayed point is a saved annual observation bound through its count metric. ',
+      'Missing years are gaps, not zeros; no trend, interpolation or smoothing is calculated at render time.</p>',
+      if(composed_m && !length(requested_ref_ids))
+        '<p class="caption">This composition selects no standalone reference-comparison block.</p>' else '')
+  } else if(composed_m) {
+    paste0('<h3>No standalone reference selected</h3>',
+      '<p class="caption">This composition selects no standalone reference-comparison block. ',
+      'The displayed-block accounts above describe what the report actually shows.</p>')
+  } else {
+    paste0('<h3>', esc(trace_label), ': ', format_pct(metric_value(b, paste0(trace_subject, ':reference_change')), 1),
+      ' versus ', ref, '</h3>',
+      row(paste('Selected cases in', y), fmt(z)),
+      row(paste('Selected cases in', ref), fmt(a)),
+      row('Calculation', paste0('(', fmt(z), ' − ', fmt(a), ') ÷ ', fmt(a), ' × 100')),
+      '<p class="caption">This legacy methods path traces the saved group result because no composed ',
+      'finding record was supplied. The saved result is displayed, not recalculated.</p>')
+  }
+  denominator_note <- if('incidence' %in% b$metrics$metric_type)
+    paste0(' The lineage also retains population denominators for the saved incidence metrics; ',
+           'those rates are not displayed in this report, and the displayed count changes are not population-adjusted.')
+    else ''
+  parts<-c(parts,paste0('<div class="chart-note">Excluded from group sums: ',
+    esc(paste(label_topic(b,b$cfg$exclude_from_group_totals),collapse=', ')),
+    '. Sentinel estimates are not pooled with mandatory case notifications.</div></section>',
+    '<section class="audit-panel" id="calculations"><h2>Trace a finding, not a code</h2>', trace_body,
+    denominator_note, '</section>',
+    '<section class="audit-panel full" id="comparability"><h2>Cross-year comparability</h2>',
+    '<p>These are comparisons of saved notification counts under the recorded selection rules. ',
+    'Cross-year surveillance-method comparability (case definitions, reporting obligations, testing and ',
+    'diagnostic practice, date assignment, source methodology) has not been systematically evaluated. ',
+    'Matching source identifiers, units or file digests do not establish stable surveillance methods over time.</p></section>',
+    '<section class="audit-panel full" id="classification"><h2>Classification, eligibility and completeness</h2>',
+    '<p>Topics enter the analysis only when a dataset is assigned to the report’s supported analytical ',
+    'classification and is compatible in source, measure and geography. “Unclassified” means not assigned to ',
+    'that classification; it is not evidence that a disease is absent or that no source data exist.</p>',
+    '<p>Eligibility requires the reference year and every reporting-window year. An annual value is preferred; ',
+    'a monthly series is accepted only with 12 distinct months in the year. A missing required period excludes ',
+    'the dataset with a recorded reason. Competing sources are resolved by the configured source priority. ',
+    '“Complete compatible series” describes period and aggregation completeness, not complete ascertainment ',
+    'of infection.</p>',
+    '<p class="table-note">Analytical inclusion is separate from group-sum membership: a topic can be included ',
+    'and still be excluded from group totals. The workflow configuration digest is recorded in the provenance ',
+    'sidecar and the retained selection records are downloadable below.</p></section>',
+    if(!is.null(resolved_monitoring)) paste0('<section class="audit-panel full" id="baseline"><h2>Baseline interpretation</h2>',
+      '<p>The monitoring table shows only comparisons recorded in the saved bundle. For this scope the reference ',
+      'comparison runs from ', esc(if(length(resolved_monitoring$rows) && length(resolved_monitoring$rows[[1]]$comparisons)) paste0(resolved_monitoring$rows[[1]]$comparisons[[1]]$from_year, ' to ', resolved_monitoring$rows[[1]]$comparisons[[1]]$to_year) else 'the reference year to the latest year'),
+      '; period comparisons cover the reporting window. Percentage size and sometimes direction depend on the ',
+      'chosen baseline, and an endpoint percentage does not summarise the intervening annual trajectory.</p></section>') else '',
+    '<section class="audit-panel full" id="reproduction"><h2>Reproduction routes</h2>',
+    '<p>Distinguish three routes: (1) rendering this report from the saved bundle with the composition recipe; ',
+    '(2) the original analysis that produced the saved bundle; (3) the published integrity/inspection example, ',
+    'which verifies saved files and does not rerun analysis. The rendering entry point recorded for each block ',
+    'is shown in its inspector; the effective recipe digest appears under “Report settings and source files”.</p>',
+    '<p class="table-note">Source identity limitation: the candidate source is uncommitted. The recorded Git SHA ',
+    'plus a dirty-worktree flag does not identify the full candidate source, and no source archive is published.</p></section>'))
   if(show_section(b,'excluded'))parts<-c(parts,paste0('<section class="audit-panel full"><h2>Dataset selection</h2>',html_table(selected),'<div class="table-note">Source: the saved selection table. “Included” means eligible for disease-level analysis; “In main group” additionally applies the configured source and disease exclusions.</div></section>'))
   if(show_section(b,'quality'))parts<-c(parts,quality_methods_html(b))
   if(show_section(b,'sources'))parts<-c(parts,paste0('<section class="audit-panel full"><h2>Sources and audit files</h2>',html_table(sources),'<div class="table-note">Source: the dataset registry and original export descriptions. Dates are publisher release dates. Full paths, data and metadata fingerprints are retained in the downloadable source registry.</div><div class="download-links">',paste(vapply(c('sources.csv','selection.csv','lineage.csv','metrics.csv','checks.csv','snapshot.json'),function(n)paste0('<a download href="',prefix,n,'">',esc(n),'</a>'),character(1)),collapse=''),'</div><details><summary>Technical identifiers and exact snapshot</summary><p class="snapshot">',esc(b$manifest$snapshot_id),'</p><p>Full metric identifiers are in metrics.csv. The findings report uses human-readable names instead of printed M-codes. CSV record numbers count the header as record 1; multiline CSV fields may span several text lines.</p></details></section>'))
+  # Displayed-block accounts come from verified records only; absent blocks get no narrative.
+  block_row <- function(title, description, anchor, limitation) paste0(
+    '<h3>', esc(title), '</h3><p>', description, '</p>',
+    '<p><a href="report.html#', esc(anchor), '">Open the corresponding report block</a></p>',
+    '<p class="table-note">Limitation: ', esc(limitation), '</p>')
+  block_items <- character(0)
+  for (rec in recs_m) {
+    if(!identical(rec$status,'verified')) next
+    type <- rec$component$type
+    if(identical(type,'reference-comparison')) block_items <- c(block_items, block_row(
+      paste0('Reference comparison: ', label_topic(b, rec$subject)),
+      paste0('Displays the saved percentage result ', rec$result$metric_id, ' bound to saved counts ',
+             rec$reference_count$metric_id, ' (', fmt_num(rec$reference_count$value), ') and ',
+             rec$latest_count$metric_id, ' (', fmt_num(rec$latest_count$value), '). ',
+             'The saved result is displayed, not recalculated.'), rec$instance_id,
+      'Descriptive percent change only; no causal or statistical inference.'))
+    if(identical(type,'series-trend')) block_items <- c(block_items, block_row(
+      paste0('Annual series: ', label_topic(b, rec$selection$topic)),
+      paste0('Displays saved annual rows for the requested window ', paste(rec$periods$requested, collapse='–'),
+             ', each bound through its saved count metric. Missing years are gaps, never zeros, and no ',
+             'interpolation is performed across them.'), rec$instance_id,
+      'Display of saved observations only; no trend model or smoothing.'))
+    if(identical(type,'coverage-selection')) block_items <- c(block_items, block_row(
+      'Coverage and selection',
+      'Summarises saved selection records: dataset decisions, included and excluded topics, saved observations and the topics this recipe binds. It is not a measure of disease occurrence.',
+      rec$instance_id, 'Saved record summary; per-year completeness is not available.'))
+    if(identical(type,'sensitivity-comparison')) block_items <- c(block_items, block_row(
+      'Sensitivity comparison',
+      'Compares the saved main and sensitivity specifications, their member/input metric lists, totals and saved reference changes. Differences come from saved member lists, not re-estimation.',
+      rec$instance_id, 'No robustness, significance or uncertainty assessment is made.'))
+    if(identical(type,'monitoring-overview')) block_items <- c(block_items, block_row(
+      'Monitoring overview',
+      'Shows each included topic’s latest saved observation inside the reporting window, with any saved reference and period comparisons resolved separately and endpoint counts read from their bound input metrics.',
+      rec$instance_id, 'Descriptive latest values and saved comparisons; sparklines are not implemented.'))
+  }
+  if(length(block_items)) parts<-c(parts,'<section class="audit-panel full" id="displayed-blocks"><h2>Methods for the displayed blocks</h2>', block_items, '</section>')
+  repro_text <- '<p>The package publishes its effective recipe at <a href="reproduction/composition.json">reproduction/composition.json</a> and a rendering record at <a href="reproduction/reproduction.json">reproduction/reproduction.json</a>. The record gives the supported rendering invocation with labelled placeholders, the recipe digest, the pinned environment and the original-analysis entry point; placeholders must be supplied from a retained checkout, published saved bundle and original snapshot root. The analysis-bundle files listed in bundle.json, plus the manifest, do not contain raw snapshot exports.</p><p>Integrity/inspection example: verifying saved files and digests is not production-analysis reproduction. A portable replay of the original analysis is not currently possible from the published package alone, and the uncommitted dirty worktree is not fully identified by a Git SHA.</p>'
+  parts<-c(parts, paste0('<section class="audit-panel full" id="reproduction-access"><h2>Reproduction access</h2>', repro_text, '</section>'))
   parts<-c(parts,'<footer class="dash-footer"><span>Descriptive comparisons do not establish causes, severity or statistical significance.</span><a href="report.html">← Back to findings</a></footer></div>');paste(parts,collapse='\n')
 }
 
@@ -350,18 +515,66 @@ presentation_open <- function(b) {
 }
 selection_intro <- function(b) {
   p <- presentation_profile(b)
-  topics <- group_topics(b)
-  paste0(
-    '<section class="selection-intro"><p class="audience-label">',
-    esc(p$display_name), ' · ', esc(p$layout), ' presentation</p>',
-    '<p><strong>Selected diseases:</strong> ',
-    esc(paste(label_topic(b, topics), collapse=', ')), '.</p>',
-    '<p>These are recorded notifications, not all infections. ',
-    'Changes may reflect surveillance and testing as well as disease occurrence. ',
-    'The figures are descriptive; they do not establish causes or statistical significance.</p>',
-    '</section>'
-  )
+  included <- if(!is.null(b$selection) && nrow(b$selection))
+    sort(unique(b$selection$topic[tolower(as.character(b$selection$status)) == 'included']))
+    else sort(unique(as.character(b$classes$topic)))
+  in_sums <- if(!is.null(b$selection) && nrow(b$selection)) group_topics(b) else included
+  outside_sums <- setdiff(included, in_sums)
+  pr <- read_provenance()
+  scope <- if(!is.null(pr$composition)) pr$composition$display_scope else NULL
+  standalone <- if(!is.null(scope)) unlist(scope$standalone_topics) else character(0)
+  monitored <- if(!is.null(scope)) unlist(scope$monitoring_topics) else character(0)
+  displayed <- if(!is.null(scope)) unlist(scope$displayed_topics) else character(0)
+  groups <- if(!is.null(scope)) scope$group_summaries else list()
+  overlap <- intersect(standalone, monitored)
+  group_text <- if(length(groups))
+    paste0('The report also displays saved group summaries (',
+           paste(vapply(groups, function(g) as.character(g$subject), character(1)), collapse = ', '),
+           ') whose member topics are listed in the block evidence.')
+    else 'This report displays no group-summary block.'
+  outside_bits <- vapply(outside_sums, function(topic) {
+    base <- paste0(label_topic(b, topic), ' is included in the saved analysis but excluded from group sums.')
+    where <- if(topic %in% monitored) ' This report displays it in the monitoring table.'
+             else if(topic %in% standalone) ' This report displays it individually.'
+             else ' Individual display depends on the blocks selected for this report.'
+    paste0(base, where)
+  }, character(1))
+  technical <- paste0(
+    '<p><strong>Diseases included in the saved analysis:</strong> ',
+    esc(paste(label_topic(b, included), collapse = ', ')), ' (', length(included), ' topics).</p>',
+    '<p><strong>Contributing to group sums:</strong> ',
+    esc(paste(label_topic(b, in_sums), collapse = ', ')), ' (', length(in_sums), ' topics).</p>',
+    if(length(outside_bits)) paste0('<p>', paste(esc(outside_bits), collapse = ' '), '</p>') else '',
+    '<p><strong>Displayed by this report:</strong> ',
+    esc(if(length(displayed)) paste(label_topic(b, displayed), collapse = ', ') else 'none'),
+    if(length(standalone)) paste0(' — standalone: ', esc(paste(label_topic(b, standalone), collapse = ', '))) else '',
+    if(length(monitored)) paste0('; monitoring table: ', esc(paste(label_topic(b, monitored), collapse = ', '))) else '',
+    if(length(overlap)) paste0(' (', esc(paste(label_topic(b, overlap), collapse = ', ')), ' appears in both)') else '',
+    '. ', esc(group_text), '</p>')
+  if(identical(p$layout, 'editorial')) {
+    lead <- if(length(displayed)) paste0('This report shows reported ',
+      paste(tolower(label_topic(b, displayed)), collapse = ' and '), ' cases in ',
+      composition_geography(b), ': annual values for ',
+      paste(b$cfg$years, collapse = '–'), ' and a separate comparison with ',
+      b$cfg$reference_year, '.')
+      else paste0('This report shows saved annual notification counts for ', composition_geography(b), '.')
+    return(paste0('<section class="selection-intro"><p class="audience-label">',
+      esc(p$display_name), ' · ', esc(p$layout), ' presentation</p>',
+      '<p><strong>What this report shows.</strong> ', esc(lead), '</p>',
+      '<p>Reported cases are not a count of every infection. Changes may reflect surveillance and testing ',
+      'as well as disease occurrence; the figures are descriptive.</p>',
+      '<details class="block-inspect" id="intro-scope"><summary>How the analysis was selected</summary>',
+      technical,
+      '<p>These are recorded notifications; the figures do not establish causes or statistical significance.</p>',
+      '</details></section>'))
+  }
+  paste0('<section class="selection-intro"><p class="audience-label">',
+    esc(p$display_name), ' · ', esc(p$layout), ' presentation</p>', technical,
+    '<p>These are recorded notifications, not all infections. Changes may reflect surveillance and testing ',
+    'as well as disease occurrence. The figures are descriptive; they do not establish causes or statistical significance.</p>',
+    '</section>')
 }
+
 technical_findings <- function(b) {
   if(presentation_profile(b)$layout != 'technical') return('')
   totals <- b$metrics[
@@ -385,7 +598,11 @@ source('audience_reports.R')
 # block is the primary finding, and a renderer that receives the recipe entry. The entry's
 # instance_id is the section's DOM identity and is passed into the renderer so descendant
 # ids can be namespaced per instance.
-composition_labels <- c(intro = 'Context', 'reference-comparison' = 'Reference comparison',
+composition_labels <- c(intro = 'Context', 'series-trend' = 'Time trend',
+                        'coverage-selection' = 'What this report covers',
+                        'monitoring-overview' = 'Monitoring overview',
+                        'sensitivity-comparison' = 'Sensitivity comparison',
+                        'reference-comparison' = 'Reference comparison',
                         limitations = 'Limitations', reproduction = 'Reproduction')
 
 # One explicit mapping from the existing presentation layout to composed-block explanation.
@@ -411,7 +628,8 @@ composition_copy <- list(
   ),
   dashboard = list(
     reference = function(b, block, pct, fmt) paste0(
-      'Monitoring question: ', esc(b$cfg$question), ' Observed change: ', esc(pct),
+      'Monitoring context: latest saved annual notification counts for the included topics and the ',
+      'recorded comparisons available in this bundle. Observed change: ', esc(pct),
       ' in reported ', esc(block$measure), ' for ', esc(label_topic(b, block$subject)), ' in ',
       esc(block$latest_year), ' compared with ', esc(block$reference_year), ' (',
       esc(fmt(block$reference_count$value)), ' and ', esc(fmt(block$latest_count$value)),
@@ -647,6 +865,8 @@ quality_methods_html <- function(b) {
     '.quality-results table{min-width:72rem;margin:0}',
     '.quality-results thead th{position:sticky;top:0;background:#fff;z-index:1}',
     '.quality-controls{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0}',
+    '.quality-controls>div{min-width:0;flex:1 1 14rem;max-width:100%}',
+    '.quality-controls select,.quality-controls input{max-width:100%;width:100%;box-sizing:border-box}',
     '.quality-controls label{display:block;font-size:12px;color:#52656b}',
     '.quality-diagnostic{max-width:22rem;overflow-wrap:anywhere}',
     '.quality-id{overflow-wrap:anywhere}',
@@ -663,7 +883,7 @@ quality_methods_html <- function(b) {
     '; reference year ', esc(cfg$reference_year), '.</p>',
     '<p><a href="report.html#quality-summary">← Back to the report quality summary</a></p>',
     '<p><strong>Counting definitions:</strong> ', quality_totals_sentence(t),
-    ' A check-result row is one recorded result from the saved validation output; aggregation rules such as ',
+    ' The 50% missing-value threshold is a configured data-validation warning rule, not an operational or clinical threshold and not a guarantee of fitness; missing-value warnings are distinct from classification/source-type exclusion reasons. A check-result row is one recorded result from the saved validation output; aggregation rules such as ',
     'year_equals_sum_of_months and cantons_sum_to_national record one row per compared measure/period, so rows are not ',
     'one rule per dataset. Rows are not affected-record or affected-finding counts. PASS meets the rule; WARN needs ',
     'interpretation; SKIP means the rule could not be applied; FAIL blocks publication. Automated checks are not proof ',
@@ -794,9 +1014,437 @@ composed_settings_html <- function(b) {
     '<p class="table-note">', subset_note, ' Sizes are read from the packaged bundle at render time.</p></details>')
 }
 
+# --- Saved annual series block (display only; no count or trend is calculated) ---
+# Inspectable plot preparation: one point per saved observation, and a segment group that
+# changes whenever the next observed year is not the immediately following year.
+series_plot_data <- function(block) {
+  obs <- block$observations
+  if(is.null(obs) || !length(obs)) return(NULL)
+  d <- data.frame(
+    year = vapply(obs, function(o) as.integer(o$year), integer(1)),
+    value = vapply(obs, function(o) as.numeric(o$value), numeric(1)),
+    stringsAsFactors = FALSE)
+  d <- d[order(d$year), , drop = FALSE]
+  d$segment <- cumsum(c(TRUE, diff(d$year) > 1L))
+  d
+}
+
+series_value_rows <- function(block) {
+  req <- block$periods$requested
+  years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
+  by_year <- setNames(vapply(block$observations, function(o) as.numeric(o$value), numeric(1)),
+                      vapply(block$observations, function(o) as.character(o$year), character(1)))
+  found <- as.character(years) %in% names(by_year)
+  data.frame(Year = years,
+             Value = ifelse(found,
+                            format(by_year[as.character(years)], big.mark = ',', scientific = FALSE, trim = TRUE),
+                            'Not available'),
+             Unit = rep(block$presentation$unit, length(years)),
+             Availability = ifelse(found, 'Reported', 'Not available'),
+             stringsAsFactors = FALSE)
+}
+
+plot_series_trend <- function(block) {
+  d <- series_plot_data(block)
+  req <- block$periods$requested
+  years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
+  p <- ggplot2::ggplot(d, ggplot2::aes(year, value)) +
+    ggplot2::scale_x_continuous(limits = c(min(years) - 0.2, max(years) + 0.2),
+                                breaks = years,
+                                labels = function(x) as.character(as.integer(x))) +
+    ggplot2::scale_y_continuous(limits = c(0, NA),
+                                expand = ggplot2::expansion(mult = c(0, .08)),
+                                labels = function(x) format(x, big.mark = ',', scientific = FALSE, trim = TRUE)) +
+    ggplot2::labs(x = 'Year', y = paste('Reported', block$selection$measure)) +
+    report_theme()
+  # A line is only drawn where two or more consecutive years are available. A single
+  # observation (or a fully gapped window) is shown as points, never as an invented line.
+  if(any(table(d$segment) > 1L)) {
+    p <- p + ggplot2::geom_line(ggplot2::aes(group = segment), colour = '#247c85', linewidth = 1)
+  }
+  p + ggplot2::geom_point(colour = '#247c85', size = 2.6)
+}
+
+series_trend_block <- function(b, evidence_file = '', instance_id = NULL) {
+  if(is.null(instance_id) || !nzchar(instance_id))
+    stop('A composed series-trend block needs an instance id')
+  unavailable <- function(reason) paste0(
+    '<h3>Reported values over time unavailable</h3>',
+    '<p class="caption">The saved series record could not be used, so no values are shown.</p>',
+    '<div class="audit-row"><span>Reason</span><strong>', esc(reason), '</strong></div>')
+  if(!knitr::is_html_output()) return('')
+  if(!nzchar(evidence_file)) return(unavailable('the evidence file was not supplied'))
+  if(!file.exists(evidence_file)) return(unavailable(paste('evidence file is missing:', evidence_file)))
+  record <- tryCatch(jsonlite::fromJSON(evidence_file, simplifyVector = FALSE),
+                     error = function(e) NULL)
+  if(is.null(record)) return(unavailable('evidence file is not valid JSON'))
+  if(is.null(record$blocks) || !length(record$blocks)) return(unavailable('evidence file carries no blocks'))
+  # Select by instance id AND expected block type. No first-record fallback.
+  matches <- Filter(function(x) identical(x$instance_id, instance_id) &&
+                      identical(x$component$type, 'series-trend'), record$blocks)
+  if(!length(matches))
+    return(unavailable(paste('no checked series-trend record for block instance', instance_id)))
+  block <- matches[[1]]
+  if(!identical(block$status, 'verified'))
+    return(unavailable(paste0(if(is.null(block$code)) 'failed' else block$code, ': ',
+                              if(is.null(block$detail)) '' else block$detail)))
+
+  req <- block$periods$requested
+  years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
+  label <- label_topic(b, block$selection$topic)
+  geography <- if(identical(block$selection$geography, 'CHFL'))
+    'Switzerland and Liechtenstein' else 'Switzerland'
+  unit <- block$presentation$unit
+  style <- if(!is.null(block$presentation$style)) as.character(block$presentation$style) else NULL
+  compact <- identical(style, 'compact')
+  editorial <- identical(presentation_profile(b)$layout, 'editorial')
+  span <- paste0(years[[1]], '–', years[[length(years)]])
+  alt <- paste0('Annual reported ', unit, ' for ', label, ', ', span,
+                '. Missing years are shown as gaps, not zero.')
+  values <- series_value_rows(block)
+  table_rows <- paste(vapply(seq_len(nrow(values)), function(i) paste0(
+    '<tr><td>', esc(values$Year[i]), '</td><td>', esc(values$Value[i]), '</td><td>',
+    esc(values$Unit[i]), '</td><td>', esc(values$Availability[i]), '</td></tr>'),
+    character(1)), collapse = '')
+  bindings <- paste(vapply(block$observations, function(o)
+    paste0(esc(o$year), ' → ', esc(o$count_metric_id)), character(1)), collapse = '; ')
+
+  if(editorial) {
+    explanation <- paste0(
+      'Reported cases of ', esc(label), ' in ', esc(geography), ', ', esc(span),
+      '. Each point is the number reported to the national surveillance system in that year; ',
+      'reported cases are not a count of every infection.')
+  } else {
+    explanation <- paste0(
+      'Saved annual observations for ', esc(label), ' (', esc(unit), ') in ', esc(geography),
+      '. The graph shows the reported years from ', years[[1]], ' to ', years[[length(years)]],
+      ' only; it does not interpolate a missing year and does not estimate a trend.')
+  }
+  if(length(block$missing_years)) explanation <- paste0(explanation,
+    if(editorial) paste0(' No data were recorded for ',
+                         esc(paste(block$missing_years, collapse = ', ')),
+                         ', so the line has a gap there; that is not the same as zero cases.')
+    else paste0(' No saved observation exists for ', esc(paste(block$missing_years, collapse = ', ')),
+                ', so the line is broken there. A missing year is not a zero count.'))
+  if(length(block$observations) == 1L) explanation <- paste0(explanation,
+    if(editorial) ' Only one year is available here, so no trend can be described; the value is a single point.'
+    else ' Only one saved observation falls inside this window, so no temporal pattern can be assessed and the value is shown as a single point.')
+  if(isTRUE(block$periods$reference_outside_window)) explanation <- paste0(explanation,
+    if(editorial) paste0(' The ', esc(block$periods$reference_year),
+                         ' comparison is shown separately in the reference comparison, not in this chart.')
+    else paste0(' The ', esc(block$periods$reference_year),
+                ' reference observation belongs to the adjacent reference comparison and lies outside this display window.'))
+
+  # Saved quality records only: dataset-level results, no validation rerun.
+  q <- quality_results(b)
+  qd <- q[q$dataset_id == block$selection$dataset_id, , drop = FALSE]
+  quality <- if(!nrow(qd))
+    'No recorded check results for this dataset. That is not evidence that the source counts are complete or accurate.'
+  else paste0(nrow(qd), ' recorded check results for this dataset: ',
+    sum(qd$status == 'PASS'), ' PASS, ', sum(qd$status == 'WARN'), ' WARN, ',
+    sum(qd$status == 'SKIP'), ' SKIP, ', sum(qd$status == 'FAIL'), ' FAIL.',
+    ' Dataset-level only; finding-level warning relevance has not been evaluated.')
+
+  row <- function(k, v) paste0('<div class="audit-row"><span>', esc(k), '</span><strong>',
+                               esc(v), '</strong></div>')
+  code_row <- function(k, v) paste0('<div class="audit-row"><span>', esc(k),
+                                    '</span><strong><code>',
+                                    gsub('--', '&#45;&#45;', esc(v), fixed = TRUE),
+                                    '</code></strong></div>')
+  displayed <- paste(block$periods$effective, collapse = ', ')
+  missing <- if(length(block$missing_years)) paste(block$missing_years, collapse = ', ') else 'none'
+  trace <- paste(vapply(block$trace, function(t)
+    paste0(t$field, ' = ', t$value, ' (', t$source, ')'), character(1)), collapse = '; ')
+
+  heading <- if(editorial) paste0('Reported cases over time: ', label)
+             else paste0(label, ': reported ', unit, ', ', span)
+  meta_line <- if(editorial)
+    paste0('<p class="series-meta">', esc(geography), ' · years ', esc(span), '</p>')
+    else paste0('<p class="series-meta">', esc(label), ' · measure ', esc(block$selection$measure),
+                ' · ', esc(geography), ' · displayed years ', esc(displayed), '</p>')
+
+  paste0('<h3>', esc(heading), '</h3>', meta_line,
+    '<figure class="series-figure', if(compact) ' series-figure--compact' else '', '">',
+    chart_image(plot_series_trend(block), alt, 7.2, if(compact) 2.4 else 3.6), '</figure>',
+    '<p class="caption">', explanation, '</p>',
+    '<details class="series-values" id="', esc(paste0(instance_id, '-values')),
+    '"><summary>View exact values</summary><div class="table-scroll">',
+    '<table class="report-table"><caption>Reported ', esc(unit), ' for ', esc(label),
+    ', by requested year. Missing years are marked unavailable, not zero.</caption>',
+    '<thead><tr><th scope="col">Year</th><th scope="col">Recorded value</th>',
+    '<th scope="col">Unit</th><th scope="col">Availability</th></tr></thead><tbody>',
+    table_rows, '</tbody></table></div>',
+    '<p class="table-note">Source: saved series.csv rows bound through count metrics. ',
+    'Display values are rounded for readability; the exact saved values are in the download.</p></details>',
+    '<details class="block-inspect" id="', esc(paste0(instance_id, '-inspect')),
+    '"><summary>Inspect this block</summary>',
+    row('Topic', label), row('Measure', block$selection$measure), row('Geography', geography),
+    row('Dataset', block$selection$dataset_id), row('Source system', block$selection$source_system),
+    row('Requested years', paste0(years[[1]], '–', years[[length(years)]])),
+    if(!is.null(style)) row('Presentation style', style),
+    row('Displayed years', displayed), row('Missing years', missing),
+    row('Saved row bindings', bindings),
+    row('Method', 'Display of saved annual observations; no source-count or scientific-result recalculation'),
+    row('Series artifact', paste0(block$artifact$file, ' · ', substr(block$artifact$digest, 1, 16))),
+    row('Snapshot', block$snapshot$snapshot_id),
+    row('Reference year', block$periods$reference_year),
+    row('Quality context', quality), row('Effective settings', trace),
+    row('Analysis code', paste0(block$implementation$analysis$file, ' · ',
+                                substr(block$implementation$analysis$sha256, 1, 16))),
+    row('Render code', paste0(block$implementation$presentation$file, ' · ',
+                              substr(block$implementation$presentation$sha256, 1, 16))),
+    row('Analytical identity', block$identities$analytical),
+    row('Rows identity', block$identities$rows),
+    row('Instance identity', block$identities$instance),
+    code_row('Entry point', block$reproduction$entry_point),
+    '<p><a href="data/series.csv" download>Download the saved series rows — CSV</a> · ',
+    '<a href="data/metrics.csv" download>Download the bound count metrics — CSV</a></p>',
+    '<p class="caption">Identities show that these records agree with each other; they do not ',
+    'prove the numbers are correct. Opening this panel performs no calculation.</p></details>')
+}
+
+# --- Composites of saved records: coverage, monitoring, sensitivity (no calculation) ---
+composed_record <- function(evidence_file, instance_id, type) {
+  if(is.null(instance_id) || !nzchar(instance_id)) return(list(error = 'block instance id is missing'))
+  if(!nzchar(evidence_file)) return(list(error = 'the evidence file was not supplied'))
+  if(!file.exists(evidence_file)) return(list(error = paste('evidence file is missing:', evidence_file)))
+  record <- tryCatch(jsonlite::fromJSON(evidence_file, simplifyVector = FALSE),
+                     error = function(e) NULL)
+  if(is.null(record)) return(list(error = 'evidence file is not valid JSON'))
+  if(is.null(record$blocks) || !length(record$blocks)) return(list(error = 'evidence file carries no blocks'))
+  matches <- Filter(function(x) identical(x$instance_id, instance_id) &&
+                      identical(x$component$type, type), record$blocks)
+  if(!length(matches)) return(list(error = paste('no checked', type, 'record for block instance', instance_id)))
+  block <- matches[[1]]
+  if(!identical(block$status, 'verified'))
+    return(list(error = paste0(if(is.null(block$code)) 'failed' else block$code, ': ',
+                               if(is.null(block$detail)) '' else block$detail)))
+  list(block = block)
+}
+
+composite_unavailable <- function(title, reason) paste0(
+  '<h3>', esc(title), ' unavailable</h3>',
+  '<p class="caption">The saved record could not be used, so nothing is shown here.</p>',
+  '<div class="audit-row"><span>Reason</span><strong>', esc(reason), '</strong></div>')
+
+composite_inspector <- function(block, instance_id, extra = '') paste0(
+  '<details class="block-inspect" id="', esc(paste0(instance_id, '-inspect')),
+  '"><summary>Inspect this block</summary>',
+  '<div class="audit-row"><span>Binding</span><strong>', esc(block$binding), '</strong></div>',
+  '<div class="audit-row"><span>Snapshot</span><strong>',
+  esc(block$snapshot$snapshot_id), '</strong></div>',
+  extra,
+  '<div class="audit-row"><span>Analytical identity</span><strong>',
+  esc(block$identities$analytical), '</strong></div>',
+  '<div class="audit-row"><span>Instance identity</span><strong>',
+  esc(block$identities$instance), '</strong></div>',
+  '<div class="audit-row"><span>Render code</span><strong>',
+  esc(paste0(block$implementation$presentation$file, ' · ',
+             substr(block$implementation$presentation$sha256, 1, 16))), '</strong></div>',
+  '<div class="audit-row"><span>Binding code</span><strong>',
+  esc(paste0(block$implementation$binding$file, ' · ',
+             substr(block$implementation$binding$sha256, 1, 16))), '</strong></div>',
+  '<div class="audit-row"><span>Contract code</span><strong>',
+  esc(paste0(block$implementation$contracts$file, ' · ',
+             substr(block$implementation$contracts$sha256, 1, 16))), '</strong></div>',
+  '<div class="audit-row"><span>Entry point</span><strong><code>',
+  gsub('--', '&#45;&#45;', esc(block$reproduction$entry_point), fixed = TRUE),
+  '</code></strong></div>',
+  '<p class="caption">Saved records only; opening this panel performs no source-count or scientific-result recalculation.</p></details>')
+
+coverage_selection_block <- function(b, evidence_file = '', instance_id = NULL) {
+  picked <- composed_record(evidence_file, instance_id, 'coverage-selection')
+  if(!is.null(picked$error)) return(composite_unavailable('Report coverage', picked$error))
+  block <- picked$block
+  counts <- block$counts
+  num <- function(x) if(is.null(x)) '0' else as.character(x)
+  years <- if(is.null(block$requested$years)) 'not recorded' else paste(block$requested$years, collapse = '–')
+  included <- if(is.null(block$requested$include_topics)) 'not set (historical default)' else paste(unlist(block$requested$include_topics), collapse = ', ')
+  excluded_scope <- if(is.null(block$requested$exclude_topics)) 'none' else paste(unlist(block$requested$exclude_topics), collapse = ', ')
+  displayed <- if(length(block$displayed_topics)) paste(unlist(block$displayed_topics), collapse = ', ') else 'none'
+  groups <- block$displayed_groups
+  scope <- read_provenance()$composition$display_scope
+  monitored <- if(!is.null(scope)) unlist(scope$monitoring_topics) else character(0)
+  group_lines <- if(length(groups)) paste(vapply(groups, function(g) paste0(
+      '<li><strong>', esc(g$subject), '</strong> (', esc(g$specification), ') — members: ',
+      esc(paste(unlist(g$members), collapse = ', ')), '</li>'), character(1)), collapse = '')
+    else '<li>No group summary is bound by this recipe.</li>'
+  excluded_dataset_rows <- if(length(block$excluded_datasets)) paste(vapply(
+      block$excluded_datasets, function(item) paste0(
+        '<tr><td><code>', esc(item$dataset_id), '</code></td><td>', esc(item$topic),
+        '</td><td>', esc(item$reason), '</td></tr>'), character(1)), collapse = '')
+    else '<tr><td colspan="3">No excluded dataset recorded.</td></tr>'
+  excluded_rows <- if(length(block$excluded)) paste(vapply(block$excluded, function(item)
+      paste0('<tr><td>', esc(item$topic), '</td><td>',
+             esc(paste(unlist(item$reasons), collapse = '; ')), '</td></tr>'), character(1)),
+      collapse = '') else '<tr><td colspan="2">No excluded topic recorded.</td></tr>'
+  unsupported <- paste(vapply(block$unsupported, function(text) paste0('<li>', esc(text), '</li>'),
+                              character(1)), collapse = '')
+  bindings <- paste(vapply(block$bindings, function(item) paste0(
+      '<div class="audit-row"><span>', esc(item$file), '</span><strong>',
+      esc(substr(item$digest, 1, 16)), '</strong></div>'), character(1)), collapse = '')
+  paste0('<p class="caption">This block reports what the saved selection records decided. ',
+    'Datasets, topics and saved observations are counted separately, and “displayed topics” ',
+    'lists only what this recipe actually binds.</p>',
+    '<div class="table-scroll"><table class="report-table"><caption>Saved selection counts</caption>',
+    '<thead><tr><th scope="col">Record</th><th scope="col">Count</th></tr></thead><tbody>',
+    '<tr><td>Datasets recorded</td><td>', num(counts$datasets_total), '</td></tr>',
+    '<tr><td>Datasets included</td><td>', num(counts$datasets_included), '</td></tr>',
+    '<tr><td>Datasets excluded</td><td>', num(counts$datasets_excluded), '</td></tr>',
+    '<tr><td>Topics included in the saved analysis</td><td>', num(counts$topics_included), '</td></tr>',
+    '<tr><td>Topics contributing to group sums</td><td>', num(counts$topics_group_sum), '</td></tr>',
+    '<tr><td>Topics with only excluded datasets</td><td>', num(counts$topics_excluded), '</td></tr>',
+    '<tr><td>Saved annual observations, all years</td><td>', num(counts$observations_total), '</td></tr>',
+    '<tr><td>Saved annual observations inside the reporting window</td><td>',
+    num(counts$observations_in_window), '</td></tr>',
+    '<tr><td>Source registry rows</td><td>', num(counts$source_registry_rows), '</td></tr>',
+    '</tbody></table></div>',
+    '<p class="table-note">Source registry rows are dataset/source entries in sources.csv, ',
+    'not raw observation rows. Saved annual observations count series.csv rows: the total ',
+    'includes years outside the reporting window (for example the 2019 comparison reference).</p>',
+    '<p class="series-meta">Requested window ', esc(years), ' · included topics ',
+    esc(included), ' · excluded topics ', esc(excluded_scope), '</p>',
+    '<p><strong>Topics displayed individually by this report:</strong> ', esc(displayed), '.</p>',
+    if(length(monitored)) paste0('<p><strong>Topics displayed in the monitoring table:</strong> ',
+                                 esc(paste(label_topic(b, monitored), collapse = ', ')), '.</p>') else '',
+    '<p><strong>Group summaries displayed:</strong></p><ul>', group_lines, '</ul>',
+    '<details class="block-inspect" id="', esc(paste0(instance_id, '-excluded')),
+    '"><summary>Excluded topics and recorded reasons</summary>',
+    '<div class="table-scroll"><table class="report-table"><thead><tr><th scope="col">Topic</th>',
+    '<th scope="col">Recorded reason</th></tr></thead><tbody>', excluded_rows,
+    '</tbody></table></div></details>',
+    '<details class="block-inspect" id="', esc(paste0(instance_id, '-excluded-datasets')),
+    '"><summary>Excluded datasets and recorded reasons</summary>',
+    '<div class="table-scroll"><table class="report-table"><thead><tr>',
+    '<th scope="col">Dataset</th><th scope="col">Topic</th><th scope="col">Recorded reason</th>',
+    '</tr></thead><tbody>', excluded_dataset_rows, '</tbody></table></div>',
+    '<p class="table-note">Each row is a saved selection decision for one dataset/source.</p></details>',
+    '<h3>Not available</h3><ul>', unsupported, '</ul>',
+    composite_inspector(block, instance_id, bindings))
+}
+
+monitoring_overview_block <- function(b, evidence_file = '', instance_id = NULL) {
+  picked <- composed_record(evidence_file, instance_id, 'monitoring-overview')
+  if(!is.null(picked$error)) return(composite_unavailable('Monitoring overview', picked$error))
+  block <- picked$block
+  endpoint_rows <- paste(vapply(block$rows, function(item) paste0(vapply(item$comparisons, function(cmp) paste0(
+      '<tr><td>', esc(label_topic(b, item$topic)), '</td><td>',
+      esc(if(identical(cmp$type, 'reference_change')) 'Reference' else 'Period'), '</td><td>',
+      esc(cmp$reference$year), '</td><td>', fmt_num(cmp$reference$value), ' ', esc(cmp$reference$unit),
+      '</td><td>', esc(cmp$latest$year), '</td><td>', fmt_num(cmp$latest$value), ' ',
+      esc(cmp$latest$unit), '</td><td>', fmt_pct(cmp$value), '</td><td>',
+      esc(cmp$reference$metric_id), ', ', esc(cmp$latest$metric_id), ', ',
+      esc(cmp$metric_id), '</td></tr>'), character(1)), collapse = ''),
+      character(1)), collapse = '')
+  row_html <- paste(vapply(block$rows, function(item) {
+    comparison <- if(!length(item$comparisons)) 'No saved comparison' else paste(
+      vapply(item$comparisons, function(cmp) paste0(
+        if(identical(cmp$type, 'reference_change')) 'Reference ' else 'Period ',
+        fmt_pct(cmp$value), ' (', cmp$from_year, '→', cmp$to_year, ')'), character(1)),
+      collapse = '; ')
+    paste0('<tr><td>', esc(label_topic(b, item$topic)), '</td><td>',
+           esc(if(is.null(item$measure)) '—' else item$measure), '</td><td>',
+           esc(if(is.null(item$latest_year)) '—' else item$latest_year), '</td><td>',
+           esc(if(is.null(item$latest_value)) 'Not available' else fmt_num(item$latest_value)),
+           '</td><td>', esc(comparison), '</td><td>',
+           esc(if(is.null(item$availability)) '' else item$availability), '</td></tr>')
+  }, character(1)), collapse = '')
+  binding_rows <- paste(vapply(block$rows, function(item) paste0(
+      '<tr><td>', esc(item$topic), '</td><td>',
+      esc(if(is.null(item$latest_metric_id)) '—' else item$latest_metric_id), '</td><td>',
+      esc(if(!length(item$comparisons)) '—' else paste(
+        vapply(item$comparisons, function(cmp) cmp$metric_id, character(1)), collapse = ', ')),
+      '</td></tr>'), character(1)), collapse = '')
+  paste0('<p class="caption">One row per included topic, using its latest saved annual value ',
+    'inside the reporting window. Units are named per row and are never put on a common scale.</p>',
+    '<div class="table-scroll"><table class="report-table"><caption>Latest saved observation by topic</caption>',
+    '<thead><tr><th scope="col">Topic</th><th scope="col">Measure</th><th scope="col">Year</th>',
+    '<th scope="col">Value</th><th scope="col">Saved comparison</th><th scope="col">Availability</th>',
+    '</tr></thead><tbody>', row_html, '</tbody></table></div>',
+    '<p class="table-note">', esc(paste(unlist(block$limits), collapse = ' ')), '</p>',
+    '<details class="block-inspect" id="', esc(paste0(instance_id, '-endpoints')),
+    '"><summary>Comparison endpoints and bound metrics</summary>',
+    '<div class="table-scroll"><table class="report-table"><thead><tr>',
+    '<th scope="col">Topic</th><th scope="col">Comparison</th><th scope="col">Reference year</th>',
+    '<th scope="col">Reference count</th><th scope="col">Latest year</th>',
+    '<th scope="col">Latest count</th><th scope="col">Saved change</th>',
+    '<th scope="col">Metric IDs</th></tr></thead><tbody>', endpoint_rows,
+    '</tbody></table></div>',
+    '<p class="table-note">Endpoint counts are read from the saved count metrics named in the ',
+    'percentage result inputs; the saved percentage is displayed, never recalculated.</p></details>',
+    '<details class="block-inspect" id="', esc(paste0(instance_id, '-bindings')),
+    '"><summary>Row bindings</summary><div class="table-scroll"><table class="report-table">',
+    '<thead><tr><th scope="col">Topic</th><th scope="col">Latest count metric</th>',
+    '<th scope="col">Comparison metric</th></tr></thead><tbody>', binding_rows,
+    '</tbody></table></div></details>',
+    composite_inspector(block, instance_id))
+}
+
+sensitivity_comparison_block <- function(b, evidence_file = '', instance_id = NULL) {
+  picked <- composed_record(evidence_file, instance_id, 'sensitivity-comparison')
+  if(!is.null(picked$error)) return(composite_unavailable('Sensitivity comparison', picked$error))
+  block <- picked$block
+  pair_html <- paste(vapply(block$pairs, function(pair) {
+    spec_rows <- paste(vapply(pair$specifications, function(spec) paste0(
+      '<tr><td>', esc(spec$role), '</td><td>', esc(paste(unlist(spec$members), collapse = ', ')),
+      '</td><td>', fmt_num(spec$reference$value), ' ', esc(spec$reference$unit),
+      ' (', esc(spec$reference$year), ')</td><td>', fmt_num(spec$latest$value), ' ',
+      esc(spec$latest$unit), ' (', esc(spec$latest$year), ')</td><td>',
+      fmt_pct(spec$reference_change$value), '</td></tr>'), character(1)), collapse = '')
+    evidence_rows <- paste(vapply(pair$specifications, function(spec) paste0(
+      '<tr><td>', esc(spec$role), '</td><td>', esc(spec$reference$metric_id), ' (',
+      esc(spec$reference$year), ')</td><td>', esc(spec$latest$metric_id), ' (',
+      esc(spec$latest$year), ')</td><td>', esc(spec$reference_change$metric_id), '</td><td>',
+      esc(paste(unlist(spec$reference_member_metric_ids), collapse = ', ')), '</td><td>',
+      esc(paste(unlist(spec$latest_member_metric_ids), collapse = ', ')), '</td><td>',
+      esc(paste0(spec$artifact$file, ' · ', substr(spec$artifact$digest, 1, 16))),
+      '</td></tr>'), character(1)), collapse = '')
+    identical_note <- if(isTRUE(pair$identical_members)) paste0(
+      '<p class="table-note">The saved main and sensitivity specifications have the same members',
+      if(isTRUE(pair$identical_results)) ' and identical saved results' else '', '.</p>') else ''
+    excluded <- if(length(pair$excluded_members))
+      paste(unlist(pair$excluded_members), collapse = ', ') else 'none recorded'
+    added <- if(length(pair$added_members)) paste(unlist(pair$added_members), collapse = ', ') else 'none recorded'
+    paste0('<h3>', esc(pair$class), ' group</h3>',
+      '<div class="table-scroll"><table class="report-table"><caption>Saved main and sensitivity specifications</caption>',
+      '<thead><tr><th scope="col">Specification</th><th scope="col">Members</th>',
+      '<th scope="col">Total in reference year</th><th scope="col">Total in latest year</th>',
+      '<th scope="col">Saved reference change</th></tr></thead><tbody>', spec_rows,
+      '</tbody></table></div>',
+      '<p class="series-meta">Members in main but not in sensitivity: ', esc(excluded),
+      ' · members added by sensitivity: ', esc(added), '</p>', identical_note,
+      '<details class="block-inspect" id="', esc(paste0(instance_id, '-', pair$class, '-bindings')),
+      '"><summary>Metric bindings for the ', esc(pair$class), ' group</summary>',
+      '<div class="table-scroll"><table class="report-table"><thead><tr>',
+      '<th scope="col">Specification</th><th scope="col">Reference total metric</th>',
+      '<th scope="col">Latest total metric</th><th scope="col">Change metric</th>',
+      '<th scope="col">Reference-year member metrics</th>',
+      '<th scope="col">Latest-year member metrics</th><th scope="col">Artifact</th></tr></thead><tbody>',
+      evidence_rows, '</tbody></table></div>',
+      '<p class="table-note">Metric identifiers resolve in metrics.csv; matching digests show the ',
+      'files agree with the manifest, not that the saved results are scientifically correct.</p></details>')
+  }, character(1)), collapse = '')
+  paste0('<p class="caption">', esc(block$question), ' Both specifications are read from saved ',
+    'metrics; no count is recalculated here.</p>', pair_html,
+    '<p class="table-note">', esc(paste(unlist(block$limits), collapse = ' ')), '</p>',
+    composite_inspector(block, instance_id))
+}
+
 composition_registry <- list(
   intro = list(label = composition_labels[['intro']], primary = FALSE,
     render = function(b, entry, evidence_file='') selection_intro(b)),
+  'series-trend' = list(label = composition_labels[['series-trend']], primary = FALSE,
+    render = function(b, entry, evidence_file='')
+      series_trend_block(b, evidence_file, instance_id=entry$instance_id)),
+  'coverage-selection' = list(label = composition_labels[['coverage-selection']], primary = FALSE,
+    render = function(b, entry, evidence_file='')
+      coverage_selection_block(b, evidence_file, instance_id=entry$instance_id)),
+  'monitoring-overview' = list(label = composition_labels[['monitoring-overview']], primary = FALSE,
+    render = function(b, entry, evidence_file='')
+      monitoring_overview_block(b, evidence_file, instance_id=entry$instance_id)),
+  'sensitivity-comparison' = list(label = composition_labels[['sensitivity-comparison']], primary = FALSE,
+    render = function(b, entry, evidence_file='')
+      sensitivity_comparison_block(b, evidence_file, instance_id=entry$instance_id)),
   'reference-comparison' = list(label = composition_labels[['reference-comparison']], primary = TRUE,
     render = function(b, entry, evidence_file='')
       reference_block(b, evidence_file, variant='composed', instance_id=entry$instance_id)),
@@ -822,6 +1470,13 @@ composition_style <- function() paste0('<style>',
   '.composed-nav a{font-size:14px;color:#247c85;text-decoration:none}',
   '.composed-block{border:1px solid #dfe6e5;border-radius:14px;padding:22px 24px;margin:0 0 20px;background:#fff}',
   '.composed-block--primary{border:2px solid #247c85}',
+  '.composed-report .series-figure{margin:14px 0 8px;width:100%;max-width:680px}',
+  '.composed-report .series-figure--compact{margin:10px 0 6px}',
+  '.composed-report .series-figure img{display:block;width:100%;max-width:100%;height:auto}',
+  '.composed-report .table-scroll{overflow-x:auto;max-width:100%}',
+  '.composed-report .report-table{max-width:100%}',
+  '@media (max-width:480px){.composed-report{padding:20px 12px 28px}.composed-report .finding-counts{gap:18px;flex-wrap:wrap}}',
+  '.composed-report .provenance-list dd code,.composed-report .report-settings td code,.composed-report .audit-row strong,.composed-report .audit-row code{min-width:0;overflow-wrap:anywhere;white-space:normal}',
   '.composed-kicker{margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#52656b}',
   '.composed-heading{margin:0 0 12px;font-size:21px;color:#18343c}',
   '.finding-value{margin:6px 0 2px;font-size:44px;line-height:1;font-weight:700;color:#247c85}',
@@ -872,9 +1527,16 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
   nav <- paste0('<nav class="composed-nav" aria-label="Report blocks">',
     paste(vapply(sections, function(s) paste0('<a href="#', esc(s$id), '">', esc(s$label), '</a>'),
                  character(1)), collapse=''), '</nav>')
+  pr_title <- read_provenance()
+  report_title <- if(!is.null(pr_title$composition) && !is.null(pr_title$composition$effective_title))
+    pr_title$composition$effective_title else b$cfg$title
+  report_subtitle <- if(!is.null(pr_title$composition) && !is.null(pr_title$composition$effective_subtitle))
+    pr_title$composition$effective_subtitle else NULL
   paste0('<div class="composed-report">', composition_style(),
-    '<p class="composed-intro">', esc(b$cfg$title), ' · ', esc(paste(b$cfg$years, collapse='–')),
-    ' · reference year ', esc(b$cfg$reference_year), '</p>', nav,
+    '<p class="composed-intro">', esc(report_title), ' · ', esc(paste(b$cfg$years, collapse='–')),
+    ' · reference year ', esc(b$cfg$reference_year), '</p>',
+    if(!is.null(report_subtitle)) paste0('<p class="composed-intro composed-subtitle">',
+                                        esc(report_subtitle), '</p>') else '', nav,
     paste(vapply(sections, function(s) s$html, character(1)), collapse='\n'),
     '<p class="caption">Composed from saved analysis outputs. The companion ',
     '<a href="methods.html">methods report</a> retains the full selection, lineage and verification detail.</p></div>')

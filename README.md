@@ -56,6 +56,10 @@ Stakeholder settings accept two optional arrays: `include_topics` (if present, o
 
 Changing this scope is an analysis change: regenerate the bundle through the canonical workflow (for example `snakemake --cores 2` or `analyse.py` against a validated harmonised output). Rendering a retained bundle only changes presentation. Composed recipes use `health-report/composition-recipe/2`, where `reference-comparison` requires an explicit `topic` bound to a saved included topic; contract v1 remains readable with its historical deterministic binding.
 
+Composed recipes may also include one `series-trend` block (`topic`, `measure`, optional inclusive `years` defaulting to the reporting window, and an optional closed `presentation` object with `style` `standard` or `compact`). It displays saved annual observations for one included topic, leaves a missing year as a gap rather than zero, and refuses a second instance. The style changes figure size and wording only, never the saved rows or the analytical identity. Like the comparison, it only selects among saved results and cannot broaden analytical scope.
+
+Composed recipes may also include one `coverage-selection` summary of the saved selection decisions, one institutional `monitoring-overview` of each included topic's latest saved value, and one `sensitivity-comparison` of the saved main and sensitivity group specifications. These read saved records only; they add no calculation and no new contract.
+
 ## Composed audience reports (experimental, HTML-only)
 
 One command composes all three audience reports from their own retained analysis bundles and audience recipes:

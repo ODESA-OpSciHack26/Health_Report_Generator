@@ -21,14 +21,15 @@ calls <- length(gregexpr('reference_block\\(b, evidence_file\\)', researcher_bod
 stopifnot(calls == 1L)
 
 evidence <- list(blocks = list(list(
-  status = 'verified', subject = 'virus', reference_year = 2019L, latest_year = 2025L,
+  status = 'verified', component = list(type = 'reference-comparison', version = '1'),
+  subject = 'virus', reference_year = 2019L, latest_year = 2025L,
   measure = 'cases',
   reference_count = list(metric_id = 'virus:2019:count', value = '10'),
   latest_count = list(metric_id = 'virus:2025:count', value = '16'),
   result = list(metric_id = 'virus:reference_change', value = 60.0, unit = 'percent',
                 formula = 'percent_change', availability = 'available'),
-  effective = list(presentation = list(unit = 'percent', digits = 0L)),
-  trace = list(list(field = 'presentation.digits', source = 'component', value = 0L)),
+  effective = list(presentation = list(unit = 'percent', digits = 1L)),
+  trace = list(list(field = 'presentation.digits', source = 'component', value = 1L)),
   identities = list(analytical = strrep('a', 64), result = strrep('b', 64), instance = strrep('c', 64)),
   snapshot = list(snapshot_id = strrep('d', 64), snapshot_path = 'snapshots/example'),
   implementation = list(

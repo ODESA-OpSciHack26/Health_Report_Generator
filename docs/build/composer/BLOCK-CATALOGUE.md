@@ -56,8 +56,11 @@ Consequences that must stay explicit in the product:
 
 Gate status: Gate A/B1 (explicit topic scope, recipe v2 explicit reference-comparison
 binding) is a completed implementation checkpoint at `181f206382f8c71a6a58f912ef02b507b0dd1280`
-with its documented limitations and scoped review. Gate B2 (series contract/time-trend
-block) is **not authorized**.
+with its documented limitations and scoped review. Gate B2 (saved annual series contract and
+one researcher trend instance) is implemented as an **uncommitted candidate** on
+`design/contracts` based on `29f44f4f772107d8e25880ea657cbcd7b66b9303`; automated checks
+and rendered-package checks pass, but it is not accepted, independently reviewed or
+visually reviewed, and institutional/public trend variants remain unimplemented.
 
 ## 3. Snapshot types and intended flow
 
@@ -129,10 +132,10 @@ calculation.
 | Shared core | Components / variants | Status |
 |---|---|---|
 | Reference comparison | `composer_contracts` instance/evidence + `publish.build_block` + R `reference_block`; public magnitude explanation is a presentation variant of the same checked result | Implemented core; v2 topic binding |
-| Annual series | Proposed `series.csv` binding and chart/table core; would serve trend, institutional sparklines and a public longer view | Proposed (Gate B2 not authorized) |
-| Selection / coverage | `analyse.select_series`, `selection.csv`; coverage and readiness blocks are composites of this saved record plus source metadata | Data implemented; blocks partial/proposed |
+| Annual series | `health-report/series-component/1` saved-row binding + `series-trend` block; researcher standard, institution compact, public standard | Implemented core in all three recipes (uncommitted candidate); visual review pending |
+| Selection / coverage | `analyse.select_series`, `selection.csv`; coverage and readiness blocks are composites of this saved record plus source metadata | Implemented `coverage-selection` (researcher; no year matrix); readiness still proposed |
 | Quality and provenance services | `checks.csv`, `provenance.json`, methods `#quality-checks`, “Report settings and source files” | Implemented shared services |
-| Sensitivity | Saved `:main` / `:sensitivity` metrics and group inputs | Data implemented; block proposed |
+| Sensitivity | Saved `:main` / `:sensitivity` metrics and group inputs | Implemented `sensitivity-comparison` composite (researcher) |
 
 Rules:
 
@@ -205,17 +208,28 @@ Rules:
 
 ### 6.3 Saved annual series / time trend
 
-- **Identity and status.** Proposed block type (working name `series-trend`). No current
-  renderer or series contract; Gate B2 is not authorized. Saved annual `series.csv` rows
-  exist for the current scope (12 topics × 2019, 2021–2025 in the retained bundle; no 2020).
+- **Identity and status.** Block type `series-trend`, contract
+  `health-report/series-component/1`, schema
+  `scripts/health_pipeline/config/composer/series-contract/1.json`; implemented on
+  `design/contracts` (base `29f44f4`, uncommitted) and wired into all three persistent
+  recipes: researcher standard, health institution compact, public standard. Execution
+  tests: `tests/test_composer_series.py` and `tests/r_series_smoke.R`; rendered-package
+  checks in `~/.local/state/composer-bootstrap/g2-batch-20261029T020755`. Not independently
+  or visually reviewed; the compact variant has structural assertions only. Saved annual
+  `series.csv` rows exist for the current scope (12 topics × 2019, 2021–2025 in the retained
+  bundle; no 2020).
 - **Reader purpose.** Answers “What happened across the available selected periods?”
   Audiences: researcher default; institutional overview and public longer view are variants
   of the same series core.
 - **Inputs and parameters.** Saved series rows for one topic and measure; display years
-  within the report window (default the window); instance ID; audience detail. Reference or
-  base years outside the window are separate observations, not part of the connected trend.
-  Requested topics/periods must exist in the saved bundle; no first-topic fallback. A new
-  scope needs analysis; a new time granularity is not supported by current saved data.
+  within the report window (default the window); instance ID; audience detail. The current
+  recipe entry is `{block: series-trend, instance_id, topic, measure, years?}`, valid only
+  under `health-report/composition-recipe/2` and limited to one instance per recipe; `years`
+  is an inclusive `[start, end]` inside the reporting window and defaults to that window.
+  Reference or base years outside the window are separate observations, not part of the
+  connected trend. Requested topics/periods must exist in the saved bundle; no first-topic
+  fallback. A new scope needs analysis; a new time granularity is not supported by current
+  saved data.
 - **Main presentation.** Subject, measure, unit, geography and actual period range; annual
   chart with truthful gaps; exact-value table; descriptive, audience-appropriate text.
   Line segments only where continuity is justified. Do not connect an isolated 2019
@@ -225,16 +239,23 @@ Rules:
   artifact digest; implementation identities; quality linkage level and limits.
 - **Interaction.** No analytical filter. A display-range control, if added, is presentation
   only and must be reflected in the rendered record/provenance.
-- **Provenance and failure.** A new series contract/identity semantic is required and
-  separately gated; do not force the series into the percentage comparison contract. Missing
-  years are gaps, not zero. A snapshot hash beside a chart does not prove row selection.
+- **Provenance and failure.** Implemented as a separate contract rather than an extension of
+  the percentage comparison: one checked document per instance, R selects it by
+  `instance_id` and expected component type, and a failed check renders an unavailable state
+  and fails the report/batch. Validation re-reads saved rows and metrics (unique topic/year
+  rows, one included dataset/source, metric subject/year/unit/value agreement, requested
+  window, artifact digest) without recomputing a count. Gap and malformed-row cases are
+  labelled synthetic fixtures, not findings in the retained data. Missing years are gaps, not
+  zero. A snapshot hash beside a chart does not prove row selection.
 
 ### 6.4 Analytical population / coverage and selection
 
-- **Identity and status.** Partially implemented. Saved `selection.csv`, `sources.csv`, the
-  methods “Dataset selection” table and the legacy technical “Selected data coverage” table
-  (`selected_coverage`) exist; there is no composed coverage block and no year-level coverage
-  matrix.
+- **Identity and status.** Implemented composite `coverage-selection` (uncommitted,
+  `design/contracts`) in the researcher and narrowed recipes. It reads saved `selection.csv`,
+  `sources.csv` and `series.csv`, distinguishes datasets, topics and saved observations, and
+  takes “displayed topics” from the resolved recipe bindings. No year-level completeness
+  matrix exists: the block states that the saved bundle records dataset/topic decisions, not
+  per-year coverage.
 - **Reader purpose.** Answers “What entered the analysis, and what was unavailable or
   excluded?” Researcher default; institution monitoring coverage; public short inclusion
   statement with expandable detail.
@@ -253,9 +274,11 @@ Rules:
 
 ### 6.5 Sensitivity / alternative specifications
 
-- **Identity and status.** Partially implemented. Saved `<class>:main` and
-  `<class>:sensitivity` metrics and group inputs exist; the legacy charts show a sensitivity
-  series, but there is no composed sensitivity block.
+- **Identity and status.** Implemented composite `sensitivity-comparison` (uncommitted,
+  `design/contracts`) in the researcher recipe. It binds the saved `<class>:main` and
+  `<class>:sensitivity` group totals, reference changes and member metric lists; member
+  differences are derived from those saved lists. No dedicated contract was needed: the
+  comparison is a presentation of saved metrics.
 - **Reader purpose.** Answers “How dependent is the saved comparison on an explicit
   analytical choice?” Researcher default; optional for institution/public with simpler text.
 - **Inputs and parameters.** Both saved specifications and their member lists. No new
@@ -272,10 +295,12 @@ Rules:
 
 ### 6.6 Monitoring overview
 
-- **Identity and status.** Partially implemented. A legacy dashboard “Monitoring summary”
-  (`monitoring_summary` / `monitoring_table` in
-  `scripts/health_pipeline/templates/audience_reports.R`) exists for
-  the dashboard presentation; it is not a composed block and has no shared series core.
+- **Identity and status.** Implemented composite `monitoring-overview` (uncommitted,
+  `design/contracts`) in the health-institution recipe. One row per included topic from the
+  latest saved annual observation, with each available saved reference or period comparison
+  bound separately and its periods shown; percentages and counts are formatted for display
+  while exact saved strings stay in evidence. It is descriptive only: no score, ranking,
+  threshold or common scale. Per-topic sparklines are deferred.
 - **Reader purpose.** Answers “Which selected indicators should an institutional reader
   inspect first?” Institution default; optional elsewhere.
 - **Inputs and parameters.** Saved latest counts, comparison values and available historical
@@ -329,8 +354,9 @@ Rules:
 ### 6.9 Public finding / magnitude explanation
 
 - **Identity and status.** Implemented as a presentation variant of the reference comparison
-  (editorial audience copy in `scripts/health_pipeline/templates/report_helpers.R`), not as a separate block type or
-  calculation.
+  (editorial audience copy and plain-language-first ordering in
+  `scripts/health_pipeline/templates/report_helpers.R`), not as a separate block type or
+  calculation, and wired into the public recipe beside the series block.
 - **Reader purpose.** Answers “What changed, in understandable numbers and words?” Public
   default; optional for other audiences.
 - **Inputs and parameters.** The same checked result as the technical comparison. No second
@@ -448,7 +474,7 @@ evidence, quality detail, provenance and reproduction.
 |---|---|---|---|---|
 | Context / scope | default | default | default | — |
 | Reference comparison | default | default | default | saved reference result |
-| Annual series / trend | default | optional (sparklines) | optional (longer view) | saved series rows; series contract (proposed) |
+| Annual series / trend | default (standard) | default (compact) | default (standard) | saved series rows; `series-component/1` implemented |
 | Coverage / selection | default | optional | optional (short) | selection records; year coverage only if saved |
 | Sensitivity | default | optional | optional (plain text) | saved alternative specifications |
 | Monitoring overview | optional | default | not a default | saved series core |
@@ -512,12 +538,17 @@ The current sequence is:
 
 1. Treat Gate A/B1 as a completed implementation checkpoint, retaining its documented
    limitations and scoped review.
-2. Specify the separately gated saved-series block as the next analytical implementation
-   candidate.
-3. Render that block appropriately in all three audience compositions.
-4. Add coverage/selection communication from saved records.
-5. Add the institutional monitoring overview from the shared series core.
-6. Add sensitivity from saved metrics and refine public interpretation/context.
+2. Gate B2 candidate: the saved-series contract, one researcher trend instance and its
+   rendering checks are implemented and uncommitted; acceptance and independent/visual
+   review remain pending.
+3. The series core is rendered in all three persistent recipes (researcher standard,
+   institution compact, public standard); browser review of the compact variant remains.
+4. Coverage/selection communication from saved records is implemented for the researcher
+   scope; a year-level matrix still requires a saved upstream artifact.
+5. The institutional monitoring overview is implemented descriptively; priority ordering and
+   alerting remain unauthorised without an approved policy.
+6. The sensitivity comparison is implemented from saved metrics, and public interpretation is
+   refined through the editorial magnitude variant.
 7. Add release comparison only when two snapshots and comparability are available.
 8. Build a configurator over stable recipe interfaces.
 
@@ -527,8 +558,9 @@ cosmetic overhaul remain separately scoped.
 
 ## 11. Open consequential decisions
 
-- Series contract/identity shape and whether the trend block reuses or extends the composer
-  component contract (Gate B2 approval required before implementation).
+- Series contract/identity shape: resolved for this slice as the separate
+  `health-report/series-component/1` document with analytical/rows/instance identities;
+  whether institutional and public variants reuse this core unchanged is still open.
 - Whether year-level coverage can be derived from saved records or needs a new saved
   artifact.
 - Whether sensitivity gets a dedicated contract/binding or reads saved metrics through a

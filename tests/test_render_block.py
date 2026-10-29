@@ -32,7 +32,7 @@ def test_block_carries_saved_values_and_identities(tmp_path):
     assert record["implementation"]["analysis"]["file"].endswith("analyse.py")
     assert record["lineage"]["source_file"] == "data/virus/data.csv"
     assert record["lineage"]["source_row"] == "2"
-    assert record["effective"]["presentation"]["digits"] == 0
+    assert record["effective"]["presentation"]["digits"] == 1
 
 
 def test_block_selection_is_deterministic(tmp_path):

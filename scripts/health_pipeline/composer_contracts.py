@@ -49,6 +49,17 @@ SCHEMA_PATH = (
     / "1.json"
 )
 
+SERIES_CONTRACT = "health-report/series-component/1"
+SERIES_SCHEMA_PATH = (
+    Path(__file__).resolve().parent
+    / "config"
+    / "composer"
+    / "series-contract"
+    / "1.json"
+)
+SERIES_ARTIFACT = "series.csv"
+
+
 # Every analytical setting of the saved stakeholder.json that can change these numbers.
 # Presentation-bearing fields (id, title, question, outputs, presentation) are excluded so
 # that an audience swap cannot silently alter numerical identity.
@@ -169,6 +180,20 @@ class BlockRecord:
 
     def ok(self) -> bool:
         return not self.findings
+
+
+@dataclass(frozen=True)
+class SeriesBlockRecord:
+    """One checked saved annual series block. Display only; no calculation."""
+
+    instance_id: str
+    document: dict
+    effective: dict
+    trace: tuple
+    identities: dict
+
+    def ok(self) -> bool:
+        return True
 
 
 @dataclass(frozen=True)
@@ -1042,6 +1067,339 @@ def check_block(instance: dict, evidence: dict, bundle: BundleEvidence, *, proje
     )
 
 
+# ---------------------------------------------------------------------------
+# Saved annual series block (health-report/series-component/1)
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def series_contract_schema() -> dict:
+    """The bundled series schema. Structural validation reads nothing else."""
+    return _loads(SERIES_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def _series_validator(name: str = "series"):
+    schema = series_contract_schema()
+    return jsonschema.Draft202012Validator({"$ref": f"#/$defs/{name}", "$defs": schema["$defs"]})
+
+
+def _require_valid_series(document, name: str = "series") -> None:
+    if not isinstance(document, dict):
+        raise ContractError("schema", f"{name} must be a JSON object")
+    error = best_match(_series_validator(name).iter_errors(document))
+    if error is not None:
+        raise ContractError("schema", f"{error.json_path}: {error.message}")
+    _check_finite(document, "$")
+
+
+def validate_series(document: dict) -> dict:
+    """Structural plus intra-document consistency for one saved series block.
+
+    No bundle access. The requested window, ordered observations and the explicit
+    missing-period list must already agree with each other here; agreement with the
+    saved bundle is a separate read-only layer.
+    """
+    _require_valid_series(document)
+    _check_reference_path(document["artifact"]["file"], "artifact.file")
+    for role in ("analysis", "presentation", "contracts", "binding", "schema"):
+        reference = document["implementation"].get(role)
+        if reference is None:
+            continue
+        _check_reference_path(reference["file"], f"implementation.{role}.file")
+
+    selection = document["selection"]
+    periods = document["periods"]
+    observations = document["observations"]
+    start, end = periods["requested"]
+    if start > end:
+        raise ContractError("periods", "requested years must be ordered start <= end")
+    if selection["geography"] != document["analysis"]["scope"]["geography"]:
+        raise ContractError("scope_disagreement", "selection geography differs from the analytical scope")
+
+    years = [item["year"] for item in observations]
+    if len(years) != len(set(years)):
+        raise ContractError("duplicate_row", "observations repeat a year")
+    if years != sorted(years):
+        raise ContractError("ordering", "observations must be ordered by ascending year")
+    if any(year < start or year > end for year in years):
+        raise ContractError("periods", "an observation lies outside the requested years")
+    if list(periods["effective"]) != years:
+        raise ContractError("periods", "effective years must equal the observed years in order")
+    expected_missing = [year for year in range(start, end + 1) if year not in set(years)]
+    if list(document["missing_years"]) != expected_missing:
+        raise ContractError("periods", "missing_years must be exactly the requested years without an observation")
+
+    outside = periods["reference_year"] not in set(years)
+    if bool(periods["reference_outside_window"]) != outside:
+        raise ContractError("periods", "reference_outside_window contradicts the observed years")
+
+    seen_metrics = set()
+    for item in observations:
+        _check_metric_id(item["count_metric_id"], "observations.count_metric_id")
+        if item["count_metric_id"] in seen_metrics:
+            raise ContractError("duplicate_row", f"observation metric {item['count_metric_id']!r} is bound twice")
+        seen_metrics.add(item["count_metric_id"])
+        if item["unit"] != selection["measure"]:
+            raise ContractError("unit_disagreement", "observation unit differs from the requested measure")
+        if item["unit"] != document["presentation"]["unit"]:
+            raise ContractError("unit_disagreement", "observation unit differs from the presentation unit")
+        number = _cell_number(item["value"])
+        if number is None:
+            raise ContractError("invalid_value", "observation has no saved numeric value")
+        if number < 0:
+            raise ContractError("count_value", "observation is negative, contradicting save-time eligibility")
+    return document
+
+
+def series_analytical_identity(document: dict) -> str:
+    """Snapshot + validated scope + display method + one topic/measure/geography binding."""
+    scope = document["analysis"]["scope"]
+    fields = [field for field in SCOPE_FIELDS if field in scope]
+    fields += [field for field in TOPIC_SCOPE_FIELDS if field in scope]
+    selection = document["selection"]
+    return _identity(
+        "series-analytical/1",
+        {
+            "snapshot_id": document["analysis"]["snapshot_id"],
+            "scope": {field: canonical_scope(field, scope[field]) for field in fields},
+            "method": {"id": "saved_annual_series", "version": "1"},
+            "selection": {
+                "topic": selection["topic"],
+                "measure": selection["measure"],
+                "geography": selection["geography"],
+                "dataset_id": selection["dataset_id"],
+                "source_system": selection["source_system"],
+            },
+        },
+    )
+
+
+def series_rows_identity(document: dict, analytical: str | None = None) -> str:
+    """Analytical identity plus the ordered saved row keys, metric bindings and exact values."""
+    analytical = analytical or series_analytical_identity(document)
+    return _identity(
+        "series-rows/1",
+        {
+            "analytical": analytical,
+            "rows": [
+                [item["year"], item["count_metric_id"], item["value"], item["unit"]]
+                for item in document["observations"]
+            ],
+        },
+    )
+
+
+def series_instance_identity(document: dict, rows: str, effective: dict) -> str:
+    """Display identity: instance id, requested/effective/missing periods, artifact, settings."""
+    periods = document["periods"]
+    return _identity(
+        "series-instance/1",
+        {
+            "component": document["component"],
+            "instance_id": document["instance_id"],
+            "rows": rows,
+            "requested_years": list(periods["requested"]),
+            "effective_years": list(periods["effective"]),
+            "missing_years": list(document["missing_years"]),
+            "artifact": document["artifact"],
+            "settings": effective,
+        },
+    )
+
+
+def _series_document_scope(document: dict) -> dict:
+    return document["analysis"]["scope"]
+
+
+def check_series_block(document: dict, bundle: BundleEvidence, *, project_root) -> SeriesBlockRecord:
+    """Resolve one saved annual series block and require it to agree with the saved bundle.
+
+    Read-only. The saved rows are re-read and compared cell by cell; no count, percentage
+    or rate is recalculated, interpolated or replaced.
+    """
+    validate_series(document)
+    findings = list(bundle.artifact_findings)
+
+    def add(code: str, subject: str, detail: str) -> None:
+        findings.append(Finding(code, subject, detail))
+
+    scope = _series_document_scope(document)
+    selection = document["selection"]
+    periods = document["periods"]
+    topic, measure = selection["topic"], selection["measure"]
+
+    for field in SCOPE_FIELDS:
+        if field not in bundle.stakeholder:
+            add("scope_missing", f"scope.{field}", "saved stakeholder settings omit this field")
+        elif scope[field] != bundle.stakeholder[field]:
+            add("scope_disagreement", f"scope.{field}",
+                f"contract value {scope[field]!r} differs from saved setting {bundle.stakeholder[field]!r}")
+    for field in TOPIC_SCOPE_FIELDS:
+        in_scope, in_bundle = field in scope, field in bundle.stakeholder
+        if in_scope != in_bundle:
+            add("scope_disagreement", f"scope.{field}",
+                "topic scope is recorded in only one of the block document and the saved settings")
+        elif in_scope and canonical_scope(field, scope[field]) != canonical_scope(field, bundle.stakeholder[field]):
+            add("scope_disagreement", f"scope.{field}", "recorded topic scope differs from the saved settings")
+
+    if document["analysis"]["snapshot_id"] != bundle.snapshot.get("snapshot_id"):
+        add("snapshot_disagreement", "analysis.snapshot_id", "block snapshot id differs from the saved snapshot")
+
+    saved_selection = [row for row in bundle.selection if row.get("topic") == topic]
+    included = [row for row in saved_selection if row.get("status") == "included"]
+    if not saved_selection:
+        add("selection_missing", topic, "the saved bundle has no selection row for this topic")
+    elif not included:
+        reasons = sorted({row.get("reason") or "" for row in saved_selection if row.get("reason")})
+        add("selection_excluded", topic,
+            "topic is not included in the saved selection" + (f": {'; '.join(reasons)}" if reasons else ""))
+    matches = [row for row in saved_selection
+               if row.get("dataset_id") == selection["dataset_id"]
+               and row.get("source_system") == selection["source_system"]]
+    if not matches:
+        add("selection_missing", topic,
+            f"no saved selection row for dataset {selection['dataset_id']!r} / source {selection['source_system']!r}")
+    elif len(matches) > 1:
+        add("selection_ambiguous", topic,
+            "several saved selection rows match the bound dataset and source")
+    elif matches[0].get("status") != "included":
+        add("selection_excluded", topic,
+            f"saved selection status {matches[0].get('status')!r}: {matches[0].get('reason')!r}")
+
+    saved_rows = [row for row in bundle.series
+                  if row.get("topic") == topic and row.get("measure") == measure]
+    if not saved_rows:
+        add("series_row", topic, "the saved bundle has no annual series rows for this topic and measure")
+    sources = {(row.get("dataset_id"), row.get("source_system")) for row in saved_rows}
+    if len(sources) > 1:
+        add("selection_ambiguous", topic, "saved series rows for this topic and measure span several dataset/source pairs")
+    elif sources and next(iter(sources)) != (selection["dataset_id"], selection["source_system"]):
+        add("selection_disagreement", topic, "saved series rows name a different dataset or source than the block")
+    geographies = {row.get("geography") for row in saved_rows}
+    if geographies and geographies != {selection["geography"]}:
+        add("series_scope_disagreement", topic, "saved series geography differs from the block selection")
+    if selection["geography"] != scope["geography"]:
+        add("scope_disagreement", "selection.geography", "block geography differs from the saved scope")
+
+    start, end = periods["requested"]
+    window_start, window_end = scope["years"]
+    if start < window_start or end > window_end:
+        add("periods", f"{start}-{end}",
+            f"requested years are outside the saved reporting window {window_start}-{window_end}")
+
+    rows_by_year = {}
+    for row in saved_rows:
+        key = str(row.get("year"))
+        if key in rows_by_year:
+            add("duplicate_row", f"{topic}:{key}", "saved series repeats a topic/year/measure row")
+        else:
+            rows_by_year[key] = row
+
+    declared_years = {str(item["year"]) for item in document["observations"]}
+    saved_in_window = {key for key, row in rows_by_year.items()
+                       if isinstance(row.get("year"), str) and row["year"].isdigit()
+                       and start <= int(row["year"]) <= end}
+    for year in sorted(declared_years - set(rows_by_year)):
+        add("series_row", f"{topic}:{year}", "declared observation has no saved series row")
+    for year in sorted(saved_in_window - declared_years):
+        add("series_row", f"{topic}:{year}", "saved series row inside the requested window is not declared")
+
+    for item in document["observations"]:
+        key = str(item["year"])
+        row = rows_by_year.get(key)
+        if row is None:
+            continue
+        if row.get("count_metric_id") != item["count_metric_id"]:
+            add("series_row", f"{topic}:{key}", "saved series row is bound to a different count metric")
+        saved_value = _cell_number(row.get("value"))
+        declared_value = _cell_number(item["value"])
+        if saved_value is None or declared_value is None or saved_value != declared_value:
+            add("series_value_disagreement", item["count_metric_id"],
+                f"saved series value {row.get('value')!r} differs from the declared value {item['value']!r}")
+        if row.get("measure") != item["unit"]:
+            add("series_scope_disagreement", item["count_metric_id"],
+                "saved series measure differs from the observation unit")
+
+        metric = bundle.metrics.get(item["count_metric_id"])
+        if metric is None:
+            add("metric_missing", item["count_metric_id"], "bound count metric is absent from the saved metrics")
+            continue
+        if metric.get("metric_type") != "count":
+            add("metric_type", item["count_metric_id"], "bound metric is not a saved count")
+        if metric.get("subject") != topic:
+            add("metric_subject", item["count_metric_id"], "bound count belongs to a different subject")
+        if str(metric.get("year")) != key:
+            add("metric_year", item["count_metric_id"],
+                f"bound count year {metric.get('year')!r} differs from the observation year {key}")
+        if metric.get("unit") != item["unit"]:
+            add("measure_disagreement", item["count_metric_id"],
+                f"bound count unit {metric.get('unit')!r} differs from the observation unit {item['unit']!r}")
+        metric_value = _cell_number(metric.get("value"))
+        if metric_value is None or declared_value is None or metric_value != declared_value:
+            add("metric_value", item["count_metric_id"],
+                f"saved count value {metric.get('value')!r} differs from the observation value {item['value']!r}")
+
+    manifest_files = bundle.manifest.get("files") or {}
+    artifact = document["artifact"]
+    if artifact["file"] != SERIES_ARTIFACT:
+        add("artifact", artifact["file"], f"this component reads {SERIES_ARTIFACT} only")
+    if artifact["file"] not in manifest_files:
+        add("artifact", artifact["file"], "artifact is not listed in bundle.json")
+    elif manifest_files[artifact["file"]] != artifact["digest"]:
+        add("digest_disagreement", artifact["file"], "block digest differs from the bundle manifest")
+    path = bundle.root / artifact["file"]
+    if not _safe_regular_file(path, bundle.root):
+        add("artifact_unsafe", artifact["file"], "series artifact is not a regular file inside the bundle")
+    elif _sha256_file(path) != artifact["digest"]:
+        add("digest_disagreement", artifact["file"], "block digest differs from the saved artifact bytes")
+
+    project_root = Path(project_root)
+    for role in ("analysis", "presentation", "contracts", "binding", "schema"):
+        reference = document["implementation"].get(role)
+        if reference is None:
+            continue
+        try:
+            _check_reference_path(reference["file"], f"implementation.{role}.file")
+        except ContractError as exc:
+            add(exc.code, exc.subject or f"implementation.{role}.file", exc.detail)
+            continue
+        candidate = project_root / reference["file"]
+        if not _safe_regular_file(candidate, project_root):
+            add("implementation_missing", reference["file"],
+                f"{role} implementation file is missing or outside the project root")
+        elif _sha256_file(candidate) != reference["sha256"]:
+            add("digest_disagreement", reference["file"],
+                f"{role} implementation digest differs from the retained file")
+
+    if findings:
+        raise ContractError("series_inconsistent", "; ".join(str(item) for item in findings),
+                            subject=document["instance_id"], findings=tuple(findings))
+
+    presentation = document["presentation"]
+    effective = {"presentation": {"unit": presentation["unit"]}}
+    trace = [{"field": "presentation.unit", "source": "author",
+              "value": presentation["unit"]}]
+    # An optional closed display style is a presentation parameter only: it changes
+    # emphasis and chart scale, never the saved rows or the analytical identity.
+    if "style" in presentation:
+        effective["presentation"]["style"] = presentation["style"]
+        trace.append({"field": "presentation.style", "source": "author",
+                      "value": presentation["style"]})
+    trace = tuple(trace)
+    analytical = series_analytical_identity(document)
+    rows = series_rows_identity(document, analytical)
+    return SeriesBlockRecord(
+        instance_id=document["instance_id"],
+        document=copy.deepcopy(document),
+        effective=effective,
+        trace=trace,
+        identities={
+            "analytical": analytical,
+            "rows": rows,
+            "instance": series_instance_identity(document, rows, effective),
+        },
+    )
+
+
 __all__ = [
     "BlockRecord",
     "BundleEvidence",
@@ -1055,10 +1413,14 @@ __all__ = [
     "ResolvedComposition",
     "ResolvedInstance",
     "SCOPE_FIELDS",
+    "SERIES_ARTIFACT",
+    "SERIES_CONTRACT",
+    "SeriesBlockRecord",
     "TOPIC_SCOPE_FIELDS",
     "analytical_identity",
     "canonical_scope",
     "check_block",
+    "check_series_block",
     "composition_identity",
     "contract_schema",
     "instance_identity",
@@ -1068,8 +1430,13 @@ __all__ = [
     "resolve_instance",
     "result_identity",
     "scope_of",
+    "series_analytical_identity",
+    "series_contract_schema",
+    "series_instance_identity",
+    "series_rows_identity",
     "validate_composition",
     "validate_evidence",
     "validate_instance",
+    "validate_series",
     "verify_references",
 ]

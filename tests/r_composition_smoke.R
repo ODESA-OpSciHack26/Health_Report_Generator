@@ -116,29 +116,40 @@ stopifnot(grepl('Supporting block', html_p, fixed = TRUE))
 stopifnot(identical(nav_targets(html_p), c('i-ref', 'i-b')))
 stopifnot(!any(grepl('-', composition_labels, fixed = TRUE)))
 stopifnot(identical(unname(composition_labels),
-                    c('Context', 'Reference comparison', 'Limitations', 'Reproduction')))
+                    c('Context', 'Time trend', 'What this report covers',
+                      'Monitoring overview', 'Sensitivity comparison',
+                      'Reference comparison', 'Limitations', 'Reproduction')))
 stopifnot(!grepl('dash-footer', html_a, fixed = TRUE))
 stopifnot(!grepl('presentation_open', html_a, fixed = TRUE))
 
-# 8. Real registry shape and researcher recipe still name the same four blocks.
+# 8. Real registry shape and persistent researcher recipe blocks.
 stopifnot(identical(sort(names(composition_registry)),
-                    sort(c('intro', 'reference-comparison', 'limitations', 'reproduction'))))
+                    sort(c('intro', 'series-trend', 'coverage-selection',
+                           'monitoring-overview', 'sensitivity-comparison',
+                           'reference-comparison', 'limitations', 'reproduction'))))
 stopifnot(all(vapply(composition_registry, function(spec)
   is.list(spec) && is.function(spec$render) && is.character(spec$label), logical(1))))
 recipe <- jsonlite::fromJSON(file.path(project, 'scripts', 'health_pipeline', 'config', 'composer',
                                        'compositions', 'researcher.json'), simplifyVector = FALSE)
 stopifnot(identical(vapply(recipe$blocks, function(x) x$block, character(1)),
-                    c('intro', 'reference-comparison', 'limitations', 'reproduction')))
+                    c('intro', 'series-trend', 'coverage-selection',
+                      'sensitivity-comparison', 'reference-comparison',
+                      'limitations', 'reproduction')))
 instance_ids <- vapply(recipe$blocks, function(x) x$instance_id, character(1))
 stopifnot(identical(instance_ids,
-                    c('intro-0001', 'block-reference-comparison',
+                    c('intro-0001', 'block-series-trend', 'block-coverage-selection',
+                      'block-sensitivity-comparison', 'block-reference-comparison',
                       'limitations-0001', 'reproduction-0001')))
 
 # 8b. The three audience recipes declare themselves and keep evidence/limitations.
 expected_orders <- list(
-  researcher = c('intro', 'reference-comparison', 'limitations', 'reproduction'),
-  health_institution = c('reference-comparison', 'intro', 'limitations', 'reproduction'),
-  public = c('intro', 'limitations', 'reference-comparison', 'reproduction'))
+  researcher = c('intro', 'series-trend', 'coverage-selection',
+                 'sensitivity-comparison', 'reference-comparison',
+                 'limitations', 'reproduction'),
+  health_institution = c('intro', 'monitoring-overview', 'series-trend',
+                         'reference-comparison', 'limitations', 'reproduction'),
+  public = c('intro', 'reference-comparison', 'series-trend',
+             'limitations', 'reproduction'))
 for (audience in names(expected_orders)) {
   one <- jsonlite::fromJSON(file.path(project, 'scripts', 'health_pipeline', 'config', 'composer',
                                       'compositions', paste0(audience, '.json')),
@@ -153,14 +164,15 @@ for (audience in names(expected_orders)) {
 
 # 9. reference_block selects the checked record by instance id and namespaces its inspector.
 make_block <- function(instance, identity) list(
-  status = 'verified', instance_id = instance, subject = 'virus',
+  status = 'verified', instance_id = instance,
+  component = list(type = 'reference-comparison', version = '1'), subject = 'virus',
   reference_year = 2019L, latest_year = 2025L, measure = 'cases',
   reference_count = list(metric_id = 'virus:2019:count', value = '10'),
   latest_count = list(metric_id = 'virus:2025:count', value = '16'),
   result = list(metric_id = 'virus:reference_change', value = 60.0, unit = 'percent',
                 formula = 'percent_change', availability = 'available'),
-  effective = list(presentation = list(unit = 'percent', digits = 0L)),
-  trace = list(list(field = 'presentation.digits', source = 'component', value = 0L)),
+  effective = list(presentation = list(unit = 'percent', digits = 1L)),
+  trace = list(list(field = 'presentation.digits', source = 'component', value = 1L)),
   identities = list(analytical = strrep('a', 64), result = strrep('b', 64), instance = identity),
   snapshot = list(snapshot_id = strrep('d', 64), snapshot_path = 'snapshots/example'),
   implementation = list(
@@ -183,7 +195,7 @@ stopifnot(grepl(strrep('1', 64), html_ra, fixed = TRUE))
 stopifnot(grepl(strrep('2', 64), html_rb, fixed = TRUE))
 stopifnot(!grepl('id="ref-a"', html_ra, fixed = TRUE))
 missing <- reference_block(b, path, variant = 'composed', instance_id = 'ref-absent')
-stopifnot(grepl('no checked record for block instance ref-absent', missing, fixed = TRUE))
+stopifnot(grepl('no checked reference-comparison record for block instance ref-absent', missing, fixed = TRUE))
 stopifnot(!grepl('+60.0%', missing, fixed = TRUE))
 
 # 10. Legacy defaults are unchanged: same panel id, first record, inspect panel ids.
@@ -247,8 +259,8 @@ stopifnot(grepl('formula percent_change', tech, fixed = TRUE))
 stopifnot(grepl('Unit percent', tech, fixed = TRUE))
 stopifnot(grepl('no inferential uncertainty estimate', tech, fixed = TRUE))
 stopifnot(grepl('no causal conclusion', tech, fixed = TRUE))
-stopifnot(grepl('Monitoring question:', dash, fixed = TRUE))
-stopifnot(grepl('Which notifiable diseases changed most in 2025?', dash, fixed = TRUE))
+stopifnot(grepl('Monitoring context:', dash, fixed = TRUE))
+stopifnot(grepl('Monitoring context: latest saved annual notification counts', dash, fixed = TRUE))
 stopifnot(grepl('Observed change: +60.0%', dash, fixed = TRUE))
 stopifnot(grepl('Switzerland and Liechtenstein', dash, fixed = TRUE))
 stopifnot(grepl('no canton- or institution-specific evidence', dash, fixed = TRUE))

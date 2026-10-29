@@ -261,7 +261,10 @@
           "required": ["analysis", "presentation"],
           "properties": {
             "analysis": { "$ref": "#/$defs/code_reference" },
-            "presentation": { "$ref": "#/$defs/code_reference" }
+            "presentation": { "$ref": "#/$defs/code_reference" },
+            "contracts": { "$ref": "#/$defs/code_reference" },
+            "binding": { "$ref": "#/$defs/code_reference" },
+            "schema": { "$ref": "#/$defs/code_reference" }
           }
         },
         "reproduction": {

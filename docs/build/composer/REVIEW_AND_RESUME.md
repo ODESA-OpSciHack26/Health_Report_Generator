@@ -736,6 +736,370 @@ docker --context rootless run --rm --pull never --user 0:0 \
 
 Review actual reading flow, distinct presets, graph/table clarity, evidence access, keyboard/focus/expansion, narrow layout and downloads. Scientific review is separately identified. A general PASS has only its supplied scope; do not invent browser/platform details. Screenshot comparison is not numerical/scientific acceptance.
 
+### Candidate entry B2-SERIES-01: saved annual series contract and one researcher trend instance
+
+- Base `29f44f4f772107d8e25880ea657cbcd7b66b9303` on `design/contracts`; candidate is
+  **uncommitted** working-tree state and includes the bounded presentation fix below. No
+  acceptance status changed; G0/G1/R02 remain open.
+- Changed paths and current hashes:
+  `M scripts/health_pipeline/composer_contracts.py 22928a268bce9f909713911622131335e28024365d98c313ceb02d3ee3db89ec`,
+  `A scripts/health_pipeline/config/composer/series-contract/1.json d69f72739fe7776b5c958df0256492778dd05d3ff107272da7f72f7224c561d8`,
+  `M scripts/health_pipeline/publish.py 438c2c2889711610cebf6e7fb71ff1953d0924bc79eb2c5ae5a0269a72a6fb00`,
+  `M scripts/health_pipeline/templates/report_helpers.R 70eb7aa614d93b506468afc4c8183032cbd72020af439d23446c8a0df8909b14`,
+  `A tests/test_composer_series.py 9e318a6a4ba622430096f4e4e05f5b76be002191d9e6869230b64edf1224d7d0`,
+  `A tests/r_series_smoke.R 23b7bf0646a393ded6f3a78ca4cfabbdd797cfd9c88719869d0cc12597280073`,
+  `M tests/r_composition_smoke.R 759ed43dc6da59584e67237a6837d6e30c5123b710e335789248938bdbc95560`,
+  plus `README.md`, `docs/build/composer/BLOCK-CATALOGUE.md` (status/interface text only).
+- Contract/recipe semantics: `health-report/series-component/1` is one self-contained
+  document per instance (snapshot/scope, topic/measure/geography/dataset/source,
+  requested/effective/missing years, ordered observations with `count_metric_id` and exact
+  saved value strings, `series.csv` digest, implementation hashes, presentation unit).
+  `series-trend` is a v2-only recipe entry requiring `topic` and `measure`, accepting one
+  inclusive `years` range inside the reporting window (defaulting to it) and limited to one
+  instance. v1 rejects the type; the repeated-reference restriction is unchanged. Validation
+  re-reads saved rows/metrics and checks unique rows, one included dataset/source, metric
+  subject/year/unit/value agreement, window containment, missing-period accounting and the
+  artifact digest; it recalculates no count. Identity inputs are documented as
+  snapshot+scope+method+binding (analytical), ordered saved rows/metrics/values (rows) and
+  instance id/periods/artifact/settings (instance); recipe order is not an input. Full
+  candidate identities are `bdbaf421…` / `c6ae14b0…` / `5f17e674…`; the narrowed bundle
+  (different recorded topic scope) gives `ff340961…` / `4dd5235b…` / `f37d7635…`.
+- Presentation defect diagnosed: the composed shell (`.composed-report`) does not inherit
+  the `.dashboard .chart-panel>img` sizing rules, and `chart_image()` emits a bare `<img>`
+  at intrinsic 1296×648 with no width/height attributes. The composed style had no image
+  rule, so the PNG rendered at 1296 px inside a 980 px column (≈884 px inside block padding)
+  and overflowed. Fix: wrap the series chart in `<figure class="series-figure">` and add two
+  narrowly scoped rules — `width:100%;max-width:680px` for the figure and
+  `width:100%;max-width:100%;height:auto;display:block` for its image. Source resolution is
+  unchanged at 1296×648; no global image rule, overflow hiding or clipping was added, and
+  observations, axes semantics and the zero baseline are unchanged.
+- Follow-up wrapping correction from user visual review: the settings value
+  `/baseline/snapshots/d0709708…` overflowed its content column. The markup is
+  `<dd><code>…</code></dd>` in the composed settings panel; the composed shell is not
+  `.dashboard`, and Quarto forces `code{white-space:pre-wrap}`, while inspector
+  `.audit-row strong` values are flex items with default `min-width:auto`. The inherited
+  `.provenance-list dd` wrap rule was insufficient in the viewed layout. Fix: one narrowly
+  scoped composed rule sets `min-width:0;overflow-wrap:anywhere;white-space:normal` on
+  provenance settings `code`, settings-table `code`, and audit-row `strong`/`code`. The
+  displayed value and its explanation are unchanged, complete and copyable: no inserted
+  spaces, ellipsis, clipping, font-size change or provenance-value change.
+- Literal Markdown-style links: the published HTML was inspected rather than inferred from
+  pasted text. Visible body text in the full and narrowed reports contains **0** `](`
+  sequences; the only 7 matches are inside bundled Quarto/Bootstrap JavaScript strings.
+  No link-generation defect was reproduced, so no link code was changed.
+- Commands/exits (pinned image, rootless, `--network none`, bounded resources, repository
+  and baseline read-only, fresh evidence directories):
+  `tests/test_composer_series.py` + `tests/test_composition.py` 93 passed exit 0;
+  `tests/r_series_smoke.R` exit 0; `tests/r_composition_smoke.R` exit 0; maintained suite
+  559 passed (31.08s) exit 0; full and narrowed renders exit 0; both rendered-package
+  verifiers exit 0; untrended three-audience batch exit 0; regression comparison against
+  the previous batch exit 0; extracted saved-file inspection example exit 0.
+- Fresh packages (the earlier `g2-series-20261028T225634` and
+  `g2-series-sizing-20261028T232606` presentations are superseded for review but retained
+  unchanged): `~/.local/state/composer-bootstrap/g2-series-wrapping-20261028T234411/render-full/report.html`
+  and `.../render-narrowed/report.html`, each with `methods.html`, `provenance.json` and
+  `data/`; regression batch under `.../batch-regression/reports/`. Logs (`maintained-suite.log`,
+  renders, three verification logs) are in the same root.
+- Verified in the published packages: exact values 6802/7645/6784/8360/8716 and the
+  reference comparison (`+20.2%`, 7,253 → 8,716) are unchanged; figures carry the scoped
+  class and rules; the image has no width/height/inline-style attributes; IDs, inspector,
+  table and navigation targets are intact and unique; embedded provenance equals the
+  sidecar; the series record's presentation digest equals the current `report_helpers.R`
+  (`70eb7aa6…`). The untrended batch keeps its section order, reference instance identities
+  and values. The build-time path is displayed in full with its unchanged explanation and no
+  ellipsis, and the scoped wrap rule is present in both packages. Presentation identities
+  were not relabelled: the documented identity inputs do
+  not include render-code digests, so they remain unchanged while provenance records the new
+  implementation hash.
+- Visual review: **NOT REVIEWED**. No browser or headless tooling is installed and none was
+  installed. Desktop and 375–390 px viewport overflow, horizontal page scrolling and
+  keyboard/focus behaviour remain unverified; the markup/style assertion is not a browser
+  or accessibility test.
+- Remaining limits: gap, single-observation and malformed-row cases are labelled synthetic
+  fixtures, not findings in the retained data; institutional/public trend variants remain
+  unimplemented; no component was accepted and no ledger state changed.
+
+### Development note G2-STYLE-01: series presentation style and implementation references
+
+Uncommitted, tests only; no render, ledger or acceptance change in this checkpoint.
+
+- Recovered from the interrupted session, and verified here: the series schema exposes an
+  optional closed `presentation.style` plus optional `implementation.contracts`,
+  `binding` and `schema` code references; `validate_series`/`check_series_block` path- and
+  digest-check those roles, and `check_series_block` records an explicit style in the
+  effective settings and trace.
+- Bounded extension: a series-trend recipe entry accepts
+  `presentation: {"style": "standard"|"compact"}`. Unknown nested keys, a non-object value
+  and any other style are rejected by recipe validation and again by the builder, which
+  returns a failed record rather than a default. Omitted style emits no style key, so the
+  checked document, effective settings, trace and all three identities stay exactly as in
+  the B2 candidate. Explicit style is emitted into the checked document and changes only
+  the instance identity; analytical and rows identities are unchanged.
+- `build_series_block` now records `contracts` (composer_contracts.py), `binding`
+  (publish.py) and `schema` (series-contract/1.json) references beside `analysis` and
+  `presentation`, in the existing code-reference shape. They are validated against the
+  retained files and survive into the provenance `blocks` entry. Implementation
+  references are not identity inputs: a document with those roles removed re-checks to the
+  same identities.
+- Renderer: `report_helpers.R` selects `series-figure--compact` at 2.4in (standard 3.6in)
+  and adds a "Presentation style" inspector row only when a style is recorded. Saved
+  values, gap segmentation, zero baseline, exact-value table, evidence and limitations are
+  identical across styles; the existing 680px max-width, figure padding and long-identifier
+  wrapping rules are unchanged.
+- Historical evidence correspondence is preserved: the packages and hashes listed under
+  B2-SERIES-01 above were rendered from the earlier code and are not re-labelled. Current
+  working-tree hashes are `composer_contracts.py bb099147…`, `publish.py f225584b…`,
+  `report_helpers.R 26228e6f…`, `series-contract/1.json 99c6afb4…`.
+- Checks (pinned image, rootless, `--pull never --network none --cpus 3`, repository
+  read-only): `python -m pytest tests/test_composer_series.py tests/test_composition.py -q
+  `-p no:cacheprovider` 109 passed, exit 0; `Rscript tests/r_series_smoke.R` exit 0;
+  `Rscript tests/r_composition_smoke.R` exit 0. Logs in
+  `~/.local/state/composer-bootstrap/g2-style-<timestamp>/`.
+- Not done here: no report render, no browser geometry review of the compact variant, no
+  "Check rule" dropdown correction, and none of the other B2a–B2e blocks.
+
+### Candidate entry B2-BATCH-01: saved-record composites and persistent audience recipes
+
+- Base `29f44f4` on `design/contracts`; uncommitted working tree continuing B2-SERIES-01 and
+  G2-STYLE-01. No acceptance or ledger state changed.
+- Persistent recipes now wire the checked core per audience (one shared template, no
+  duplicated calculations): researcher intro → series-trend (standard, campylobacteriosis,
+  cases) → coverage-selection → sensitivity-comparison → reference-comparison →
+  limitations → reproduction; health_institution intro → monitoring-overview →
+  series-trend (compact) → reference-comparison → limitations → reproduction; public intro
+  → reference-comparison (editorial magnitude variant) → series-trend (standard) →
+  limitations → reproduction. All report 2021–2025; 2019 remains a separate comparison
+  reference and is never drawn as part of the connected trend.
+- The three new blocks are typed saved-record composites built in `publish.py`; no new JSON
+  contract. `coverage-selection` counts datasets, topics and saved observations separately
+  and takes “displayed topics” from the resolved recipe bindings, not from `series.csv`;
+  `monitoring-overview` binds one row per included topic to its latest saved count metric
+  and an optional saved reference/period change; `sensitivity-comparison` binds saved group
+  totals and reference changes for main versus sensitivity and derives member differences
+  from the saved member lists. Each carries analytical/instance identities, file digests,
+  implementation references and fails closed.
+- Provenance: reference-comparison evidence now records `contracts`/`binding`/`schema` code
+  references (component-evidence schema extended additively); series and composite records
+  do the same. Identity functions do not hash implementation, verified for both block kinds.
+- Dropdown correction: scoped `min-width:0`/flex and full-width control rules on
+  `.quality-controls` in methods.html; included in this render rather than a separate
+  rebuild. Asserted structurally, not in a browser.
+- Checks (pinned image, rootless, `--pull never --network none --cpus 3`, repository
+  read-only): focused pytest 127 passed; maintained suite 593 passed; `r_series_smoke.R`
+  exit 0; `r_composition_smoke.R` exit 0; three-audience batch exit 0; narrowed researcher
+  render exit 0; package verifier 0 problems (typed blocks, digests, embedded provenance,
+  unique ids, anchors, downloads); saved-file inspection exit 0. Logs in
+  `~/.local/state/composer-bootstrap/g2-batch-<timestamp>/`.
+- Verified in the rendered packages: exact series values 6,802/7,645/6,784/8,360/8,716 and
+  `+20.2%` (7,253 → 8,716) unchanged; narrowed report shows 49 excluded dataset records
+  against 7 included topics; institution uses the compact figure; public uses the editorial
+  finding with the standard figure; no literal markdown links in report or methods bodies.
+- User review recorded: the previously reviewed report passed the requested presentation
+  checks and worked on a phone, except the “Check rule” dropdown, which this entry corrects.
+  That review does not extend to the new blocks, other viewports, accessibility or
+  cross-browser behaviour, and no browser tooling was installed.
+- Still proposed with prerequisites: release/revision comparison (needs a second comparable
+  snapshot), topic background (needs curated reviewed content), reusable extracts
+  (per-block extract definition). No scientific acceptance.
+
+### Feedback correction G2-BATCH-01a: monitoring bindings, scope semantics and presentation precision
+
+- Monitoring root cause: the resolver collected every saved `reference_change` and
+  `period_change` for a topic and treated more than one candidate as “no comparison”. It now
+  resolves each type separately (more than one of the same type fails as ambiguous), derives
+  the periods from the bound input metrics, and displays every available saved comparison.
+  The institutional campylobacteriosis row binds `campylobacteriosis:reference_change`
+  (+20.2%, 2019→2025) and `campylobacteriosis:period_change` (+28.1%, 2021→2025), matching the
+  reference block for the common period. A topic with no saved comparison shows
+  “No saved comparison”, not a plausible link.
+- Context and membership: the intro derives included topics, group-sum members, individually
+  displayed topics (from resolved composition instances) and group-summary presence from saved
+  records; topics included in the analysis but excluded from group sums are named with that
+  explanation (AIDS). Analytical selection is unchanged.
+- Coverage: individually displayed topics and displayed group summaries (with member topics)
+  are separate concepts; source-registry rows, all saved annual observations and
+  window-contained observations are counted separately (72 total vs 60 in 2021–2025 for the
+  full bundle), and per-dataset exclusion decisions with their reasons stay in a disclosure.
+- Formatting: monitoring and sensitivity tables render 8,716 and +21.0% at presentation
+  precision; exact saved strings and metric IDs remain in evidence and downloads. Identical
+  main/sensitivity membership and results are stated as identical when true.
+- Precision: reference blocks now request `digits: 1` in the resolved instance, so effective
+  settings, trace and the rendered percentage agree (+20.2%). This changes the composed
+  reference instance identity; historical packages keep `digits: 0` and are not relabelled.
+  The contract-level default remains 0.
+- Sensitivity evidence: a per-class disclosure lists reference/latest total metric IDs, the
+  saved change metric ID, member metric IDs and the metrics.csv digest. No new contract.
+- Copy: the institutional comparison no longer quotes the “changed most” question; the public
+  series block is headed “Reported cases over time”, drops measure/saved-record jargon from
+  reader-facing text and states that reported cases are not every infection. Absolute counts,
+  periods, limitations and evidence are unchanged. “No source-count or scientific-result
+  recalculation” replaces absolute “no calculation” claims.
+- Sparklines: not implemented; the institutional overview remains a validated latest-values
+  and comparisons table, and per-topic sparklines are recorded as deferred.
+- Checks (pinned image, rootless, `--cpus 3`, repository read-only): focused pytest 234
+  passed; maintained suite 596 passed; `r_series_smoke.R`, `r_composition_smoke.R` and
+  `r_block_dispatch_smoke.R` exit 0; three-audience batch exit 0; narrowed render exit 0;
+  package verifier 0 problems; saved-file inspection exit 0. Evidence:
+  `~/.local/state/composer-bootstrap/g2-feedback-<timestamp>/`. Narrowed exclusions remain 49
+  dataset records; exact series values and +20.2% are unchanged.
+- Not verified: browser geometry/interaction at 390/320 px for the corrected blocks,
+  accessibility, cross-browser behaviour, independent scientific or source review.
+
+### Feedback correction G2-BATCH-01b: resolved display scope, endpoint evidence and monitoring identity domain
+
+- Display scope: provenance composition now carries `display_scope` derived only from verified
+  records — standalone topics (reference/series), monitoring-table topics, their union and the
+  group summaries. Intro and coverage read it instead of re-deriving from `series.csv`.
+  Institution names the monitoring-table topics; AIDS is described as included in the analysis
+  but excluded from group sums, with display depending on the selected blocks (monitoring table
+  in the institution, no finding in researcher/public). A monitoring-plus-series recipe with an
+  overlapping topic is covered by test.
+- Monitoring endpoints: every comparison carries its reference/latest saved count metric id,
+  year, value and unit; a compact “Comparison endpoints and bound metrics” disclosure shows
+  type, periods, counts, saved percentage and metric IDs. Endpoints are read from the bound
+  metrics, never reconstructed from a rounded percentage, and influenza's large period change
+  stays visible with its denominator.
+- Identity audit: old and corrected monitoring records shared analytical and instance
+  identities because the previous instance payload covered only topic/latest year/value; the
+  `metrics.csv` digest covered file-level value changes but not which saved comparison was
+  bound. Monitoring instance identity is now `monitoring-instance/2`, covering comparison type,
+  metric id, endpoint periods and saved value. Analytical identity keeps its documented domain
+  (snapshot + scope + method + file digests). Mutation tests show comparison value, binding or
+  removal changes the instance identity, latest-value changes do too, presentation formatting
+  changes neither, and recipe order changes no per-instance identity. Historical monitoring
+  instance identities keep their v1 domain and are not reinterpreted.
+- Sensitivity: the binding disclosure lists reference-year and latest-year member metric IDs
+  from each saved total's own inputs; no IDs are synthesized, and the identical bacterial
+  membership/result note is preserved.
+- Public/title: the public intro leads with what the report actually shows and moves scope into
+  a disclosure; the effective report title is derived from standalone displayed topics and
+  recorded in composition provenance (`Campylobacteriosis: reported cases and saved
+  comparisons`), leaving saved stakeholder metadata untouched.
+- Commands: the en dash came from Pandoc smart typography inside audit rows; entry-point
+  commands now render through entity-escaped code spans, so `snakemake --cores 2` stays literal
+  and copyable. No historical core counts were changed.
+- Checks: maintained suite 599 passed; focused pytest 138 passed; r_series, r_composition and
+  r_block_dispatch smokes exit 0; three-audience batch exit 0; narrowed render exit 0; package
+  verifier 0 problems; saved-file inspection OK (endpoint values equal the bound metrics).
+- Evidence preservation incident: this round re-used the previous evidence directory and its
+  batch/narrowed packages were overwritten in place before the mistake was noticed. Round-1
+  logs and rendered claims remain in this record, but the files at
+  `g2-feedback-20261029T093534` now contain round-2 output. A labelled copy of the current
+  round-2 evidence is at `g2-feedback-r2-<timestamp>`; future rounds must use a fresh directory.
+- Not verified: browser geometry/interaction at 390/320 px, accessibility, cross-browser,
+  independent scientific or source review. Sparklines remain deferred.
+
+### Methods closeout G2-BATCH-01c: composition-aware traces and limitation disclosures
+
+- Methods traces now follow the resolved composition from provenance: the first verified
+  standalone reference-comparison inside the displayed scope is traced (institution and public
+  trace campylobacteriosis 2019→2025, 7,253→8,716, saved +20.2%, with bound metric IDs), the
+  saved series records the row binding and gap semantics, and the monitoring table's
+  reference/period baselines are explained. Viral/bacterial group results are no longer
+  presented as traced findings for a recipe without a group block; the legacy group trace
+  remains only on the explicit non-composed path.
+- Denominator finding: the bundle really does retain 72 population metrics (persons), 72
+  incidence metrics (per 100,000) with count+population inputs, and 72 population lineage
+  rows; `analyse.py` validates the denominator. The previous generic sentence was replaced by
+  wording that says these denominators support saved incidence metrics that this report does
+  not display, and that displayed count changes are not population-adjusted. No rates added.
+- Classification and completeness are explained from the implemented rules: supported
+  analytical classification, source/measure/geography compatibility, required reference and
+  window years, annual value preferred with 12-distinct-month aggregation, missing periods
+  producing a recorded exclusion, configured source priority, and inclusion separate from
+  group-sum membership. “Unclassified” is stated as outside the report's supported
+  classification, not absence of disease or data. “Complete compatible series” is distinguished
+  from complete ascertainment.
+- Comparability: stated plainly that cross-year surveillance-method comparability has not been
+  systematically evaluated and that matching source IDs, units or digests are not evidence of
+  stable methods.
+- Quality: the 50% missing-value threshold is identified as the configured `value_present`
+  warning rule (checks.py, missing ≥ .5), distinct from classification/source-type exclusion
+  reasons and from finding-level relevance.
+- Reproduction: three labelled routes (saved-bundle rendering, original analysis, integrity/
+  inspection example), effective recipe digest and pinned-environment record, and an explicit
+  limitation that the uncommitted dirty worktree cannot be identified from a Git SHA alone and
+  no source archive is published.
+- Title: the institutional report now presents “Notifiable disease monitoring overview” with
+  subtitle “Switzerland and Liechtenstein · Campylobacteriosis focus”, derived from resolved
+  scope and recorded as `effective_title`/`effective_subtitle` in composition provenance;
+  saved stakeholder metadata and digests are unchanged. Researcher/public titles are unchanged.
+- Checks (pinned image, rootless, `--cpus 3`, repository read-only): focused pytest 139 passed;
+  maintained suite 600 passed; r_series, r_composition and r_block_dispatch smokes exit 0;
+  three-audience batch exit 0; narrowed render exit 0; package verifier 0 problems; published
+  integrity/inspection example OK (all data digests match bundle.json; campylobacteriosis
+  endpoints 7,253/2019→8,716/2025 and influenza 440→34,984 period endpoints retained).
+- Evidence: a new, verified-empty directory `~/.local/state/composer-bootstrap/g2-methods-<timestamp>/`
+  was used; the previous round-2 packages and the recorded overwrite incident are untouched.
+- Not verified: browser geometry/interaction, accessibility, cross-browser, independent
+  scientific or source review. Sparklines remain deferred.
+
+### Final methods completion G2-BATCH-01d: displayed scope, block accounts and reproduction access
+
+- Methods now open with the resolved `display_scope`: “N topics displayed in this report;
+  M contributing to underlying group sums”, instead of leading with the underlying group
+  comparison. Institution states its monitoring-table topics plus the standalone
+  Campylobacteriosis view and that no group-summary block is displayed; researcher adds
+  coverage and the main/sensitivity comparison; public relies on its comparison and annual
+  view with underlying detail in disclosures.
+- A “Methods for the displayed blocks” section is generated from verified composition
+  instances with a small explicit dispatch (reference, series, coverage, sensitivity,
+  monitoring). Each entry names the block, its saved inputs/binding method, links to the
+  block's actual instance anchor, and states its limitation. Failed records get no narrative.
+  Monitoring text records that sparklines are not implemented.
+- Reference-selection invariant: only verified reference-comparison records whose subject is
+  in the displayed scope are eligible; the enforced single-reference restriction keeps the
+  choice unambiguous, and multiple references remain rejected by the existing test.
+- Reproduction access now includes published artifacts: `reproduction/composition.json`
+  (byte copy of the effective recipe) and `reproduction/reproduction.json` (entry point,
+  recipe SHA-256, snapshot id, analysis-bundle file count, input/environment notes, source
+  state). Recipe digest equals the provenance composition digest. Methods link both files and
+  state what must be supplied separately (checkout, published bundle, original snapshot root);
+  raw snapshot exports are not in the package. File-count wording now refers to the files
+  listed in bundle.json plus the manifest, not a package-wide total.
+- Checks (pinned image, rootless, `--cpus 3`, repository read-only): focused pytest 140
+  passed; maintained suite 601 passed; r_series, r_composition and r_block_dispatch smokes
+  exit 0; three-audience batch exit 0; narrowed render exit 0; verifier 0 problems
+  (scope-aware methods opening, no group-count lead, displayed-block accounts, reproduction
+  artifacts and recipe digest, typed blocks, embedded provenance, IDs/anchors/downloads);
+  published inspection OK (bundle digests, recipe digest, title/subtitle).
+- Evidence: new guarded directory `g2-methods2-<timestamp>` (pointer verified, empty before
+  use); earlier packages and the overwrite incident remain untouched.
+- Remaining blockers: no portable full replay of the original analysis from the package alone
+  (snapshot exports and uncommitted source are not published); browser accessibility/geometry
+  and independent scientific review remain open. Sparklines deferred.
+
+### User acceptance and checkpoint readiness G2-ACCEPT-01
+
+- User-reported acceptance: all seven review groups PASS for the candidate rendered at
+  `~/.local/state/composer-bootstrap/g2-boundary-20261029T121827` — audience content and
+  block composition; numeric spot checks; disclosures/navigation/methods links/downloads;
+  findings-to-methods alignment; desktop and phone layout including quality filters;
+  published reproduction records and recipes; narrowed-scope consistency. This is
+  presentation/functional acceptance, not independent scientific or source review,
+  accessibility certification, device/browser certification or full original-analysis replay.
+- Source correspondence: provenance implementation references in all four accepted packages
+  (three audiences and narrowed) match current files — publish.py `b46ce2b3…`,
+  report_helpers.R `a5b124e8…`, composer_contracts.py `bb099147…`, series and component
+  schemas unchanged from the accepted run; no relabelling or rerender was needed.
+- Final test evidence for the accepted tree: maintained suite run once against the final
+  Python tree (previous 601-passed run predated the last publish.py/test edits): 601 passed,
+  exit 0, log `g2-checkpoint-20261029T125522/maintained-suite-final.log`; focused pytest 140
+  passed; r_methods_boundary_smoke (six composition/reference boundary cases),
+  r_series_smoke, r_composition_smoke and r_block_dispatch_smoke pass; batch/narrowed renders
+  and package verifier 0 problems in the accepted evidence directory.
+- Agent self-review (not independent): reference lookup by type/status/instance; no
+  composed-to-legacy fallback for missing requested evidence; monitoring identity domain v2
+  covers comparison bindings; no analytical-scope or saved-value changes; publication and
+  reproduction artifacts consistent; new files included and whitespace clean. No substantive
+  defect found.
+- Remaining limitations: independent source/scientific review and accessibility/cross-browser
+  certification remain open; cross-year comparability explicitly unevaluated; full
+  original-analysis/snapshot replay not possible from the package alone; candidate source is
+  uncommitted. Sparklines deferred.
+- History preserved: the earlier evidence-overwrite incident (round 2 reusing the round-1
+  directory) remains recorded above; the accepted packages and all prior logs are untouched.
+
 ## Feedback and revision
 
 Use F-001 onward. Record candidate, affected requirement/block, requested change, rationale and blocking/nonblocking status. Classify presentation, behavior, scientific/contract, disclosure or scope; assign one owner and acceptance check. Never change metric meaning to satisfy visual preference.

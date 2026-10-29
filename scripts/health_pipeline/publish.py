@@ -1,6 +1,8 @@
 """Package and render verified analysis bundles without recalculating statistics."""
 import argparse
 import csv
+import hashlib
+import math
 import os
 import json
 import shutil
@@ -254,7 +256,7 @@ def build_block(bundle,results_root,project_root,instance_id='block-reference-co
                        'rows':[{'topic':subject,'year':parameters['reference_year']},
                                {'topic':subject,'year':parameters['latest_year']}],
                        'digest':loaded.manifest['files'][contracts.PLOTTED_ARTIFACT]},
-            'presentation':{'unit':'percent'},'disclosure':{'distribution':'public'}}
+            'presentation':{'unit':'percent','digits':1},'disclosure':{'distribution':'public'}}
         evidence={'contract':contracts.EVIDENCE_CONTRACT,'instance_id':instance_id,
             'inputs':{'metric_ids':[reference_id,latest_id]},
             'calculation':{'method_id':'percent_reference_change','method_version':'1',
@@ -265,13 +267,19 @@ def build_block(bundle,results_root,project_root,instance_id='block-reference-co
                 'analysis':{'file':'scripts/health_pipeline/analyse.py',
                             'sha256':digest(PROJECT/'scripts/health_pipeline/analyse.py')},
                 'presentation':{'file':'scripts/health_pipeline/templates/report_helpers.R',
-                                'sha256':digest(PROJECT/'scripts/health_pipeline/templates/report_helpers.R')}},
+                                'sha256':digest(PROJECT/'scripts/health_pipeline/templates/report_helpers.R')},
+                'contracts':_code_reference('scripts/health_pipeline/composer_contracts.py'),
+                'binding':_code_reference('scripts/health_pipeline/publish.py'),
+                'schema':_code_reference('scripts/health_pipeline/config/composer/component-contract/1.json')},
             'reproduction':{'entry_point':'snakemake --cores 2',
                             'snapshot_id':loaded.snapshot['snapshot_id']}}
         checked=contracts.check_block(instance,evidence,loaded,
                                       project_root=project_root,results_root=results_root)
     except contracts.ContractError as exc:
-        return {'status':'failed','instance_id':instance_id,'code':exc.code,'detail':str(exc),
+        return {'status':'failed','instance_id':instance_id,
+                'component':{'type':'reference-comparison','version':'1'},
+                'contract':{'instance':contracts.INSTANCE_CONTRACT,'evidence':contracts.EVIDENCE_CONTRACT},
+                'code':exc.code,'detail':str(exc),
                 'findings':[{'code':item.code,'subject':item.subject,'detail':item.detail}
                             for item in getattr(exc,'findings',())]}
     lineage=next((row for row in loaded.lineage
@@ -293,10 +301,615 @@ def build_block(bundle,results_root,project_root,instance_id='block-reference-co
             'lineage':{'source_file':lineage.get('source_file'),'source_row':lineage.get('source_row'),
                        'sha256':lineage.get('sha256')}}
 
-KNOWN_BLOCKS = ('intro','reference-comparison','limitations','reproduction')
+def build_series_block(bundle,project_root,instance_id,topic,measure,years=None,presentation=None):
+    """Resolve one saved annual series display block from saved rows only.
+
+    The block selects a display subset of already eligible saved observations. It never
+    recalculates a count, interpolates a missing year or substitutes a measure/topic.
+    An optional closed presentation style changes figure scale and wording only. A failed
+    check returns an explicit failed record instead of a plausible-looking chart.
+    """
+    import composer_contracts as contracts
+    bundle=Path(bundle)
+    style=None
+    try:
+        if presentation is not None:
+            if not isinstance(presentation,dict) or set(presentation)!={'style'}:
+                raise contracts.ContractError('presentation',
+                    'presentation must be an object with the single key style')
+            style=presentation['style']
+            if style not in SERIES_STYLES:
+                raise contracts.ContractError('presentation',
+                    f'unsupported presentation style {style!r}; supported {list(SERIES_STYLES)}')
+        loaded=contracts.load_bundle(bundle)
+        scope=contracts.scope_of(loaded.stakeholder)
+        reporting=[int(scope['years'][0]),int(scope['years'][1])]
+        if years is None:
+            start,end=reporting
+        else:
+            start,end=int(years[0]),int(years[1])
+            if start>end:
+                raise contracts.ContractError('periods',f'requested years {start}-{end} are not ordered')
+            if start<reporting[0] or end>reporting[1]:
+                raise contracts.ContractError('periods',
+                    f'requested years {start}-{end} are outside the report window {reporting[0]}-{reporting[1]}')
+
+        topic_rows=[row for row in loaded.series if row.get('topic')==topic]
+        if not topic_rows:
+            raise contracts.ContractError('selection',f'topic {topic!r} has no saved annual series rows')
+        measures=sorted({row.get('measure') or '' for row in topic_rows})
+        if measure not in measures:
+            raise contracts.ContractError('measure',
+                f'measure {measure!r} is not saved for topic {topic!r}; saved measures: {measures}')
+        rows=[row for row in topic_rows if row.get('measure')==measure]
+
+        included=[row for row in loaded.selection if row.get('topic')==topic and row.get('status')=='included']
+        if not included:
+            reasons=sorted({row.get('reason') or '' for row in loaded.selection
+                            if row.get('topic')==topic and row.get('reason')})
+            detail='; '.join(reasons) if reasons else 'no input dataset in this snapshot'
+            raise contracts.ContractError('selection',f'topic {topic!r} is not included in this saved bundle: {detail}')
+        sources={(row.get('dataset_id'),row.get('source_system')) for row in rows}
+        if len(sources)!=1:
+            raise contracts.ContractError('selection_ambiguous',
+                f'saved series rows for {topic!r}/{measure!r} span {len(sources)} dataset/source pairs')
+        dataset_id,source_system=next(iter(sources))
+        matching=[row for row in included
+                  if row.get('dataset_id')==dataset_id and row.get('source_system')==source_system]
+        if not matching:
+            raise contracts.ContractError('selection',
+                f'no included selection row for dataset {dataset_id!r} / source {source_system!r}')
+        if len(matching)>1:
+            raise contracts.ContractError('selection_ambiguous',
+                'several included selection rows match the bound dataset and source')
+        geographies={row.get('geography') for row in rows}
+        if len(geographies)!=1:
+            raise contracts.ContractError('series_scope_disagreement','saved series rows span several geographies')
+        geography=next(iter(geographies))
+        if geography!=scope['geography']:
+            raise contracts.ContractError('scope_disagreement',
+                f'saved series geography {geography!r} differs from the report scope {scope["geography"]!r}')
+
+        by_year={}
+        for row in rows:
+            try: year=int(str(row.get('year')))
+            except (TypeError,ValueError):
+                raise contracts.ContractError('invalid_value',
+                    f'saved series year {row.get("year")!r} is not an annual integer')
+            if year<start or year>end: continue
+            if year in by_year:
+                raise contracts.ContractError('duplicate_row',
+                    f'saved series repeats {topic}:{year} for measure {measure!r}')
+            value=row.get('value')
+            try: number=float(value)
+            except (TypeError,ValueError):
+                raise contracts.ContractError('invalid_value',f'unparsable saved number {value!r}')
+            if not math.isfinite(number):
+                raise contracts.ContractError('nonfinite',f'saved number {value!r} is not finite')
+            by_year[year]={'year':year,'count_metric_id':row.get('count_metric_id'),
+                           'value':value,'unit':row.get('measure')}
+        if not by_year:
+            raise contracts.ContractError('selection',
+                f'no saved observations for {topic!r}/{measure!r} in {start}-{end}')
+        observations=[by_year[year] for year in sorted(by_year)]
+        missing=[year for year in range(start,end+1) if year not in by_year]
+
+        artifact_digest=loaded.manifest.get('files',{}).get(contracts.SERIES_ARTIFACT)
+        if artifact_digest is None:
+            raise contracts.ContractError('artifact',
+                f'{contracts.SERIES_ARTIFACT} is not listed in bundle.json')
+        document={'contract':contracts.SERIES_CONTRACT,
+            'component':{'type':'series-trend','version':'1'},
+            'instance_id':instance_id,
+            'analysis':{'snapshot_id':loaded.snapshot['snapshot_id'],'scope':scope},
+            'selection':{'topic':topic,'measure':measure,'geography':geography,
+                         'dataset_id':dataset_id,'source_system':source_system},
+            'periods':{'requested':[start,end],'effective':[row['year'] for row in observations],
+                       'reference_year':int(scope['reference_year']),
+                       'reference_outside_window':int(scope['reference_year']) not in by_year},
+            'observations':observations,'missing_years':missing,
+            'artifact':{'file':contracts.SERIES_ARTIFACT,'digest':artifact_digest},
+            'implementation':{
+                'analysis':{'file':'scripts/health_pipeline/analyse.py',
+                            'sha256':digest(PROJECT/'scripts/health_pipeline/analyse.py')},
+                'presentation':{'file':'scripts/health_pipeline/templates/report_helpers.R',
+                                'sha256':digest(PROJECT/'scripts/health_pipeline/templates/report_helpers.R')},
+                # Files that actually build, validate and render this block, in the same
+                # code-reference shape. Additive: identities never hash implementation.
+                'contracts':_code_reference('scripts/health_pipeline/composer_contracts.py'),
+                'binding':_code_reference('scripts/health_pipeline/publish.py'),
+                'schema':_code_reference(SERIES_SCHEMA)},
+            'presentation':{'unit':measure,**({'style':style} if style else {})}}
+        checked=contracts.check_series_block(document,loaded,project_root=project_root)
+    except contracts.ContractError as exc:
+        return {'status':'failed','instance_id':instance_id,
+                'component':{'type':'series-trend','version':'1'},
+                'contract':{'series':contracts.SERIES_CONTRACT},
+                'code':exc.code,'detail':str(exc),
+                'findings':[{'code':item.code,'subject':item.subject,'detail':item.detail}
+                            for item in getattr(exc,'findings',())]}
+    return {'status':'verified','instance_id':instance_id,
+            'contract':{'series':contracts.SERIES_CONTRACT},
+            'component':{'type':'series-trend','version':'1'},
+            'selection':document['selection'],'periods':document['periods'],
+            'observations':document['observations'],'missing_years':document['missing_years'],
+            'artifact':document['artifact'],'presentation':document['presentation'],
+            'effective':checked.effective,'trace':[dict(item) for item in checked.trace],
+            'identities':checked.identities,
+            'snapshot':{'snapshot_id':loaded.snapshot['snapshot_id'],
+                        'snapshot_path':loaded.snapshot.get('snapshot_path')},
+            'implementation':document['implementation'],
+            'reproduction':{'entry_point':'snakemake --cores 2',
+                            'snapshot_id':loaded.snapshot['snapshot_id']}}
+
+def _block_identity(tag, payload):
+    canonical = json.dumps([tag, payload], sort_keys=True, separators=(',', ':'),
+                            ensure_ascii=False)
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
+def _scope_token(scope, contracts):
+    fields = [field for field in contracts.SCOPE_FIELDS if field in scope]
+    fields += [field for field in contracts.TOPIC_SCOPE_FIELDS if field in scope]
+    return {field: contracts.canonical_scope(field, scope[field]) for field in fields}
+
+
+def _composite_implementation():
+    """Same code-reference shape as the series block; no new provenance container."""
+    return {'presentation': _code_reference('scripts/health_pipeline/templates/report_helpers.R'),
+            'contracts': _code_reference('scripts/health_pipeline/composer_contracts.py'),
+            'binding': _code_reference('scripts/health_pipeline/publish.py'),
+            'schema': _code_reference(SERIES_SCHEMA)}
+
+
+def _failed_composite(component, instance_id, exc):
+    return {'status': 'failed', 'instance_id': instance_id,
+            'component': {'type': component, 'version': '1'},
+            'binding': COMPOSITE_BINDING, 'code': exc.code, 'detail': str(exc),
+            'findings': [{'code': item.code, 'subject': item.subject, 'detail': item.detail}
+                         for item in getattr(exc, 'findings', ())]}
+
+
+def build_coverage_block(bundle, project_root, instance_id, displayed_topics=None,
+                         include_group_scope=False):
+    """Saved selection/source coverage: what was requested, included, excluded, displayed.
+
+    Counts datasets, topics, saved observations and actual recipe bindings separately. No
+    year-level completeness is derived: the bundle records dataset/topic decisions only.
+    """
+    import composer_contracts as contracts
+    bundle = Path(bundle)
+    try:
+        loaded = contracts.load_bundle(bundle)
+        scope = contracts.scope_of(loaded.stakeholder)
+        manifest = loaded.manifest.get('files') or {}
+        required = ('selection.csv', 'sources.csv', 'series.csv')
+        missing = [name for name in required
+                   if name not in manifest or not (bundle / name).is_file()]
+        if missing:
+            raise contracts.ContractError('artifact',
+                'missing saved selection/source/series records: ' + ', '.join(missing))
+        for name in required:
+            if digest(bundle / name) != manifest[name]:
+                raise contracts.ContractError('digest_disagreement',
+                    f'{name} differs from the bundle manifest')
+        selection = _csv_rows(bundle / 'selection.csv')
+        sources = _csv_rows(bundle / 'sources.csv')
+        if not selection:
+            raise contracts.ContractError('selection', 'the saved selection record is empty')
+        included = [row for row in selection if (row.get('status') or '').lower() == 'included']
+        excluded = [row for row in selection if (row.get('status') or '').lower() == 'excluded']
+        if not included:
+            raise contracts.ContractError('selection', 'no dataset is recorded as included')
+        topics_included = sorted({row.get('topic') for row in included})
+        excluded_reasons = {}
+        for row in excluded:
+            excluded_reasons.setdefault(row.get('topic'), set()).add(
+                row.get('reason') or 'no reason recorded')
+        displayed = sorted({topic for topic in (displayed_topics or []) if topic})
+        unknown = [topic for topic in displayed if topic not in topics_included]
+        if unknown:
+            raise contracts.ContractError('selection',
+                'displayed topic(s) are not included in the saved selection: '
+                + ', '.join(unknown))
+        counts = {'datasets_total': len(selection),
+                  'datasets_included': len(included),
+                  'datasets_excluded': len(excluded),
+                  'topics_included': len(topics_included),
+                  'topics_excluded': len(excluded_reasons),
+                  'topics_group_sum': len([topic for topic in topics_included
+                                           if any((row.get('topic') == topic
+                                                   and (row.get('group_eligible') or '').lower() == 'true')
+                                                  for row in included)]),
+                  'observations_total': len(loaded.series),
+                  'observations_in_window': sum(
+                      1 for row in loaded.series
+                      if str(row.get('year', '')).isdigit()
+                      and int(scope['years'][0]) <= int(row['year']) <= int(scope['years'][1])),
+                  'source_registry_rows': len(sources),
+                  'source_registry_used': sum(1 for row in sources
+                                              if (row.get('used') or '').lower() == 'true')}
+        group_scope = []
+        if include_group_scope:
+            totals = {}
+            for metric in loaded.metrics.values():
+                subject = metric.get('subject') or ''
+                if ':' in subject and metric.get('metric_type') == 'group_total':
+                    totals.setdefault(subject, []).append(metric)
+            for group_class in sorted({subject.split(':')[0] for subject in totals}):
+                main, sensitivity = f'{group_class}:main', f'{group_class}:sensitivity'
+                if main not in totals or sensitivity not in totals:
+                    continue
+                for label, subject in (('main', main), ('sensitivity', sensitivity)):
+                    latest = max(totals[subject], key=lambda item: int(str(item.get('year'))))
+                    member_ids = json.loads(latest.get('inputs_json') or '[]')
+                    group_scope.append({
+                        'subject': subject, 'specification': label,
+                        'metric_id': latest['metric_id'],
+                        'members': sorted({metric_id.split(':')[0] for metric_id in member_ids})})
+        excluded_datasets = [{'dataset_id': row.get('dataset_id'), 'topic': row.get('topic'),
+                              'reason': row.get('reason') or 'no reason recorded'}
+                             for row in excluded]
+        binding = {name: manifest[name] for name in required}
+        scope_token = _scope_token(scope, contracts)
+        snapshot_id = loaded.snapshot['snapshot_id']
+        analytical = _block_identity('coverage-analytical/1',
+            {'snapshot_id': snapshot_id, 'scope': scope_token,
+             'method': {'id': 'saved_selection_records', 'version': '1'},
+             'binding': binding})
+        instance = _block_identity('coverage-instance/1',
+            {'analytical': analytical, 'instance_id': instance_id,
+             'counts': counts, 'displayed_topics': displayed})
+    except contracts.ContractError as exc:
+        return _failed_composite('coverage-selection', instance_id, exc)
+    return {'status': 'verified', 'instance_id': instance_id,
+            'component': {'type': 'coverage-selection', 'version': '1'},
+            'binding': COMPOSITE_BINDING,
+            'requested': {'years': list(scope.get('years') or []),
+                          'geography': scope.get('geography'),
+                          'include_topics': scope.get('include_topics'),
+                          'exclude_topics': scope.get('exclude_topics')},
+            'counts': counts,
+            'topics_included': topics_included,
+            'excluded': [{'topic': topic, 'reasons': sorted(reasons)}
+                         for topic, reasons in sorted(excluded_reasons.items())],
+            'displayed_topics': displayed,
+            'displayed_groups': group_scope,
+            'excluded_datasets': excluded_datasets,
+            'unsupported': ['A topic-by-year completeness matrix is not available: the saved '
+                            'bundle records dataset and topic decisions, not per-year coverage.'],
+            'identities': {'analytical': analytical, 'instance': instance},
+            'bindings': [{'file': name, 'digest': binding[name]} for name in required],
+            'snapshot': {'snapshot_id': snapshot_id,
+                         'snapshot_path': loaded.snapshot.get('snapshot_path')},
+            'implementation': _composite_implementation(),
+            'reproduction': {'entry_point': 'python scripts/health_pipeline/publish.py batch',
+                             'snapshot_id': snapshot_id}}
+
+
+def build_monitoring_block(bundle, project_root, instance_id):
+    """One descriptive row per included topic from saved series and comparison metrics."""
+    import composer_contracts as contracts
+    bundle = Path(bundle)
+    try:
+        loaded = contracts.load_bundle(bundle)
+        scope = contracts.scope_of(loaded.stakeholder)
+        start, end = int(scope['years'][0]), int(scope['years'][1])
+        included = sorted({row.get('topic') for row in loaded.selection
+                           if (row.get('status') or '').lower() == 'included'})
+        if not included:
+            raise contracts.ContractError('selection', 'no included topic in the saved selection')
+        manifest = loaded.manifest.get('files') or {}
+        checks = _csv_rows(bundle / 'checks.csv') if 'checks.csv' in manifest else []
+        checks_by_dataset = {}
+        for row in checks:
+            bucket = checks_by_dataset.setdefault(row.get('dataset_id'), {})
+            key = (row.get('status') or '').lower()
+            bucket[key] = bucket.get(key, 0) + 1
+        rows = []
+        for topic in included:
+            topic_rows = [row for row in loaded.series
+                          if row.get('topic') == topic
+                          and str(row.get('year', '')).isdigit()
+                          and start <= int(row['year']) <= end]
+            if not topic_rows:
+                rows.append({'topic': topic, 'availability': 'no saved annual observation',
+                             'measure': None, 'latest_year': None, 'latest_value': None,
+                             'latest_metric_id': None, 'dataset_id': None,
+                             'comparisons': [], 'recorded_checks': {}})
+                continue
+            measures = sorted({row.get('measure') or '' for row in topic_rows})
+            if len(measures) != 1:
+                raise contracts.ContractError('measure_ambiguous',
+                    f'topic {topic!r} saves {len(measures)} measures; a single measure is required')
+            latest = max(topic_rows, key=lambda row: int(row['year']))
+            metric = loaded.metrics.get(latest.get('count_metric_id') or '')
+            if metric is None:
+                raise contracts.ContractError('metric_missing',
+                    f'latest series row for {topic!r} has no saved count metric')
+            comparisons = []
+            comparison_types = ('reference_change', 'period_change')
+            for metric_type in comparison_types:
+                candidates = [m for m in loaded.metrics.values()
+                              if m.get('subject') == topic
+                              and m.get('metric_type') == metric_type]
+                if len(candidates) > 1:
+                    raise contracts.ContractError('selection_ambiguous',
+                        f'topic {topic!r} saves {len(candidates)} {metric_type} results')
+                if not candidates:
+                    continue
+                item = candidates[0]
+                years = []
+                endpoint_ids = json.loads(item.get('inputs_json') or '[]')
+                endpoints = []
+                for metric_id in endpoint_ids:
+                    source = loaded.metrics.get(metric_id) or {}
+                    if str(source.get('year', '')).isdigit():
+                        years.append(str(source['year']))
+                    endpoints.append({'year': source.get('year'), 'metric_id': metric_id,
+                                      'value': source.get('value'), 'unit': source.get('unit')})
+                if len(years) != 2 or len(endpoints) != 2:
+                    raise contracts.ContractError('bindings',
+                        f'{item["metric_id"]} does not bind two saved count endpoints')
+                comparisons.append({'metric_id': item['metric_id'], 'type': metric_type,
+                                    'value': item.get('value'), 'unit': item.get('unit'),
+                                    'formula': item.get('formula'),
+                                    'from_year': years[0], 'to_year': years[1],
+                                    'reference': endpoints[0], 'latest': endpoints[1]})
+            if not comparisons:
+                comparisons = []
+            rows.append({'topic': topic, 'availability': 'saved observation',
+                         'measure': measures[0], 'latest_year': int(latest['year']),
+                         'latest_value': latest.get('value'),
+                         'latest_metric_id': latest.get('count_metric_id'),
+                         'dataset_id': latest.get('dataset_id'),
+                         'comparisons': comparisons,
+                         'recorded_checks': checks_by_dataset.get(latest.get('dataset_id'), {})})
+        units = sorted({row['measure'] for row in rows if row.get('measure')})
+        binding = {name: manifest[name] for name in ('series.csv', 'metrics.csv')
+                   if name in manifest}
+        scope_token = _scope_token(scope, contracts)
+        snapshot_id = loaded.snapshot['snapshot_id']
+        analytical = _block_identity('monitoring-analytical/1',
+            {'snapshot_id': snapshot_id, 'scope': scope_token,
+             'method': {'id': 'saved_latest_observation', 'version': '1'},
+             'binding': binding})
+        instance = _monitoring_instance_identity(analytical, instance_id, rows)
+    except contracts.ContractError as exc:
+        return _failed_composite('monitoring-overview', instance_id, exc)
+    return {'status': 'verified', 'instance_id': instance_id,
+            'component': {'type': 'monitoring-overview', 'version': '1'},
+            'binding': COMPOSITE_BINDING,
+            'rows': rows, 'units': units,
+            'limits': ['One row per included topic with its latest saved annual value. '
+                       'No composite score, ranking, alert threshold or common scale is derived.'],
+            'identities': {'analytical': analytical, 'instance': instance},
+            'bindings': [{'file': name, 'digest': value} for name, value in binding.items()],
+            'snapshot': {'snapshot_id': snapshot_id,
+                         'snapshot_path': loaded.snapshot.get('snapshot_path')},
+            'implementation': _composite_implementation(),
+            'reproduction': {'entry_point': 'python scripts/health_pipeline/publish.py batch',
+                             'snapshot_id': snapshot_id}}
+
+
+def build_sensitivity_block(bundle, project_root, instance_id):
+    """Saved main/sensitivity group specifications, their members and exact saved results."""
+    import composer_contracts as contracts
+    bundle = Path(bundle)
+    try:
+        loaded = contracts.load_bundle(bundle)
+        scope = contracts.scope_of(loaded.stakeholder)
+        reference_year = str(scope['reference_year'])
+        latest_year = str(scope['years'][1])
+        by_subject = {}
+        for metric in loaded.metrics.values():
+            subject = metric.get('subject') or ''
+            if ':' in subject and metric.get('metric_type') in (
+                    'group_total', 'group_index', 'period_change', 'reference_change'):
+                by_subject.setdefault(subject, []).append(metric)
+
+        def total(subject, year):
+            for metric in by_subject.get(subject, []):
+                if metric.get('metric_type') == 'group_total' and str(metric.get('year')) == year:
+                    return metric
+            return None
+
+        def change(subject):
+            for metric in by_subject.get(subject, []):
+                if metric.get('metric_type') == 'reference_change':
+                    return metric
+            return None
+
+        def members(subject):
+            item = total(subject, latest_year)
+            if item is None:
+                return None
+            try:
+                ids = json.loads(item.get('inputs_json') or '[]')
+            except ValueError:
+                raise contracts.ContractError('members', f'{subject} has unparsable member inputs')
+            if not ids:
+                raise contracts.ContractError('members', f'{subject} records no member metrics')
+            return sorted(ids)
+
+        pairs = []
+        for group_class in sorted({subject.split(':')[0] for subject in by_subject}):
+            main, sensitivity = f'{group_class}:main', f'{group_class}:sensitivity'
+            if main not in by_subject or sensitivity not in by_subject:
+                continue
+            specifications = []
+            for label, subject in (('main', main), ('sensitivity', sensitivity)):
+                reference_total = total(subject, reference_year)
+                latest_total = total(subject, latest_year)
+                result = change(subject)
+                if reference_total is None or latest_total is None or result is None:
+                    raise contracts.ContractError('results',
+                        f'{subject} is missing a saved total or reference_change result')
+                member_ids = members(subject)
+                if member_ids is None:
+                    raise contracts.ContractError('members',
+                        f'{subject} has no saved group total in {latest_year}')
+                try:
+                    reference_member_ids = sorted(json.loads(
+                        reference_total.get('inputs_json') or '[]'))
+                except ValueError:
+                    raise contracts.ContractError('members',
+                        f'{reference_total["metric_id"]} has unparsable member inputs')
+                specifications.append({'subject': subject, 'role': label,
+                                       'members': sorted({metric_id.split(':')[0]
+                                                          for metric_id in member_ids}),
+                                       'member_metric_ids': member_ids,
+                                       'reference_member_metric_ids': reference_member_ids,
+                                       'latest_member_metric_ids': member_ids,
+                                       'reference': {'year': int(reference_year),
+                                                     'metric_id': reference_total['metric_id'],
+                                                     'value': reference_total.get('value'),
+                                                     'unit': reference_total.get('unit')},
+                                       'latest': {'year': int(latest_year),
+                                                  'metric_id': latest_total['metric_id'],
+                                                  'value': latest_total.get('value'),
+                                                  'unit': latest_total.get('unit')},
+                                       'reference_change': {'metric_id': result['metric_id'],
+                                                            'value': result.get('value'),
+                                                            'unit': result.get('unit')},
+                                       'artifact': {'file': 'metrics.csv',
+                                                    'digest': loaded.manifest['files']['metrics.csv']}})
+            main_members = set(specifications[0]['members'])
+            sensitivity_members = set(specifications[1]['members'])
+            pairs.append({'class': group_class, 'specifications': specifications,
+                          'excluded_members': sorted(main_members - sensitivity_members),
+                          'added_members': sorted(sensitivity_members - main_members),
+                          'identical_members': main_members == sensitivity_members,
+                          'identical_results': (
+                              specifications[0]['reference_change']['value']
+                              == specifications[1]['reference_change']['value'])})
+        if not pairs:
+            raise contracts.ContractError('selection',
+                'no class saves both a main and a sensitivity specification')
+        scope_token = _scope_token(scope, contracts)
+        snapshot_id = loaded.snapshot['snapshot_id']
+        metric_ids = sorted({spec['reference_change']['metric_id']
+                             for pair in pairs for spec in pair['specifications']})
+        binding = {'metrics.csv': loaded.manifest['files']['metrics.csv']}
+        analytical = _block_identity('sensitivity-analytical/1',
+            {'snapshot_id': snapshot_id, 'scope': scope_token,
+             'method': {'id': 'saved_group_specifications', 'version': '1'},
+             'metric_ids': metric_ids})
+        instance = _block_identity('sensitivity-instance/1',
+            {'analytical': analytical, 'instance_id': instance_id,
+             'classes': [pair['class'] for pair in pairs]})
+    except contracts.ContractError as exc:
+        return _failed_composite('sensitivity-comparison', instance_id, exc)
+    return {'status': 'verified', 'instance_id': instance_id,
+            'component': {'type': 'sensitivity-comparison', 'version': '1'},
+            'binding': COMPOSITE_BINDING, 'pairs': pairs,
+            'question': ('How do the saved main group specification and its recorded '
+                         'sensitivity specification differ?'),
+            'limits': ['This compares two saved specifications. It is not a robustness, '
+                       'significance or uncertainty assessment.'],
+            'identities': {'analytical': analytical, 'instance': instance},
+            'bindings': [{'file': 'metrics.csv', 'digest': binding['metrics.csv']}],
+            'snapshot': {'snapshot_id': snapshot_id,
+                         'snapshot_path': loaded.snapshot.get('snapshot_path')},
+            'implementation': _composite_implementation(),
+            'reproduction': {'entry_point': 'python scripts/health_pipeline/publish.py batch',
+                             'snapshot_id': snapshot_id}}
+
+
+def _monitoring_instance_identity(analytical, instance_id, rows):
+    """Instance identity covering latest values and the bound comparison endpoints."""
+    payload = [[row['topic'], row['latest_year'], row['latest_value'],
+                [[cmp['type'], cmp['metric_id'], cmp['from_year'], cmp['to_year'],
+                  cmp['value']] for cmp in row['comparisons']]]
+               for row in rows]
+    return _block_identity('monitoring-instance/2',
+                           {'analytical': analytical, 'instance_id': instance_id,
+                            'rows': payload})
+
+
+def _resolved_scope(recipe, records):
+    """What the recipe actually displays: standalone topics, monitoring rows, groups."""
+    by_id = {record['instance_id']: record for record in records}
+    standalone, monitored, groups = set(), set(), []
+    for entry in recipe['blocks']:
+        record = by_id.get(entry['instance_id'])
+        if not record or record.get('status') != 'verified':
+            continue
+        kind = (record.get('component') or {}).get('type')
+        if kind == 'series-trend':
+            standalone.add(record['selection']['topic'])
+        elif kind == 'reference-comparison':
+            standalone.add(record['subject'])
+        elif kind == 'monitoring-overview':
+            monitored.update(row['topic'] for row in record['rows']
+                             if row.get('availability') == 'saved observation')
+        elif kind == 'sensitivity-comparison':
+            for pair in record['pairs']:
+                for spec in pair['specifications']:
+                    groups.append({'subject': spec['subject'],
+                                   'specification': spec['role'],
+                                   'members': spec['members']})
+    return {'standalone_topics': sorted(standalone),
+            'monitoring_topics': sorted(monitored),
+            'displayed_topics': sorted(standalone | monitored),
+            'group_summaries': groups}
+
+
+def _effective_titles(bundle, scope):
+    """Reader-facing title/subtitle from the resolved scope; saved metadata is untouched."""
+    topics = scope['standalone_topics'] or scope['displayed_topics']
+    if not topics:
+        return None, None
+    import composer_contracts as contracts
+    loaded = contracts.load_bundle(Path(bundle))
+    labels = {}
+    for row in loaded.series:
+        labels.setdefault(row.get('topic'), row.get('label') or row.get('topic'))
+    names = [labels.get(topic) or topic.replace('_', ' ') for topic in topics]
+    geography = 'Switzerland and Liechtenstein' if contracts.scope_of(loaded.stakeholder).get('geography') == 'CHFL' else 'Switzerland'
+    if scope['monitoring_topics']:
+        return ('Notifiable disease monitoring overview',
+                f"{geography} · {', '.join(names)} focus")
+    return ', '.join(names) + ': reported cases and saved comparisons', None
+
+
+COMPOSITE_BLOCKS = ('coverage-selection', 'monitoring-overview', 'sensitivity-comparison')
+KNOWN_BLOCKS = ('intro','series-trend','reference-comparison','limitations','reproduction',
+                *COMPOSITE_BLOCKS)
+COMPOSITE_BINDING = 'saved-records/1'
 COMPOSITION_CONTRACT = 'health-report/composition-recipe/1'
 COMPOSITION_CONTRACT_V2 = 'health-report/composition-recipe/2'
 TOPIC_ID = re.compile(r'[a-z0-9][a-z0-9_-]*')
+MEASURE_ID = re.compile(r'[a-z][a-z0-9_]*')
+
+# Closed display styles for the saved-series block. A style changes figure scale and
+# presentation wording only: never rows, values, units, gap handling or analytical
+# identity. Omitted style keeps the historical single-presentation behaviour.
+SERIES_STYLES = ('standard', 'compact')
+SERIES_SCHEMA = 'scripts/health_pipeline/config/composer/series-contract/1.json'
+
+
+def _code_reference(relative):
+    """Existing code-reference convention: project-relative path plus its digest."""
+    return {'file': relative, 'sha256': digest(PROJECT / relative)}
+
+
+def _recipe_years(entry, instance):
+    """Optional inclusive [start, end] for a series-trend entry. Types only here.
+
+    The reporting window and annual ordering are checked against the saved scope when the
+    block is built; a recipe file alone cannot know that window.
+    """
+    if 'years' not in entry:
+        return None
+    years = entry['years']
+    if (not isinstance(years, list) or len(years) != 2
+            or any(isinstance(value, bool) or not isinstance(value, int) for value in years)):
+        raise ValueError(f'Invalid years for block instance {instance!r}: expected [start, end] integers')
+    if years[0] > years[1]:
+        raise ValueError(f'Invalid years for block instance {instance!r}: start is after end')
+    return years
+
 
 def load_composition(path):
     """Validate a block recipe. Order and membership are data, not renderer code.
@@ -324,12 +937,40 @@ def load_composition(path):
         expected = {'block','instance_id'}
         if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
             expected = {'block','instance_id','topic'}
+        if block == 'series-trend':
+            if contract != COMPOSITION_CONTRACT_V2:
+                raise ValueError('Block series-trend requires composition contract '
+                                 f'{COMPOSITION_CONTRACT_V2}')
+            expected = {'block','instance_id','topic','measure'}
+            if 'years' in entry:
+                expected.add('years')
+            if 'presentation' in entry:
+                expected.add('presentation')
         if set(entry) != expected:
             raise ValueError(f'Invalid fields for block {block!r}: expected {sorted(expected)}')
         if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
             topic = entry['topic']
             if not isinstance(topic, str) or not TOPIC_ID.fullmatch(topic):
                 raise ValueError(f'Invalid topic id for block instance {instance!r}: {topic!r}')
+        if block == 'series-trend':
+            topic = entry['topic']
+            if not isinstance(topic, str) or not TOPIC_ID.fullmatch(topic):
+                raise ValueError(f'Invalid topic id for block instance {instance!r}: {topic!r}')
+            measure = entry['measure']
+            if not isinstance(measure, str) or not MEASURE_ID.fullmatch(measure):
+                raise ValueError(f'Invalid measure for block instance {instance!r}: {measure!r}')
+            _recipe_years(entry, instance)
+            presentation = entry.get('presentation')
+            if presentation is not None:
+                if not isinstance(presentation, dict) or set(presentation) != {'style'}:
+                    raise ValueError(f'Invalid presentation for block instance {instance!r}: '
+                                     'expected {"style": "standard"|"compact"}')
+                if presentation['style'] not in SERIES_STYLES:
+                    raise ValueError(f'Unsupported presentation style for block instance {instance!r}: '
+                                     f'{presentation["style"]!r}; supported {list(SERIES_STYLES)}')
+        if block in COMPOSITE_BLOCKS and contract != COMPOSITION_CONTRACT_V2:
+            raise ValueError(f'Block {block} requires composition contract '
+                             f'{COMPOSITION_CONTRACT_V2}')
         if not isinstance(instance, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{2,39}', instance):
             raise ValueError(f'Invalid block instance id: {instance!r}')
         if instance in seen:
@@ -340,6 +981,8 @@ def load_composition(path):
     # silently reusing or relabelling the same identity.
     if sum(1 for entry in blocks if entry['block'] == 'reference-comparison') > 1:
         raise ValueError('Repeated reference-comparison blocks are not supported yet')
+    if sum(1 for entry in blocks if entry['block'] == 'series-trend') > 1:
+        raise ValueError('Repeated series-trend blocks are not supported yet')
     return recipe
 
 def composition_provenance(recipe, path, blocks):
@@ -348,10 +991,27 @@ def composition_provenance(recipe, path, blocks):
     instances = []
     for entry in recipe['blocks']:
         instance = {'block': entry['block'], 'instance_id': entry['instance_id']}
-        record = checked.get(entry['instance_id']) if entry['block'] == 'reference-comparison' else None
-        if record is not None:
+        record = checked.get(entry['instance_id'])
+        if record is not None and entry['block'] == 'series-trend':
+            periods = record.get('periods') or {}
+            instance.update({
+                'topic': entry['topic'], 'measure': entry['measure'],
+                'presentation': entry.get('presentation'),
+                'requested_years': periods.get('requested'),
+                'effective_years': periods.get('effective'),
+                'missing_years': record.get('missing_years'),
+                'contract': (record.get('contract') or {}).get('series'),
+                'contract_instance_id': record['instance_id'],
+                'contract_status': record['status'],
+                'instance_identity': (record.get('identities') or {}).get('instance')})
+        elif record is not None and entry['block'] in COMPOSITE_BLOCKS:
+            instance.update({'binding': COMPOSITE_BINDING,
+                             'contract_status': record['status'],
+                             'instance_identity': (record.get('identities') or {}).get('instance')})
+        elif record is not None:
             instance['topic'] = entry.get('topic')
             instance['binding'] = 'explicit' if entry.get('topic') else 'deterministic'
+            instance['contract'] = (record.get('contract') or {}).get('instance')
             instance['contract_instance_id'] = record['instance_id']
             instance['contract_status'] = record['status']
             instance['instance_identity'] = (record.get('identities') or {}).get('instance')
@@ -381,11 +1041,38 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             provenance=dict(provenance)
             if recipe is not None:
                 # Each recipe entry names its own checked record; the instance id is the
-                # same value the R renderer uses for its DOM identity.
-                records=[build_block(bundle,Path(bundle).parents[2],PROJECT,entry['instance_id'],entry.get('topic'))
-                         for entry in recipe['blocks'] if entry['block']=='reference-comparison']
+                # same value the R renderer uses for its DOM identity. Records carry their
+                # component type so consumers can select without positional fallback.
+                records=[]
+                displayed_topics=sorted({str(e['topic']) for e in recipe['blocks']
+                                         if e['block'] in ('reference-comparison','series-trend')
+                                         and e.get('topic')})
+                for entry in recipe['blocks']:
+                    if entry['block']=='reference-comparison':
+                        records.append(build_block(bundle,Path(bundle).parents[2],PROJECT,
+                                                   entry['instance_id'],entry.get('topic')))
+                    elif entry['block']=='series-trend':
+                        records.append(build_series_block(bundle,PROJECT,entry['instance_id'],
+                                                          entry['topic'],entry['measure'],
+                                                          entry.get('years'),entry.get('presentation')))
+                    elif entry['block']=='coverage-selection':
+                        records.append(build_coverage_block(
+                            bundle,PROJECT,entry['instance_id'],displayed_topics,
+                            any(item['block']=='sensitivity-comparison'
+                                for item in recipe['blocks'])))
+                    elif entry['block']=='monitoring-overview':
+                        records.append(build_monitoring_block(bundle,PROJECT,entry['instance_id']))
+                    elif entry['block']=='sensitivity-comparison':
+                        records.append(build_sensitivity_block(bundle,PROJECT,entry['instance_id']))
                 provenance['blocks']=records
                 provenance['composition']=composition_provenance(recipe,composition,records)
+                scope=_resolved_scope(recipe,records)
+                provenance['composition']['display_scope']=scope
+                title,subtitle=_effective_titles(bundle,scope)
+                if title:
+                    provenance['composition']['effective_title']=title
+                if subtitle:
+                    provenance['composition']['effective_subtitle']=subtitle
             else:
                 provenance['blocks']=[build_block(bundle,Path(bundle).parents[2],PROJECT)]
             write_json(Path(tmp)/'provenance.json',provenance)
@@ -418,12 +1105,44 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
             # The shared template links evidence as data/<name>; publish the exact saved
             # artifacts and verify the final folder, not the temporary render workspace.
             publish_evidence(bundle,output.parent/'data')
+            if composition is not None:
+                reproduction=output.parent/'reproduction'; reproduction.mkdir(exist_ok=True)
+                shutil.copyfile(Path(composition),reproduction/'composition.json')
+                write_json(reproduction/'reproduction.json',{
+                    'entry_point':'python scripts/health_pipeline/publish.py batch',
+                    'rendering_command':'python scripts/health_pipeline/publish.py html --bundle <published-saved-bundle>/data --output <output-dir>/report.html --provenance <output-dir>/provenance.json --composition <package>/reproduction/composition.json --data-root <original-snapshot-root>/snapshots/<snapshot-id> --workflow-config <retained-checkout>/workflow/config.yaml',
+                    'placeholder_note':'Angle-bracketed values are required inputs to supply; they are not contained in this package.',
+                    'required_inputs':['retained source checkout','published saved bundle (data/ files listed in bundle.json)','original snapshot root containing snapshots/<snapshot-id>','writable output directory'],
+                    'original_analysis':{'retained_instructions':['README.md','GETTING_STARTED.md','Snakefile in the retained checkout'],'workflow_config':'workflow/config.yaml'},
+                    'integrity_example':'verify data/ digests against bundle.json; inspection only, not production replay',
+                    'recipe_file':'reproduction/composition.json',
+                    'recipe_sha256':digest(composition),
+                    'recipe_digest_note':'SHA-256 of the published file bytes; the source path digest in provenance is computed the same way.',
+                    'snapshot_id':json.loads((Path(bundle)/'snapshot.json').read_text()).get('snapshot_id'),
+                    'analysis_bundle_files':len(json.loads((Path(bundle)/'bundle.json').read_text()).get('files',{})),
+                    'input_note':'Rendering needs the published saved bundle data/ files, a retained source checkout and the original snapshot root; raw snapshot exports are not part of this package.',
+                    'environment_note':'Use the pinned composer-report container recorded in provenance/software; the image identifier does not by itself grant access.',
+                    'source_state':'Candidate source is uncommitted; a Git SHA alone does not identify it and no source archive is published.'})
             validate_published_evidence(output.parent)
         if recipe is not None and provenance is not None and recipe.get('contract')==COMPOSITION_CONTRACT_V2:
             failed=[r for r in provenance.get('blocks',[]) if r.get('status')!='verified']
             if failed:
-                detail='; '.join(f"{r.get('instance_id')}: {r.get('code','failed')} {r.get('detail','')}".strip() for r in failed)
-                raise ValueError(f'Composed report has failed explicit reference binding(s): {detail}')
+                detail=lambda items: '; '.join(
+                    f"{r.get('instance_id')}: {r.get('code','failed')} {r.get('detail','')}".strip()
+                    for r in items)
+                references=[r for r in failed if (r.get('component') or {}).get('type')=='reference-comparison']
+                series=[r for r in failed if (r.get('component') or {}).get('type')=='series-trend']
+                if references:
+                    raise ValueError('Composed report has failed explicit reference binding(s): '
+                                     + detail(references))
+                if series:
+                    raise ValueError('Composed report has failed series binding(s): ' + detail(series))
+                composites=[r for r in failed
+                            if (r.get('component') or {}).get('type') in COMPOSITE_BLOCKS]
+                if composites:
+                    raise ValueError('Composed report has failed saved-record binding(s): '
+                                     + detail(composites))
+                raise ValueError('Composed report has failed block binding(s): ' + detail(failed))
 
 BATCH_AUDIENCES=('researcher','health_institution','public')
 

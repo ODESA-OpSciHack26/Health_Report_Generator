@@ -33,8 +33,9 @@ def fixture_recipe(tmp_path, topic="virus"):
 def test_researcher_recipe_order_is_data():
     recipe = publish.load_composition(RECIPE)
     assert [entry["block"] for entry in recipe["blocks"]] == [
-        "intro", "reference-comparison", "limitations", "reproduction"]
-    assert len({entry["instance_id"] for entry in recipe["blocks"]}) == 4
+        "intro", "series-trend", "coverage-selection", "sensitivity-comparison",
+        "reference-comparison", "limitations", "reproduction"]
+    assert len({entry["instance_id"] for entry in recipe["blocks"]}) == 7
 
 
 def test_unknown_block_is_rejected(tmp_path):
@@ -244,9 +245,13 @@ def test_reordering_keeps_contract_instance_identity(tmp_path, monkeypatch):
 
 RECIPES = ROOT / "scripts" / "health_pipeline" / "config" / "composer" / "compositions"
 AUDIENCE_ORDER = {
-    "researcher": ["intro", "reference-comparison", "limitations", "reproduction"],
-    "health_institution": ["reference-comparison", "intro", "limitations", "reproduction"],
-    "public": ["intro", "limitations", "reference-comparison", "reproduction"],
+    "researcher": ["intro", "series-trend", "coverage-selection",
+                   "sensitivity-comparison", "reference-comparison",
+                   "limitations", "reproduction"],
+    "health_institution": ["intro", "monitoring-overview", "series-trend",
+                           "reference-comparison", "limitations", "reproduction"],
+    "public": ["intro", "reference-comparison", "series-trend",
+               "limitations", "reproduction"],
 }
 
 
@@ -257,7 +262,7 @@ def test_three_audience_recipes_declare_their_own_audience():
         assert recipe["audience"] == audience
         assert [entry["block"] for entry in recipe["blocks"]] == order
         ids = [entry["instance_id"] for entry in recipe["blocks"]]
-        assert len(ids) == len(set(ids)) == 4
+        assert len(ids) == len(set(ids)) == len(order)
         reference = next(entry for entry in recipe["blocks"]
                          if entry["block"] == "reference-comparison")
         assert reference["topic"] == "campylobacteriosis"
@@ -275,9 +280,15 @@ def _named_recipe(directory, audience, block_order, declared=None, prefix=None):
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{audience}.json"
     tag = prefix or audience[:2]
-    blocks = [{"block": block, "instance_id": f"{tag}-{block[:3]}-{index}"}
-              for index, block in enumerate(block_order, start=1)]
-    path.write_text(json.dumps({"contract": "health-report/composition-recipe/1",
+    blocks = []
+    for index, block in enumerate(block_order, start=1):
+        entry = {"block": block, "instance_id": f"{tag}-{block[:3]}-{index}"}
+        if block == "reference-comparison":
+            entry["topic"] = "campylobacteriosis"
+        if block == "series-trend":
+            entry.update({"topic": "campylobacteriosis", "measure": "cases"})
+        blocks.append(entry)
+    path.write_text(json.dumps({"contract": "health-report/composition-recipe/2",
                                 "audience": declared or audience, "blocks": blocks}))
     return path
 
