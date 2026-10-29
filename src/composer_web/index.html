@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local composer — generate a report</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <h1>Local composer</h1>
+  <p class="note">Runs on this machine only. Choose an audience, generate, and optionally adapt
+  a saved copy of that audience. A generated report is a <strong>preview</strong>: it is not an
+  accepted publication and implies no review or release.</p>
+</header>
+
+<main>
+  <p id="live" class="sr-only" role="status" aria-live="polite"></p>
+
+  <section class="card" aria-labelledby="choose-title">
+    <h2 id="choose-title">1. Choose the audience</h2>
+    <p id="choose-hint" class="hint">Pick one. Researcher is selected to start; nothing is
+    generated until you ask for it.</p>
+    <div id="presets" class="presets" role="radiogroup" aria-labelledby="choose-title"
+         aria-describedby="choose-hint"></div>
+    <p id="source-summary" class="summary">Reading the saved inputs…</p>
+    <div class="generate-row">
+      <button id="generate" type="button" class="primary" disabled>Generate preview</button>
+      <span id="job-state" class="job-state" role="status">idle</span>
+      <span id="ready-state" class="chip" role="status"></span>
+    </div>
+    <p id="generate-status" class="status" role="status"></p>
+    <p id="blocking" class="status error" role="alert" hidden></p>
+    <div id="reuse" class="reuse" hidden>
+      <p id="reuse-text" class="reuse-text">A report matching these settings is already
+        available.</p>
+      <div class="buttons buttons--inline">
+        <button id="reuse-show" type="button" class="primary">Show here</button>
+        <a id="reuse-open" class="button-link" target="_blank" rel="noopener" hidden>Open
+          separately</a>
+      </div>
+      <p id="reuse-meta" class="hint"></p>
+    </div>
+    <p class="digest">Generated from recipe <code id="job-digest">—</code>
+      <span id="stale" class="stale" hidden></span></p>
+    <details class="diag">
+      <summary>Exact CLI replay of the generated recipe</summary>
+      <pre id="replay-command">Generate a report to see its replay command.</pre>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="edit-title">
+    <h2 id="edit-title">2. Sections
+      <span id="custom-badge" class="badge" hidden>Customized</span></h2>
+    <details id="editor" class="editor">
+      <summary>Adapt a saved copy of this audience</summary>
+      <p class="hint">Opening this section changes nothing. Editing creates one managed copy for
+      this audience; the maintained recipe is never changed, and the copy is kept when you switch
+      to another audience.</p>
+      <div class="editor-bar">
+        <p id="differences" class="hint"></p>
+        <button id="reset-open" type="button" class="secondary">Reset to default</button>
+      </div>
+      <div id="reset-confirm" class="confirm" role="alertdialog" aria-modal="false"
+           aria-labelledby="reset-question" hidden>
+        <p id="reset-question">Discard the current changes and restore this audience's default?
+        Generated reports and saved snapshots are kept.</p>
+        <div class="buttons">
+          <button id="reset-confirm-yes" type="button" class="danger">Reset copy</button>
+          <button id="reset-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+      <p class="hint">Include the sections the report should show, and set their order. Required
+      sections stay in every report so readers keep the limitations and the evidence.</p>
+      <ul id="blocks" class="blocks" aria-label="Report sections"></ul>
+      <p class="digest">Last renderable recipe <code id="renderable-digest">—</code>
+        <span id="pending-note" class="hint"></span></p>
+    </details>
+    <p id="edit-status" class="status" role="status"></p>
+  </section>
+
+  <section class="card report-region" id="report" tabindex="-1"
+           aria-labelledby="report-title">
+    <h2 id="report-title">3. Report</h2>
+    <p><a id="open-report" href="#" target="_blank" rel="noopener" hidden>Open report
+      separately</a></p>
+    <div class="frame-wrap">
+      <iframe id="report-frame" title="Generated report preview" hidden></iframe>
+    </div>
+    <p id="report-empty" class="status">No report generated yet.</p>
+  </section>
+
+  <section class="card" aria-labelledby="data-title">
+    <h2 id="data-title">Saved reports</h2>
+    <p class="hint">Every report below is a separate, immutable generation. Resetting or
+    generating again does not delete or replace an earlier one. A report stays openable even when
+    its settings no longer match the editor.</p>
+    <ul id="saved-list" class="saved"></ul>
+    <p id="saved-empty" class="hint" hidden>No reports generated yet.</p>
+  </section>
+
+  <section class="card" aria-labelledby="locations-title">
+    <h2 id="locations-title">Data and source locations</h2>
+    <details id="data" class="diag">
+      <summary>Paths and managed copies</summary>
+      <p id="data-paths" class="hint">Open this to read the locations.</p>
+      <p class="hint">A managed copy is the per-audience working copy the editor writes; it is
+      not a published report and contains no generated output.</p>
+    </details>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Preview only. A failed generation leaves the report already on screen unchanged. Stop with
+  Ctrl+C in the terminal running the service.</p>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

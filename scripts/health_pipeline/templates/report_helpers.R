@@ -1763,6 +1763,7 @@ composition_style <- function() paste0('<style>',
   '.composed-report .series-panel[open]>summary{border-bottom:1px solid #e3eae9;margin-bottom:10px}',
   '.composed-report summary:focus-visible{outline:3px solid #b95d35;outline-offset:4px}',
   '.composed-report .series-panel>summary:focus{outline:3px solid #b95d35;outline-offset:4px}',
+  '.composed-report .composed-preview{margin:0 0 16px;padding:10px 14px;border:1px solid #b95d35;border-left:5px solid #b95d35;border-radius:8px;background:#fdf4ef;color:#7a3b1d;font-size:14px}',
   '.composed-report .panel-link{display:block;margin-top:3px;font-size:13px;color:#247c85;overflow-wrap:anywhere}',
   '.composed-report .panel-link-note{display:block;margin-top:3px;font-size:13px;color:#52656b;overflow-wrap:anywhere}',
   '.composed-report .collection-intro{margin:6px 0 12px}',
@@ -1824,11 +1825,19 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
     paste(vapply(sections, function(s) paste0('<a href="#', esc(s$id), '">', esc(s$label), '</a>'),
                  character(1)), collapse=''), '</nav>')
   pr_title <- read_provenance()
+  # A preview render records its status in provenance; the page states it once. Absent for every
+  # ordinary composed render, so default output keeps its exact markup.
+  preview_notice <- if(!is.null(pr_title$preview) && identical(pr_title$preview$status, 'preview'))
+    as.character(if(is.null(pr_title$preview$notice)) 'Preview — not an accepted publication.'
+                 else pr_title$preview$notice) else NULL
   report_title <- if(!is.null(pr_title$composition) && !is.null(pr_title$composition$effective_title))
     pr_title$composition$effective_title else b$cfg$title
   report_subtitle <- if(!is.null(pr_title$composition) && !is.null(pr_title$composition$effective_subtitle))
     pr_title$composition$effective_subtitle else NULL
   paste0('<div class="composed-report">', composition_style(),
+    if(!is.null(preview_notice)) paste0('<p class="composed-preview" role="note"><strong>',
+      esc(preview_notice), '</strong> This render exists to inspect the composition. It is not ',
+      'an accepted publication and implies no review, acceptance or release.</p>') else '',
     '<p class="composed-intro">', esc(report_title), ' · ', esc(paste(b$cfg$years, collapse='–')),
     ' · reference year ', esc(b$cfg$reference_year), '</p>',
     if(!is.null(report_subtitle)) paste0('<p class="composed-intro composed-subtitle">',

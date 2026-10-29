@@ -1257,11 +1257,714 @@ Uncommitted, tests only; no render, ledger or acceptance change in this checkpoi
   document, and no claim is made that it does.
 - Browser review complete. Commit authorization for the five-path C1 scope is still pending.
 
+### Development entry C2a-WORKBENCH: same-audience recipe workbench (author-run)
+
+- Base `d2b811b545e055c27cd1381229eb98b46196f05a` (`design/contracts`); uncommitted working tree,
+  so previews record commit `d2b811b` with uncommitted changes present.
+- Implemented journey: open a maintained recipe or a published `reproduction/composition.json`
+  → save a workspace copy (byte-identical while unedited) → reorder an existing block → set a
+  supported presentation option → preview the *saved* recipe → reopen it unchanged → replay the
+  printed CLI command. Same-audience only: the recipe audience must equal the bundle's
+  stakeholder, and `publish.render` keeps enforcing that.
+- Preview/publication boundary, established from the code rather than the function names:
+  `publish.publish_evidence` only byte-copies the saved bundle into `<report>/data` and verifies
+  digests; it writes no accepted-output pointer, no `release.json` and no catalogue entry. A
+  preview is therefore a render inside `<workspace>/previews/<UTC>-<pid>-<12 hex>/` plus one
+  marker recorded in three places: provenance (`preview.status`/`accepted_output`/`notice`),
+  `preview.json` (`status`, `published: false`) and a single
+  `<p class="composed-preview" role="note">` on the page. Default renders carry neither marker
+  nor banner, and the CLI replay is an ordinary render.
+- Identity effects: reordering and `default_topic` edits change the collection presentation
+  identity only; member analytical/rows/instance identities, saved values and bindings are
+  unchanged — asserted in unit tests and confirmed on the preview/replay provenances.
+- Safety: every write stays inside the named workspace; a workspace is never reused; copies and
+  save-as use `O_EXCL` plus a same-directory `os.link`; edits replace only the workspace's own
+  file, atomically; targets are resolved with `realpath` and refused outside the workspace; a
+  symlinked `previews/` directory is refused; preview directories are unique by time, pid and a
+  random token; replay commands are produced as an argv list plus a `shlex.quote`d string and
+  never run through a shell.
+- Checks (pinned image, rootless, `--pull never --network none --cpus 3`, repository and inputs
+  read-only): focused pytest 117 passed; `tests/test_composer_workspace.py` 27 passed;
+  `tests/test_composer_ui.py` 5 passed; maintained suite 661 passed;
+  `r_composer_preview_smoke.R` exit 0 (banner only with a preview marker, absent by default and
+  for a non-preview status); `r_composition_smoke`, `r_collection_smoke` and
+  `r_monitoring_links_smoke` exit 0; real preview from the retained researcher bundle exit 0
+  (83 s); CLI replay of the same saved recipe exit 0 (85 s); `verify_c2a.py` 0 problems (recipe
+  digest, effective recipe, instance identities, collection identity and member ids, banner
+  count 1 vs 0, source recipe unchanged, no release/accepted artefacts, anchors and `data/`
+  targets resolve in both reports).
+- Evidence: `~/.local/state/composer-bootstrap/g2-phase-c2a-workbench-20261029T163445Z-257128`
+  (supersedes the first round `…-20261029T163335Z-256855`, kept unmodified: it stopped on a
+  driver bug that passed a path where `build_provenance` expects a `{path, sha256}` record).
+  Preview package: `…/workbench/previews/20261029T163459Z-1-c4241ecf89ec/` (`report.html`,
+  `methods.html`, `provenance.json`, `preview.json`, `composition.json`); replay:
+  `…/replay/report.html` with `provenance.json`, `methods.html`, `data/`, `reproduction/`.
+- Edited recipe: `…/workbench/researcher-trial.json` — `block-coverage-selection` moved below
+  `block-sensitivity-comparison` and the collection's `default_topic` set to `influenza`
+  (a checked member of the retained bundle).
+- Not reviewed: browser/Marimo interaction, page focus, narrow layout and the live UI run. No
+  browser or Marimo session exists in this environment; the UI cells are exercised only by
+  AST-level submission tests, and the HTML banner only by a structural R smoke. The preview
+  banner appears on `report.html`; the preview's `methods.html` carries no banner (its status is
+  in provenance and `preview.json`).
+- Changed paths: `scripts/health_pipeline/publish.py` (preview marker; `validate_composition`
+  split out of `load_composition`), `scripts/health_pipeline/templates/report_helpers.R` (gated
+  banner and CSS), new `scripts/health_pipeline/composer_workspace.py`,
+  new `src/composer_ui.py`, new `tests/test_composer_workspace.py`,
+  new `tests/test_composer_ui.py`, new `tests/r_composer_preview_smoke.R`,
+  plus the catalogue wording above.
+- Human journey ready for review, not claimed as accepted. Starting point:
+  `marimo edit src/composer_ui.py` from the repository root, with a retained bundle available
+  locally; then: inspect the researcher recipe → create a workspace under `results/workbench/`
+  → copy `researcher.json` as `researcher-trial.json` → move `block-coverage-selection` down →
+  set the collection `default_topic` to `influenza` → **Preview** → expect exactly one
+  "Preview — not an accepted publication." banner, the Influenza panel open, and a preview
+  directory holding `composition.json`/`provenance.json`/`preview.json` → reopen the recipe and
+  confirm the order and topic persisted → run the printed replay command and confirm the same
+  order and open panel without a preview banner.
+- **Superseded by C2a-SITE-01:** the Marimo page is not the product frontend. `src/composer_ui.py`
+  and `tests/test_composer_ui.py` were removed from the working tree and preserved
+  byte-identically at `~/.local/state/composer-bootstrap/c2a-supersession-20261029T172320Z-268100`
+  (`composer_ui.py ea0259ba…`, `test_composer_ui.py 30fe5c7b…`, with `hashes.txt` and
+  `pointer.json`). The workspace service described above is unchanged and is now called by the
+  custom website instead. The failure that motivated the change was the Marimo launch itself:
+  `c2a-review-20261029T170142Z-263986/marimo-check.log` reported two `critical
+  [multiple-definitions]` diagnostics, and the review-live launch bound `0.0.0.0:2719`
+  (`c2a-review-live-20261029T170701Z-265868/startup.log`).
+
+## Candidate entry C2a-SITE-01: custom local website (author-run, live review pending)
+
+- Direction: a custom local HTML/CSS/JavaScript website, **no Marimo composer**. The journey is
+  choose inputs → explicit **Generate** → bounded background render → polled status → the
+  completed report embedded on the same page. The shared composition validator, workspace
+  service, renderer, provenance and CLI replay are reused; there is no static-report selector.
+- Changed paths and current hashes (uncommitted, on base `d2b811b…`):
+  `M scripts/health_pipeline/publish.py 67c2a3ea…` (`PREVIEW_NOTICE`, `preview=True` record,
+  `validate_composition` split out of `load_composition`),
+  `M scripts/health_pipeline/templates/report_helpers.R 7436f91c…` (gated preview banner + one
+  scoped CSS rule), `A scripts/health_pipeline/composer_workspace.py 11e8d197…`,
+  `A src/composer_site.py b18a9163…` (after the log-redaction fix below; `e805ad5f…` was the
+  snapshot version), `A src/composer_web/index.html 808c116a…`,
+  `A src/composer_web/app.css 0edfe597…`, `A src/composer_web/app.js 4627d886…`,
+  `A tests/test_composer_site.py b62e2954…`, `A tests/test_composer_workspace.py 6fa806a4…`,
+  `A tests/r_composer_preview_smoke.R e4522618…`, plus the catalogue and this record.
+  Full hashes are also in `current-source-sha256.txt` of the recovery snapshot. Against it, this
+  slice changed only `src/composer_site.py` and `tests/test_composer_site.py` (the log-redaction
+  fix), plus this record and the catalogue; `composer_workspace.py 11e8d197…`, the three web
+  assets, `publish.py 67c2a3ea…`, `report_helpers.R 7436f91c…`,
+  `tests/test_composer_workspace.py 6fa806a4…` and `tests/r_composer_preview_smoke.R e4522618…`
+  are unchanged.
+- Server protections actually implemented (`src/composer_site.py`): one per-run random token,
+  written to `<work-root>/access-token.txt` with mode 0600 and never logged; the only entry is
+  `GET /?token=…`, which answers 302 with an `HttpOnly; SameSite=Strict; Path=/` cookie whose
+  value is the token's SHA-256 prefix; every page, asset, API and artifact request needs that
+  cookie, compared with `hmac.compare_digest`; the request log redacts the query token
+  (`token=[redacted]`), because the entry URL is the one place the credential appears in a URL.
+  Mutations additionally need a matching `X-Composer-Action` header and, when `Origin` is
+  present, agreement with the request `Host` (no preflight is answered). GET never mutates.
+  Bodies must be `application/json`, ≤64 KiB, and may not carry unknown fields. The bind is
+  loopback-only (`main` refuses any other host);
+  `Host` must be in the allowlist for the actually bound port. Workspace names, recipe names,
+  job ids and artifact paths are all validated and resolved with `realpath` and refused outside
+  their root; symlinked workspaces, preview directories, job directories and artifact targets
+  are refused; only known content types are served.
+- Job semantics: submission takes the single active-job reservation, copies the saved recipe
+  into `<workspace>/.jobs/<job-id>/composition.json`, hashes **that copy** and re-validates it,
+  then records the digest, the snapshot's relative path and the quoted replay command before
+  the worker starts. A later edit of the saved recipe therefore cannot change the job, its
+  rendered recipe or its replay. Any exception during submission releases the reservation; the
+  worker always clears it and its thread entry in `finally`. A failed or interrupted render
+  leaves earlier previews untouched; on restart, `queued`/`running` records are marked
+  `interrupted` with "no report was produced". Internal paths (`workspace`, `snapshot`,
+  `preview_dir`) stay server-side; the browser receives a job id and a report URL only.
+- Actual post-crash result, not commentary: the first fresh run in the pinned image
+  (`focused-1.log`) was **16 failed, 29 passed, exit 1**, and every failure was HTTP 401 — the
+  test client never presented the session cookie that the server requires. The previously
+  visible `preview_dir` fix was therefore insufficient: it made completed artifacts locatable
+  server-side, but the HTTP suite still could not reach a single route. Repair, test-side only:
+  the harness now performs the documented token exchange and sends the issued cookie, and new
+  tests assert the session is required, that a wrong token or forged cookie is refused, that the
+  cookie is HttpOnly/SameSite=Strict, and that a non-loopback bind is refused. No production
+  protection was weakened to make tests pass.
+- New coverage added with that repair: rendered-recipe equality (the renderer reads the job's
+  preview copy, byte-identical to the snapshot, and the recorded digest is those bytes),
+  failed-submission reservation release followed by a successful submission, a failed second
+  generation leaving the first report byte-identical and served, no leftover render worker, and
+  a no-Marimo assertion over the site sources, the web assets and the process command line.
+- Checks (pinned image `sha256:1ddf322f3f7b…`, rootless, `--pull never`, `--network none`,
+  `--user 0:0 --cpus 3 --memory 4g --memory-swap 5g --pids-limit 512`, repository and baseline
+  read-only, `PYTHONDONTWRITEBYTECODE=1`), all in
+  `~/.local/state/composer-bootstrap/c2a-site-20261029T181351Z-2034`:
+  `focused-1.log` 16 failed/29 passed exit 1 (recorded, pre-repair);
+  `focused-4.log` **54 passed, exit 0**; `r-smokes.log` seven smokes exit 0
+  (`r_composer_preview`, `r_composition`, `r_series`, `r_collection`, `r_block_dispatch`,
+  `r_monitoring_links`, `r_methods_boundary`); `maintained-suite.log` **683 passed (52.85s),
+  exit 0**; `live-driver-3.log` **38 checks, 0 failures, exit 0**.
+- One real generation through the website, then CLI replay of the *job's own snapshot*
+  (`live-3/`): workspace `live-review`, `researcher-trial.json` copied from the maintained
+  researcher recipe (byte-identical), `block-coverage-selection` moved below
+  `block-sensitivity-comparison`, collection `default_topic` set to `influenza`, Generate, job
+  `20261029T182651Z-b05414043a`, status `succeeded`. Verified from served bytes: the job digest
+  equals the snapshot digest equals the saved recipe digest at submit time
+  (`efb388fb…`); the served `report.html` (`6ea98bf7…`) is byte-identical before and after a
+  further edit of the saved recipe (`efb388fb…` → changed, snapshot unchanged); provenance
+  records `preview.status=preview`, `accepted_output=false` and the snapshot digest as
+  `composition.recipe_sha256`; the page carries the notice exactly once; section order is
+  `intro-0001 → researcher-series-collection → block-sensitivity-comparison →
+  block-coverage-selection → block-reference-comparison → limitations-0001 → reproduction-0001`
+  and the open panel is `sc-59557e6636-influenza`. The replay ran the exact printed argv
+  (`replay-command.txt`, `replay.log`, exit 0) and produced `replay-report.html` (`1abe3c46…`)
+  with the same recipe digest, the same `effective_recipe`, the same seven checked instances with
+  equal `contract_instance_id`/`contract_status`/`instance_identity`, the same section order and
+  the same single open panel, and **no** preview marker or banner.
+- Two driver-probe defects were found and fixed in the evidence driver only (not in the
+  product): the section-id regex assumed `<section id=…>` instead of
+  `<section class="composed-block" id=…>`, and the navigation probe required `<nav
+  class="composed-nav">` without attributes. Runs `live` and `live-2` are retained unchanged;
+  `live-3` is the complete run.
+- Not reviewed: no browser was used here. Layout at desktop and narrow widths, keyboard/focus
+  order, the embedded-report behaviour in an iframe, the polling status text and the download
+  links are asserted structurally only. Live user review is the next step and is not a PASS.
+  G0/G1/R02 and challenge acceptance remain unchanged; nothing was committed, tagged, staged or
+  published, and no ledger was touched.
+
+### Live review service C2a-SITE-01a: started, awaiting user review
+
+- Container `composer-site-review` from the pinned image (`--pull never`, no build, no install,
+  no cleanup of other images/containers). Bounds: `--user 0:0 --cpus 3 --memory 4g
+  --memory-swap 5g --pids-limit 512`; repository read-only at `/app`, retained baseline
+  read-only at `/inputs`, one writable work root at `/review`; no Docker socket, no privileged
+  mode, no host networking. Bridge networking with exactly **one** loopback-published port
+  (`127.0.0.1:2719 -> 2719/tcp`); bridge egress is not claimed to be isolated.
+- The product still binds loopback only (its guard and its test are unchanged). A published
+  container port arrives on the container's own interface, and a probe confirmed that a
+  container process bound to `127.0.0.1` is **not** reachable through the published port, so the
+  review harness adds one stdlib TCP forwarder (`review/forwarder.py`) bound to the container's
+  own address (`172.17.0.2:2719`) that forwards to `127.0.0.1:2719`. The container process list
+  is exactly the site and this forwarder — no Marimo process.
+- Verified against the running instance from WSL: `/` and `/api/catalogue` answer 401 without
+  the session; `GET /?token=…` answers 302 `Location: /` with
+  `Set-Cookie: composer_session=…; Path=/; HttpOnly; SameSite=Strict`; the page then returns
+  200 (3,515 bytes, digest `808c116a…`, i.e. the shipped `index.html`); `Host: evil.example`
+  returns 400; the catalogue lists all three recipes and all three saved bundles as available;
+  the token file is 32 characters at mode 600 inside the work root.
+- One startup generation through the running instance (default researcher recipe, no edits):
+  workspace `startup-check`, job `20261029T183306Z-6eec087d85`, `succeeded` after 83 s,
+  `report.html` 1,553,942 bytes with exactly one preview banner. It is left in place as the
+  instance's own record.
+- Host and access path: same-machine WSL2 verified (`WSL_DISTRO_NAME=ComposerSandbox`, kernel
+  `6.18.54.1-microsoft-standard-WSL2`), WSL-side listener `127.0.0.1:2719` owned by
+  `rootlesskit`. This is not an SSH or remote-host setup. Windows-side localhost forwarding
+  could **not** be exercised from inside this distro: `/etc/wsl.conf` sets
+  `interop.enabled=false` and `automount.enabled=false`, so no Windows binary is runnable here
+  and no Windows filesystem is mounted. The Windows check is therefore a user action, stated as
+  a check and not as a result.
+- Access: `http://localhost:2719/?token=<contents of
+  ~/.local/state/composer-bootstrap/c2a-site-20261029T181351Z-2034/review/work/access-token.txt>`.
+  The `Host` header must be `localhost` or `127.0.0.1`; other host names are refused by design.
+- **Token handling fix found during this live check:** the service log had been echoing the full
+  entry URL, i.e. the token, into stderr (`GET /?token=…`). It now logs
+  `GET /?token=[redacted] HTTP/1.1` (verified on the running instance after a restart), and
+  `test_access_token_is_redacted_from_the_service_log` asserts the token never appears in the log
+  while the entry request still answers 302. The token is per run: restarting the service issues
+  a new one, so the file (not a memorised URL) is the source of truth.
+- After that fix: focused service/HTTP tests **55 passed, exit 0** (`focused-5.log`) and the
+  maintained suite was re-run rather than reusing the earlier green run — **684 passed
+  (52.99s), exit 0** (`maintained-suite-2.log`).
+
+## Candidate entry C2a-SITE-02: preset-first journey, section inclusion and the selector repair
+
+- Scope: the user's scoped review of C2a-SITE-01 — generation works; input/workspace setup is
+  unintuitive; the default-open-disease selector is defective. Direction is unchanged: custom
+  local HTML/CSS/JavaScript, no Marimo. This candidate is **uncommitted** on `d2b811b…`.
+- **Selector defect: reproduced before repair, not inferred.** Driving the shipped API in the
+  pinned image (`repro-topic-selector.log`, `topic-selector-repro.json`) showed the exact
+  sequence: opening a recipe returned 12 `topic_choices`; after `set-default-topic` the very same
+  response returned `topic_choices: null`, while the saved file did contain the chosen disease and
+  a reopen listed the diseases again. Root cause: `Site.edit_recipe` rebuilt the editor payload
+  with `topics=None`, so every editor rebuild after any edit (including a reorder) dropped the
+  option list, and the frontend's `block.topic_choices || []` then rendered only its placeholder —
+  "diseases briefly appear ... then the list disappears". The data and the saved value were never
+  wrong; only the response was. Repair: the editor document is now built in one place
+  (`Site.editor_document`) from the resolved bundle, every mutation returns that document, and
+  `test_default_topic_selection_survives_save_and_reopen` pins the whole sequence
+  (choose → save → reopen → reorder → style change keeps the list).
+- Journey now implemented: four mutually exclusive cards (Researcher, Health institution, Public,
+  Custom) as an accessible radiogroup (roving `tabindex`, arrow/Home/End keys, `aria-checked`,
+  a visible “✓ Selected” mark in addition to colour, decorative emoji marked
+  `aria-hidden`). A standard choice resolves **its own** maintained recipe and its own saved
+  bundle; there is no bundle selector, so a mismatched pair cannot be expressed and nothing falls
+  back to another dataset. Selecting a standard collapses the editor and leaves *Generate
+  preview* as the primary action; nothing renders on load or on selection.
+- Editing model: one managed copy per audience under `<work-root>/drafts/<audience>/` —
+  `recipe.json` (a byte copy of the maintained recipe) plus `editor.json` (schema, audience,
+  exclusions, monotonic revision). The composition schema is unchanged; exclusion is editor state
+  held **beside** the recipe, and the renderer receives the recipe minus excluded sections,
+  re-validated by `publish.validate_composition`. Opening the editor writes nothing; the first
+  *accepted* change creates the copy: the intended edit is validated against the maintained
+  recipe before any file is written, so a rejected action leaves no empty copy behind),
+  and only then does the Custom card become selected. Switching back to a standard reads the
+  maintained recipe untouched and leaves the copy on disk; choosing Custom again resumes it.
+- Section control: every saved section is listed with an Include checkbox, up/down controls,
+  `Chart style` and, where supported, `Disease expanded when the report opens` with the help
+  “Other included diseases remain available in the report.” Unchecking hides the section from the
+  rendered recipe but keeps it — with its settings, instance id and position — in the editor and
+  in `recipe.json`, so restoring it is exact. `limitations` and `reproduction` are required, with
+  the reason shown next to the disabled checkbox; the last included section cannot be removed;
+  the shared loader remains the final authority and its message is surfaced. Labels and
+  descriptions are a frontend map (`BLOCK_LABELS`) over stable ids; unknown ids fall back to the
+  id, and no block type is invented.
+- Simplification: the manual workspace/copy form is gone. The page shows one compact source line
+  (reporting period, reference year, geography, included disease count, saved snapshot prefix);
+  paths, managed copies and earlier reports moved into “Data and saved reports”, which is the only
+  panel that loads on toggle and only reads (`GET /api/saved`).
+- API: `GET /api/presets`, `GET /api/editor?preset=&mode=`, `POST /api/draft`,
+  `POST /api/edit` (moves, include/exclude, style, default disease), `POST /api/generate`
+  (`mode: standard|custom`), `GET /api/saved`, the existing job/artifact routes. Preserved and
+  re-tested: per-run token → HttpOnly/SameSite session, Host allowlist, action-header + Origin
+  agreement, JSON-only bodies, loopback-only bind, realpath containment, symlink refusal, one
+  active render, immutable per-job snapshot, preview provenance, failure preservation, bounded
+  workers, CLI replay. No dependency, framework, upload, PDF, profile registry, reference-topic
+  rebinding, analysis or acquisition change.
+- Paths and hashes: `src/composer_site.py 318fac66…`, `src/composer_web/index.html 64111bf8…`,
+  `src/composer_web/app.js 3f190d80…`, `src/composer_web/app.css 5a5f9201…`,
+  `scripts/health_pipeline/composer_workspace.py 566d1c7d…` (`render_preview` split out of
+  `preview`, draft service, pure `edit_plan` + `commit_edit`),
+  `tests/test_composer_site.py 48facac4…`, `tests/test_composer_drafts.py de93aef9…`, plus this
+  record. `publish.py 67c2a3ea…` and `report_helpers.R 7436f91c…` are untouched by this
+  candidate.
+- Checks (pinned image, rootless, `--pull never --network none`, `--user 0:0 --cpus 3
+  --memory 4g --memory-swap 5g --pids-limit 512`, repository and baseline read-only,
+  `PYTHONDONTWRITEBYTECODE=1`), in
+  `~/.local/state/composer-bootstrap/c2a-site-20261029T181351Z-2034`:
+  `focused-rev1.log` 70 passed / 4 failed exit 1 (first pass of the new suite; the four were test
+  fixtures, not product defects — one included topic, a mismatched fixture disease and a
+  double-exclusion bobble in `edit_plan`), `focused-rev2.log` **74 passed exit 0**,
+  `maintained-suite-rev1.log` **703 passed (61.48s) exit 0**, `r-smokes-rev.log` seven R smokes
+  exit 0, `live-rev-driver.log` **50 checks, 0 failures, exit 0**. After the last compatibility
+  change (pre-revision job records shown with their historical audience) both were re-run on the
+  final tree rather than reused: `focused-rev3.log` **74 passed exit 0**,
+  `maintained-suite-rev2.log` **703 passed (58.28s) exit 0**.
+- Live journey with the real renderer (`live-rev/`): presets resolve researcher to its maintained
+  recipe and report 12 included diseases and reference 2019; the standard editor lists seven
+  sections with the required flags; the disease was switched to `influenza`, the rebuilt editor
+  still listed all 12, the copy became Custom at revision 1, reopening kept both, and the saved
+  copy really stores `default_topic: influenza`; `block-sensitivity-comparison` was excluded and
+  `block-coverage-selection` moved below the reference block; excluding `limitations-0001` was
+  refused with the required-section explanation; job `20261029T193706Z-c2ad5b9144` rendered the changed composition
+  (`succeeded`), its digest equals the editor's effective digest, the rendered recipe omits the
+  excluded section, the page shows exactly one preview notice, the section order follows the
+  editor and the open panel is `sc-59557e6636-influenza`; the maintained recipe's bytes were
+  unchanged afterwards; a later edit left the snapshot and the served report byte-identical; the
+  printed replay rendered that same snapshot (exit 0) with the same effective recipe, the same
+  recipe digest, identical `composition.instances`, identical section order and the same single
+  open panel, and no preview marker.
+- Not verified: no browser was used here. Keyboard operation of the radiogroup, focus order,
+  narrow layout, the iframe and the visible selected indicator are asserted structurally only.
+  Wording uses “disease” because these retained bundles' topics are notifiable diseases; a
+  generic-topic bundle would need the neutral “topic” wording and is not supported here.
+  Pre-revision job records (from C2a-SITE-01) still list without a stored preset; the panel
+  falls back to their historical audience. G0/G1/R02 and challenge acceptance unchanged.
+- Handover: the review container was recreated on this candidate, which issues a **new per-run
+  token**; the previous chat-exposed token is dead. The replacement is not printed in chat or in
+  any log (the access log redacts it); it is readable only from the token file named in the
+  startup instructions. The container was recreated rather than only restarted because its log
+  history still held two request lines from the run *before* the redaction fix (dead tokens from
+  earlier runs); the new container's log holds only the placeholder line and `token=[redacted]`.
+  Verified after recreation: 401 without the session, 302 on the token exchange, page 200 with
+  the session, four presets served, token file mode 600, zero occurrences of the current token in
+  the service log.
+
+## Candidate entry C2a-SITE-03: audience customization, disease subsets and honest history (Round A)
+
+- Scope: the product owner's model change, Round A only (Round B stays a plan). Decisions taken
+  as given: the Custom card stays visible but disabled with “Build from the block library —
+  coming in the next revision.”; chart height stays under collapsed advanced options; `topics:
+  "eligible"` only when it reproduces the default resolved selection *and* order; reset in place
+  with confirmation; older history is never falsely classified; one bundle per future custom
+  composition; and **no** `composition.origin` or other composition/provenance field in this
+  round. No composition schema, maintained recipe, renderer contract or analytical calculation
+  was touched.
+- Audience model: editing an audience keeps that audience selected. “Customized” is computed, not
+  asserted: the server compares the editor's pending composition with the maintained recipe
+  (blocks, order, inclusion, topics and order, expanded disease, chart height) and reports
+  `customized`. Opening the editor or having a saved copy does not set it; returning every setting
+  to the default clears it. Reset rewrites the copy in place from the maintained bytes, clears
+  exclusions and pending selection, bumps the revision, and never touches jobs, snapshots or
+  reports. The old rule that any edit selects Custom is gone.
+- Draft versus renderable recipe (the central correction): `editor.json` moves to
+  `health-report/composer-draft/2` with an additive `selection` map
+  (`{instance_id: {topics, default_topic}}`) holding the *pending* disease choice. `recipe.json`
+  stays the last accepted, always-renderable composition. An empty selection in an enabled block
+  is therefore **customized and invalid**: the editor shows the pending empty list (no stale
+  disease), `ready` is false, the page shows the blocking sentence, and Generate refuses with
+  “Select at least one disease, or turn off ‘Annual trends by disease’.” — never rendering the
+  previous valid selection. A successful Generate commits the pending choice into the recipe
+  (normalising a full set in bundle order back to `"eligible"`), so the saved copy and the render
+  agree. Both concepts are exposed: `customized`/`differences` for “differs from default” and
+  `ready`/`blocking_reason` for “ready to generate”.
+- Disease checkboxes: one checkbox per saved bundle topic, Select all / Clear over the same list,
+  deterministic order (bundle order for Select all, existing order preserved for the rest), and an
+  expanded-disease select populated only from checked diseases. Unchecking the open disease moves
+  the choice to the first remaining checked disease and returns a structured note; the page
+  announces it in a live region and restores focus to the same control after the rebuild, so
+  focus is not stolen. With nothing checked the control is disabled and the generation error is
+  shown. Excluding the whole section keeps the pending selection; re-enabling restores and
+  re-validates it. Select all does not claim to restore defaults: the badge stays while chart
+  height, expanded disease, inclusion or order still differ.
+- Chart height: the control is now inside a collapsed “Advanced display options” with the label
+  “Chart height”, choices Standard / Compact, and help stating that only the figure height changes
+  (values, axes, wording and analytical meaning unchanged). The client sends no edit when the
+  displayed value is unchanged, existing recipes that record a style keep loading, and replay is
+  unchanged. Inspected effect (unchanged from before): figure height 3.6 in → 2.4 in, a margin
+  class, and one inspector row; style enters the block instance identity only.
+- History: a new job stores site-job metadata `classification` (`default`/`customized`) and
+  `classification_basis` (the maintained recipe digest used for that comparison), computed at
+  generation time and separate from every scientific identity. History rows show audience,
+  classification, time, recipe digest and a snapshot summary read from the job's own snapshot.
+  Records written before this round have no classification and are shown as “Customization status
+  not recorded” (a recorded `mode: standard` is labelled “Default (standard composition)” because
+  that render path used the maintained recipe); nothing is compared with today's default, nothing
+  is backfilled, and resetting or regenerating never deletes or replaces an entry.
+- Paths and hashes: `scripts/health_pipeline/composer_workspace.py 69364eb7…` (draft/2, pending
+  selection, `plan_selection`/`commit_selection`/`commit_pending`, `reset_draft`),
+  `src/composer_site.py 5078069c…` (presets with per-audience state, editor document with
+  readiness/differences, `/api/reset`, derived render mode, job classification, snapshot
+  summaries), `src/composer_web/index.html 9680d743…`, `src/composer_web/app.js 081455e1…`,
+  `src/composer_web/app.css da359698…`, `tests/test_composer_site.py 425dd0df…`,
+  `tests/test_composer_drafts.py 38530cc6…`, plus the catalogue and this record.
+  `publish.py`, `report_helpers.R` and every maintained recipe are unchanged.
+- Checks (pinned image, rootless, `--pull never --network none`, `--user 0:0 --cpus 3 --memory 4g
+  --memory-swap 5g --pids-limit 512`, repository and baseline read-only,
+  `PYTHONDONTWRITEBYTECODE=1`), in
+  `~/.local/state/composer-bootstrap/c2a-round-a-20261029T201848Z-33027`:
+  `focused-a1.log` 70 passed / 17 failed exit 1 and `focused-a2.log` 83 passed / 4 failed exit 1
+  (first passes; the failures were the new suite meeting two real shape bugs — a `_differences`
+  key error for non-series blocks and a stale expanded disease after clearing — plus test-side
+  tuple/harness slips; both product bugs were fixed before `focused-a3.log` **87 passed exit 0**),
+  `focused-a4.log` **87 passed exit 0**, `maintained-suite-a1.log` **716 passed (65.64s) exit 0**,
+  `r-smokes-all.log` seven R smokes exit 0, `live-a-driver.log` **57 checks, 0 failures, exit 0**.
+- Live journey with the real renderer (`live-a/`): all three audiences available and Custom
+  disabled with the approved text; opening the editor reported no draft and no customization; 12
+  diseases checked with the default open one among them; a subset
+  `[campylobacteriosis, gonorrhea, hepatitis_e]` was checked, chart height set to Compact,
+  `block-sensitivity-comparison` excluded and `block-coverage-selection` moved; differences were
+  reported (`excluded`, `reordered`, `style`, `selection`); an empty selection was allowed in the
+  editor, reported customized **and** not ready with the approved sentence, and Generate answered
+  400 with that sentence and created no job; the subset was restored and job
+  `20261029T203938Z-fcbf6f1348` rendered (`customized`), its snapshot equal to the editor's
+  pending digest, carrying the three-topic list, Compact height, the excluded section absent, and
+  one preview notice; the chosen disease opened first; the pending selection was committed into
+  the copy; Reset restored a byte-identical maintained copy and left the job and its report
+  intact; history kept `classification: customized` with a six-section snapshot summary; the
+  printed replay rendered the same snapshot (exit 0) with the same effective recipe, the same
+  instance identities, the same section order and the same open panel.
+- Not verified: no browser was used here. Focus restoration, the live-region announcements, the
+  Reset confirmation, keyboard order and the narrow layout are asserted structurally only; the
+  user's browser review is the first visual pass. Legacy records remain unclassified by design.
+  Round B is still a plan, not implemented. G0/G1/R02 and challenge acceptance unchanged; nothing
+  was committed, tagged, staged or published.
+
+## Candidate entry C2a-SITE-04: reuse a retained matching report instead of regenerating
+
+- Scope: the product owner's follow-up after Round A — when the current settings already match a
+  successful, still-valid report, the page offers that report instead of an identical generation.
+  Round B is untouched. No composition contract, scientific identity, historical provenance or
+  maintained recipe changed; the only additions are site-job metadata and a new POST route.
+- **Reuse identity (rules, exactly as implemented).** One key, version 1, computed from four
+  groups and nothing else:
+  1. *normalised effective composition*: the composition that would be rendered (exclusions
+     applied, pending disease choice committed), with equivalent spellings unified —
+     `series-collection` `topics` equal to the bundle's eligible list **in bundle order** compares
+     equal to `"eligible"`; an absent chart style compares equal to `standard`; an absent expanded
+     disease compares equal to the first resolved disease. An intentional order difference stays a
+     difference.
+  2. *retained input/bundle identity*: `bundle.json` `snapshot_id`, a SHA-256 over the sorted
+     `path:sha256` map of every bundle file, and the `stakeholder.json` digest.
+  3. *renderer/code/environment identity*: digests of `publish.py`, `report_shared.qmd`,
+     `report_helpers.R`, `audience_reports.R`, `methods.qmd`, `dashboard.css`; Python, Quarto and R
+     versions; and the workflow-config digest. A renderer or environment change invalidates reuse;
+     a frontend-only change does not, because it cannot change the package.
+  4. *render parameters*: HTML format, preview marker.
+  The key is the SHA-256 of that canonical JSON. Matching never uses a recipe name, an audience
+  label, a customization badge, file existence or the recipe digest alone.
+- **Job metadata added (site-job only, no schema/provenance change):** `reuse_key`,
+  `reuse_components` (the record above, for inspection), `package_sha256` (digest over every
+  published file's relative path and digest) and `package_files`. Records written before this
+  revision have none of them and are therefore **never auto-reused**; they stay visible and openable
+  in history. No version of the composition or provenance schema was bumped.
+- **Eligibility (checked at lookup and again at Show here):** status `succeeded`; reuse metadata
+  present; key equal; the snapshot exists and hashes to the recorded `recipe_sha256`; the package
+  directory exists; `report.html` is present; the published-file digest is unchanged; no symlink in
+  the package. Failed, interrupted, incomplete, missing, changed or pre-metadata jobs are skipped.
+  Among eligible matches the choice is deterministic: newest `finished_utc`, then the recorded
+  creation time in nanoseconds, then `job_id`; the generation time is shown. The nanosecond tie
+  break exists because two identical generations can finish inside the same second.
+- **UI:** when a match exists, Generate is disabled and the page states “A report matching these
+  settings is already available.”, with an enabled **Show here**, an **Open separately** link and
+  the retained job's exact replay command. Discovered matches never move the page; activating
+  Show here loads the retained URL (no render and no package copy), shows that job's digest,
+  timestamp and replay, and moves focus to the labelled report region — with smooth scrolling only
+  when the reader has not asked for reduced motion. If the same report is already displayed the
+  message says so and Show here still returns to it. Availability refreshes with every editor
+  document (audience change, accepted edit, reset, reopen, successful generation); a response
+  belonging to an older revision is discarded by the existing intent counter. When the match
+  disappears between lookup and activation, Show here explains why, restores Generate and leaves
+  the displayed report untouched. An invalid pending selection (empty disease set) offers no match
+  at all: matching uses the pending settings, never the last valid `recipe.json`.
+- **History:** reuse creates no job, rewrites no record and copies no package. Report bytes,
+  generation timestamp, provenance, classification and replay command stay with the original job;
+  duplicate identical reports are kept and remain individually addressable. Default/Customized
+  classification stays independent of reuse eligibility.
+- Paths and hashes: `src/composer_site.py b74bc81d…` (reuse identity and eligibility, `/api/reuse`,
+  job metadata incl. `created_ns`/`reuse_key`/`package_sha256`, editor `reuse` field),
+  `src/composer_web/index.html 61a40ff9…`, `src/composer_web/app.js c6f9b658…`,
+  `src/composer_web/app.css 0482e3d5…` (reuse panel, Show here, report focus, reduced motion),
+  `tests/test_composer_site.py e3a8c1e7…` (12 reuse tests). `composer_workspace.py 69364eb7…` and
+  `tests/test_composer_drafts.py 38530cc6…` are unchanged from Round A; `publish.py`,
+  `report_helpers.R`, the composition schema and every maintained recipe are untouched.
+- Checks (pinned image, rootless, `--pull never --network none`, `--user 0:0 --cpus 3 --memory 4g
+  --memory-swap 5g --pids-limit 512`, repository and baseline read-only,
+  `PYTHONDONTWRITEBYTECODE=1`), in
+  `~/.local/state/composer-bootstrap/c2a-round-a-20261029T201848Z-33027`:
+  `focused-reuse1.log` 72 passed / 1 failed exit 1 (the failure was a message-ordering expectation,
+  fixed by checking the missing report before the package digest), `focused-reuse2.log` **100
+  passed exit 0** (workspace + drafts + site), `focused-reuse3.log` re-check of the ten reuse tests
+  after the ordering fix (10 passed, 44 deselected), and the final coherent runs on the settled
+  tree after that fix: `focused-reuse-final2.log` **100 passed exit 0**,
+  `maintained-suite-reuse2.log` **729 passed (82.13s) exit 0**, `r-smokes-reuse2.log` seven R
+  smokes exit 0, `live-reuse-driver-2.log` **29 checks, 0 failures, exit 0**. The earlier
+  `focused-reuse-final.log` / `maintained-suite-reuse.log` / `r-smokes-reuse.log` are retained
+  unchanged; the focused one is the run that caught the same-second ordering bug (two identical
+  generations in one second were ordered by random job id), which the nanosecond tie break fixes.
+  That earlier suite run printed 729 passed but straddled the fix, so it is not used as the
+  evidence for the final tree.
+- Live journey with the real renderer (`live-reuse-2/`): no match before any generation; a real
+  default generation (`20261029T212447Z-41bb74ca8f`) then matched itself; changing the chart height
+  removed the match; Reset to default restored it; Show here returned the retained URL, digest,
+  timestamp and replay command with no new job, no record rewrite and byte-identical report; a
+  real customized generation (`20261029T212611Z-924a1c283d`, three diseases + compact) matched
+  itself after the settings were changed away and restored; an empty selection offered no match and
+  Show here was refused with the approved sentence; a synthetic newer duplicate
+  (`20260101T000000Z-cccccccccc`, clearly labelled) won when intact, was skipped once its files
+  changed (Show here refused with “the published files have changed”), and won again after the
+  original bytes were restored; a still-valid older match was still accepted on explicit request.
+- Limits: reports generated before this revision are intentionally not auto-reusable; no browser
+  was used here, so the focus move, the reduced-motion branch, the disabled-Generate state and the
+  panel wording are structurally asserted only. G0/G1/R02 and challenge acceptance unchanged;
+  nothing was committed, tagged, staged or published.
+- **Evidence correction (requested, recorded honestly):** the Round A handover said no evidence was
+  overwritten. That was inaccurate for exactly one file. `r-smokes-all.log` was truncated and
+  rewritten by the corrective run after the first malformed `docker run` invocation had written only
+  `docker: Error response from daemon: No such image: sh:latest` (exit 125) into it. The replaced
+  content was that single error line — no test result was lost — and the failed attempt is still
+  preserved in the session's background-process record for that invocation. The surviving log holds
+  the corrected seven-smoke run. No historical evidence was recreated or relabelled.
+
+## Candidate entry C2a-SITE-05: Researcher reuse diagnosis, report navigation and honest labels
+
+- Scope: the user's follow-up — Health institution reuse worked; Researcher was not offered although
+  a “Standard/Default” entry was visible; Show here in the saved list should move to the report
+  heading. Diagnosis came first; no render, no reset of the user's draft and no backfilled history
+  were used to make the match succeed.
+- **Diagnosis (verified, read-only copy of the review work root;
+  `diagnose-researcher.log`, `review-inspect/`).** The current Researcher settings are the default
+  composition: the draft has no exclusions and no pending selection, and its recipe is
+  byte-identical to the maintained recipe (`customized` false, `ready` true). Two Researcher
+  reports are retained:
+  - `20261029T183306Z-6eec087d85`: its snapshot is byte-identical to the maintained recipe, its
+    normalised composition equals the current one, and recomputing the full reuse identity from
+    that snapshot gives **the same key as today** — but the job has no `reuse_key` and no
+    `package_sha256`, so eligibility returns “generated before reuse metadata existed”.
+  - `20261029T185127Z-342d640c13`: a different composition (it would not match even with
+    metadata) and also pre-metadata.
+  No Researcher report was generated after the reuse revision existed, so there was nothing
+  eligible. **This is an intentional exclusion, not a matching defect**: the key was not weakened,
+  the old record was not backfilled, and the report remains openable.
+- **Label defect found while verifying (fixed, smallest change).** `public_job` filled a missing
+  render `mode` with `"standard"`, so a record that never recorded a mode was displayed as
+  “Default (standard composition)” — exactly the misleading appearance the user described. The
+  guess is removed; the audience still comes from the recorded bundle id, and pre-revision rows now
+  read “Customization status not recorded”. The API row for the old Researcher report therefore
+  reports `mode: null`, `classification: null`, `status: succeeded`, and a reuse reason of
+  “Older report: reuse metadata was not recorded.”
+- **Interface.** “Data and saved reports” is split: **Saved reports** (history only, always visible)
+  and **Data and source locations** (paths and managed copies, behind a disclosure). Every
+  successful row shows the audience and classification, generation time, status and recipe digest,
+  the sections it actually rendered (from its own snapshot), a reuse chip — “Reusable now” or “Not
+  reusable now” with a short reason (`Older report: reuse metadata was not recorded.`,
+  `Different settings, saved input, or renderer version.`, `Not reusable: the published files have
+  changed.`, `This report did not complete.`) — and a composition-only note when its sections or
+  diseases differ from the editor. A Default/Customized label describes the report's settings and
+  never implies reuse eligibility; a report that fails the reuse check keeps `status: succeeded`
+  and its Open/Show here actions.
+- **Navigation.** One `displayReport` now serves both the automatic-match **Show here** and the
+  history **Show here**: it loads the retained URL, updates the displayed digest, timestamp and
+  replay command, then `focusReport` scrolls to and focuses the labelled outer report section
+  (smooth only without `prefers-reduced-motion`). Repeated activation of the already-displayed
+  report still navigates and says so. Refreshing matches or history moves no focus. Opening history
+  changes no editor state and generates nothing.
+- Paths and hashes: `src/composer_site.py 3e0a1337…` (mode guess removed, per-report reuse view,
+  composition match, saved payload), `src/composer_web/index.html 4ea27370…` (sections split),
+  `src/composer_web/app.js 6ffb1054…` (shared display/navigation, reuse chips),
+  `src/composer_web/app.css 8f5e1cae…`, `tests/test_composer_site.py 3e31e38d…`. `publish.py`,
+  `report_helpers.R`, the composition schema, the reuse key and every maintained recipe are
+  unchanged.
+- Checks (pinned image, rootless, `--pull never --network none`, `--user 0:0 --cpus 3 --memory 4g
+  --memory-swap 5g --pids-limit 512`, repository and baseline read-only,
+  `PYTHONDONTWRITEBYTECODE=1`), in
+  `~/.local/state/composer-bootstrap/c2a-round-a-20261029T201848Z-33027`:
+  `diagnose-researcher.log` (read-only diagnosis), `focused-history1.log` **60 passed exit 0** (site
+  tests before the label fix), `live-history-driver.log` 22 passed / 1 failed exit 1 — the failure
+  was the label assertion that exposed the guessed `mode` — `focused-history2.log` **106 passed
+  exit 0** (workspace + drafts + site, after the fix), `maintained-suite-history1.log` **735 passed
+  (78.38s) exit 0**, `live-history-driver-2.log` **23 checks, 0 failures, exit 0**.
+- Live journey (`live-history-2/`, on a copy of the review work root): Researcher settings valid
+  and equal to the default, no reuse offered; the retained report present, successful, unclassified
+  and openable, with the “reuse metadata was not recorded” reason and a composition match; the
+  retained snapshot’s recomputed key equal to today’s (diagnostic only) and no recorded key; one
+  fresh real generation (`20261029T223803Z-d53d54dfca`) then offered for reuse and marked
+  “Reusable now”; the older report kept its status and reason; repeated Show here returned the same
+  report with no new job, no draft change and no revision change; both reports still open.
+- Limits: no browser was used here, so the focus move, the chip rendering and the section split are
+  structurally asserted only; pre-revision reports remain non-reusable by design. G0/G1/R02 and
+  challenge acceptance unchanged; nothing was committed, tagged, staged or published.
+
 ## Feedback and revision
 
 Use F-001 onward. Record candidate, affected requirement/block, requested change, rationale and blocking/nonblocking status. Classify presentation, behavior, scientific/contract, disclosure or scope; assign one owner and acceptance check. Never change metric meaning to satisfy visual preference.
 
 Presentation fixes may reuse unchanged verified analysis but require correct render/evidence identity. Analytical changes require fresh appropriate analysis. Approve contract/scope/disclosure changes explicitly. Link each response to a revision commit and actual render; preserve old reviews rather than relabel them. No automatic screenshot-baseline acceptance or tolerance inflation.
+
+### F-001 — scoped user review of C2a-SITE-01
+
+Reviewer: the user, on the local website. Scope: the stated items only; this is not blanket
+acceptance of the earlier browser checklist, and it is not scientific or accessibility review.
+Candidate addressed: C2a-SITE-02 (uncommitted, same base `d2b811b…`).
+
+| Id | Report | Class | Blocking | Disposition | Acceptance check |
+|---|---|---|---|---|---|
+| F-001.1 | Input/workspace setup is unintuitive | presentation | no | Addressed: preset cards replace the recipe/bundle/workspace/copy form; managed copies are created on demand; paths and earlier reports moved under “Data and saved reports” | page contains no workspace/copy controls; `GET` routes write nothing |
+| F-001.2 | Preset-first navigation wanted | presentation | no | Addressed: four exclusive cards, standard choice resolves its own recipe and bundle, generation stays an explicit action | presets API + card semantics tests |
+| F-001.3 | Section inclusion wanted | behavior | no | Addressed: Include checkbox per section, excluded sections recoverable with settings and ids, effective recipe omits them, required sections explained and refused | include/exclude/restore tests, live exclusion |
+| F-001.4 | Clearer section labels wanted | presentation | no | Addressed: frontend label/description map over stable ids; control renamed “Disease expanded when the report opens” with its help line | label-coverage test |
+| F-001.5 | Default-open-disease selector: list appears, then vanishes or reverts to “Choose a bundle to list topics” | behavior defect | **yes, for this review** | **Reproduced, then repaired.** Recorded as unresolved at feedback time; the reproduction is in `repro-topic-selector.log` / `topic-selector-repro.json`. Cause: the edit response dropped `topic_choices` (`topics=None`), so every rebuild after any edit lost the list while the saved value was correct. Every mutation now returns the rebuilt document from one place | `test_default_topic_selection_survives_save_and_reopen` (choose → save → reopen → reorder → style) and the live run's “still lists every disease” checks |
+
+The selector item was treated as open until it was reproduced here; the earlier “works well”
+statement is not extended to it, and no PASS is recorded for the checklist items the user did not
+mention.
+
+### F-002 — product-owner model change: audience customization, disease subsets, honest history
+
+Reviewer: the product owner. Scope: the customization model only; Round B was explicitly left as a
+plan. Candidate: C2a-SITE-03 (uncommitted, base `d2b811b…`). Every decision was taken as stated,
+including the prohibited items.
+
+| Id | Request | Class | Disposition |
+|---|---|---|---|
+| F-002.1 | Editing must keep the audience selected; show “Customized” on that card; Reset to default | behavior | Done: the old edit-selects-Custom rule is deleted; the badge is computed from the pending composition versus the maintained default; reset rewrites the copy in place after confirmation |
+| F-002.2 | Customized means the effective composition differs, not that the editor opened or a copy exists | behavior | Done: opening the editor and creating the copy leave the badge off; exact return clears it (tests: reorder and back, style and back) |
+| F-002.3 | Reset affects the draft only, asks before discarding, never deletes reports | behavior | Done: inline confirmation; jobs, snapshots and reports are separate immutable entries and survive |
+| F-002.4 | Disease checkboxes, Select all, Clear, expanded disease only from checked | behavior | Done on the existing collection-subset contract; ordering preserved; `"eligible"` only when the checked set and order reproduce the default |
+| F-002.5 | Empty selection blocks generation with the exact sentence, without weakening the recipe contract | behavior/contract | Done: the empty choice lives in editor state; the saved recipe stays renderable; Generate answers 400 with the approved sentence and creates no job |
+| F-002.6 | Inspect Compact/Standard and either remove or move to advanced options | presentation | Done: inspected (figure height 3.6→2.4 in, margin class, inspector row; no wording or value change); kept under collapsed “Advanced display options” with the label “Chart height” and explicit help; existing recorded values still load and replay |
+| F-002.7 | Saved history must describe the generated snapshot, never the current draft; older records must not be falsely classified | disclosure | Done: new jobs store `classification` + `classification_basis` at generation time; older records show “Customization status not recorded” with their snapshot summary; nothing is backfilled or compared with today's default |
+| F-002.8 | No composition `origin`/schema/provenance field in this round | contract | Honoured: the only additions are site-job metadata and the draft editor-state schema (`composer-draft/2`); the composition schema, `publish.py`, `report_helpers.R` and maintained recipes are untouched |
+
+Two product bugs were found and fixed during this round's own verification, not by the user: the
+differences helper assumed every block carried topic fields (KeyError on non-series blocks), and
+clearing the disease selection left a stale expanded disease visible in the editor. Both are
+recorded in `focused-a1.log`/`focused-a2.log` and fixed before the green runs.
+
+### F-003 — Round A user review (scoped) and the reuse request
+
+Reviewer: the product owner. **User-reported PASS is recorded for exactly two things**: Reset and
+the related customization behaviour, and the empty-disease warning shown correctly as “Select at
+least one disease, or turn off ‘Annual trends by disease’.” Nothing else from the earlier browser
+checklist is inferred as tested; keyboard order, focus restoration, announcements, the Reset
+confirmation dialogue and the narrow layout remain unverified by the user. The disabled Custom card
+was understood as the intentional Round A limit; Round B was not requested.
+
+| Id | Request | Class | Disposition |
+|---|---|---|---|
+| F-003.1 | When the effective settings already match a successful, still-valid report, do not offer an identical generation: disable Generate, explain, offer Show here | behavior | Done: `/api/reuse` + one centralised key; the editor document carries the deterministic newest match; Generate is disabled with “A report matching these settings is already available.” and Show here is enabled |
+| F-003.2 | Define safe matching first over composition, bundle, renderer/code/environment and render parameters — never by name, badge, existence or recipe digest alone | contract/disclosure | Done: reuse key v1 over those four groups; documented below |
+| F-003.3 | Exclude failed, interrupted, incomplete, missing, tampered or incompatible jobs; older metadata that cannot establish compatibility is ineligible but stays in history | disclosure | Done: eligibility re-checks status, metadata, key, snapshot digest, report presence and the published-file digest; pre-metadata jobs are skipped and remain listed |
+| F-003.4 | Show here must load the retained report, not rerender or copy it; show digest, timestamp and replay; move focus to a labelled region; respect reduced motion; never auto-jump | behavior/accessibility | Done: POST returns the job's own URL/replay; no job is created and no package is touched; focus moves only on activation; smooth scrolling only without `prefers-reduced-motion` |
+| F-003.5 | Revalidate on activation; a failure must not remove the displayed report | behavior | Done: Show here re-checks the key and package for the requested job; failures explain the reason, refresh availability and leave the on-screen report alone |
+| F-003.6 | Invalid pending settings must not match stale valid ones | behavior | Done: matching uses the pending composition; an empty disease set offers no match and Show here is refused with the approved sentence |
+| F-003.7 | Preserve history and provenance; no new job or claim of a new generation | disclosure | Done: reuse writes nothing; bytes, timestamps, provenance, classification and replay stay with the original job; identical duplicates are kept |
+| F-003.8 | Correct the earlier evidence-overwrite claim honestly | process | Done: the Round A handover's “no overwrite anywhere” was wrong for `r-smokes-all.log`; see the correction in C2a-SITE-04 |
+
+Smallest metadata change: site-job level only (`reuse_key`, `reuse_components`,
+`package_sha256`, `package_files`, reuse version 1 inside the components). No composition or
+provenance schema version was introduced, and no historical record was rewritten.
+
+### F-004 — reuse review: Researcher match, report navigation, section naming
+
+Reviewer: the product owner. **User-reported PASS is recorded for exactly one thing**: the Health
+institution report was correctly reused. The Researcher result was a failure report, not a pass,
+and no blanket reuse PASS is recorded.
+
+| Id | Report/request | Class | Disposition |
+|---|---|---|---|
+| F-004.1 | Researcher was not offered/reused although a Standard/Default entry exists | behavior/diagnosis | Diagnosed: intentional exclusion (the retained Researcher report predates reuse metadata; its composition, bundle and renderer identity all match). No key weakening, no backfill, no reset |
+| F-004.2 | A Default/Standard label must not imply reuse with today's environment | disclosure | Fixed: the guessed `mode` for pre-revision records is gone; rows now show classification separately from a reuse chip with a reason |
+| F-004.3 | Saved reports Show here should move to the report heading | behavior/accessibility | Done: one shared `displayReport` + `focusReport` for both the match panel and history; repeated activation still navigates; refreshes never move focus |
+| F-004.4 | Rename "Data and saved reports" or separate source information | presentation | Done: “Saved reports” (history only) and “Data and source locations” (paths, managed copies, behind a disclosure) |
+| F-004.5 | Distinguish openable from reusable; explain ineligibility without exposing internals | disclosure | Done: per-row reuse codes/reasons (`no_metadata`, `different_identity`, `artifact`, `not_completed`, `settings_not_ready`), status never demoted |
+| F-004.6 | Opening history must not change the draft or trigger generation | behavior | Done: history display is client-side over the retained URL; verified against draft bytes and revision |
+
+### Final user acceptance F-005 — C2a custom local workbench (closeout)
+
+Reviewer: the product owner. **User-reported PASS** is recorded for the reviewed
+generation/reuse workflow **for all three audiences** (Researcher, Health institution, Public),
+for the Saved reports **Show here** navigation, and for the audience/customization behaviour
+reviewed earlier (Reset, the Customized badge, and the empty-disease warning). No browser version,
+screenshot, independent scientific review, accessibility certification or additional browser test
+is claimed or invented; items the user did not exercise (keyboard order, focus restoration, live
+announcements, the Reset confirmation dialogue, narrow layout) remain **as previously recorded —
+structurally asserted only**. The disabled Custom block-library composer is an intentional
+remaining scope limit: Round B is neither implemented nor accepted.
+
+Candidate and evidence. The accepted candidate is the working tree on `d2b811b545e055c27cd1381
+229eb98b46196f05a`, committed immediately after this entry as
+`feat(composer): add local report workbench with audience presets and reuse`. Its final source
+hashes are `composer_site.py 3e0a1337…`, `index.html 4ea27370…`, `app.js 6ffb1054…`,
+`app.css 8f5e1cae…`, `composer_workspace.py 69364eb7…`, `test_composer_site.py 3e31e38d…`,
+`test_composer_drafts.py 4a2000b8…` (a trailing blank line was removed at EOF before
+commit; the 38530cc6… hash in the C2a-SITE-04 entry describes that earlier state), with the two
+shared-service edits in
+`publish.py 67c2a3ea…` and `report_helpers.R 7436f91c…`. Evidence is retained unchanged in
+`~/.local/state/composer-bootstrap/c2a-round-a-20261029T201848Z-33027` and the earlier
+`c2a-site-20261029T181351Z-2034`; the review service runs from these sources on loopback.
+
+Automated results, as already recorded on this tree: focused service/workspace/draft tests
+**106 passed exit 0** (`focused-history2.log`), maintained suite **735 passed (78.38s) exit 0**
+(`maintained-suite-history1.log`), and the live reuse/navigation run **23 checks, 0 failures,
+exit 0** (`live-history-driver-2.log`). The seven R smokes were last run green on the same R
+sources (`r-smokes-reuse2.log`, all exit 0).
+
+Real-render and R evidence carries its **original source scope**: those packages were produced
+from the then-uncommitted working tree, not from this commit. Specifically, the live-generation
+records (`job 20261029T203938Z-fcbf6f1348` in `live-a/`, `20261029T212447Z-41bb74ca8f` and
+`20261029T212611Z-924a1c283d` in `live-reuse-2/`, `20261029T223803Z-d53d54dfca` in
+`live-history-2/`) each record `source_state: uncommitted` in their provenance and are **not**
+relabelled as committed-source builds; every report package and the review work-root reports keep
+their original provenance bytes.
+
+Known limits carried forward: the block-library Custom composer is deferred (the card is visible
+and disabled); reports generated before the reuse revision remain intentionally ineligible for
+automatic reuse while staying openable in Saved reports; the disease wording assumes
+notifiable-disease topics; one measure and one series collection per composition; no composed PDF,
+upload, second-snapshot comparison or sparklines; no independent scientific, accessibility or
+cross-browser review. The earlier evidence-overwrite correction stands as recorded in
+C2a-SITE-04: the Round A handover's “no overwrite anywhere” was inaccurate for one
+`r-smokes-all.log` containing only a failed docker invocation's error line.
+
+This is scoped product acceptance of the reviewed workflow only. It is **not** whole-project
+acceptance, not G0/G1/R02 or G6 acceptance, not scientific acceptance and not release approval;
+no ledger, tag or deployment is changed by this entry.
 
 ## Resume record
 

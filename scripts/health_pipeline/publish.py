@@ -18,6 +18,7 @@ HERE=Path(__file__).resolve().parent
 PROJECT=HERE.parents[1]
 TEMPLATE='report_shared.qmd'
 PROVENANCE_SCHEMA='health-report-provenance/1.0'
+PREVIEW_NOTICE='Preview — not an accepted publication.'
 FILTER_KEYS=['period_type','years','reference_year','index_base_year','geography','measures_preferred','compare_by',
              'classes_in_main_comparison','exclude_from_group_totals','sensitivity_exclude','source_priority',
              'group_source_systems','dimension_filters','needs_roles','include_topics','exclude_topics']
@@ -156,7 +157,8 @@ def reproduction_source_state(provenance):
     recorded=(code or {}).get('source_state') if isinstance(code,dict) else None
     return recorded or source_state_record(code or {})
 
-def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=None,extra=None):
+def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=None,extra=None,
+                     preview=False):
     """Machine-readable record of what was rendered, from which data, with which parameters."""
     bundle=Path(bundle); m=verify_bundle(bundle)
     cfg=json.loads((bundle/'stakeholder.json').read_text())
@@ -215,6 +217,11 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
     }
     if record['software']['R']: record['software']['R']=record['software']['R'][0]
     if extra: record['request']=extra
+    # A preview is a real render of a saved recipe, produced for inspection only. The marker is
+    # render metadata outside every analytical/rows/instance identity, and it is absent unless a
+    # caller explicitly asks for a preview, so default output keeps its exact shape.
+    if preview:
+        record['preview']={'status':'preview','notice':PREVIEW_NOTICE,'accepted_output':False}
     return record
 
 def _csv_rows(path):
@@ -1110,13 +1117,14 @@ def _recipe_years(entry, instance):
     return years
 
 
-def load_composition(path):
-    """Validate a block recipe. Order and membership are data, not renderer code.
+def validate_composition(recipe):
+    """Validate an already parsed block recipe. The only recipe validator in the tree.
 
-    v1 keeps the historical deterministic reference binding. v2 requires an explicit
-    topic for reference-comparison and rejects any other extra per-block options.
+    Order and membership are data, not renderer code. v1 keeps the historical deterministic
+    reference binding; v2 requires an explicit topic for reference-comparison and rejects any
+    other extra per-block options. Callers that hold a recipe in memory (the workbench) must
+    use this function rather than re-implementing any of these rules.
     """
-    recipe = json.loads(Path(path).read_text(encoding='utf-8'))
     if not isinstance(recipe, dict): raise ValueError('Composition recipe must be an object')
     unknown = set(recipe) - {'contract','audience','blocks'}
     if unknown: raise ValueError(f'Unsupported composition fields: {sorted(unknown)}')
@@ -1230,6 +1238,10 @@ def load_composition(path):
             and any(entry['block'] == 'series-trend' for entry in blocks)):
         raise ValueError('A recipe cannot combine series-trend and series-collection blocks')
     return recipe
+
+def load_composition(path):
+    """Load a recipe file and validate it through the single shared validator."""
+    return validate_composition(json.loads(Path(path).read_text(encoding='utf-8')))
 
 def composition_provenance(recipe, path, blocks):
     """Record the recipe and the checked instance identity behind every block entry."""

@@ -342,7 +342,8 @@ Rules:
   inspectors.
 - **Interaction.** Topic search/sort only for sufficiently large tables; explicit sort
   criterion.
-- **Row navigation (C1, uncommitted candidate).** A row offers “View annual series” only when a
+- **Row navigation (C1, committed at `d2b811b`; browser review user-reported PASS in Brave,
+  browser version not supplied).** A row offers “View annual series” only when a
   checked `series-collection` record in the same report has a member with the same topic,
   measure, geography and saved dataset, and the collection's effective years equal the
   monitoring reporting window. The target is that member's rendered panel id, read from the
@@ -589,7 +590,73 @@ The current sequence is:
 6. The sensitivity comparison is implemented from saved metrics, and public interpretation is
    refined through the editorial magnitude variant.
 7. Add release comparison only when two snapshots and comparability are available.
-8. Build a configurator over stable recipe interfaces.
+8. Build a configurator over stable recipe interfaces. Phase C2a (committed on top of
+   `d2b811b`; scoped user-reported acceptance recorded for the three audience workflows) is the
+   first slice: a *same-audience* recipe workbench — no profile cloning and
+   no analytical selection. The block-library **Custom** composer remains disabled and deferred. It opens a maintained recipe or a published
+   `reproduction/composition.json`, saves a copy into a named workspace (refusing an existing
+   name or workspace), reorders existing blocks, sets a closed set of supported presentation
+   options (`series-collection` `presentation.style`/`presentation.default_topic`,
+   `series-trend` `presentation.style`, `reference-comparison` `topic`), validates every edit
+   through `publish.validate_composition`, renders a preview of the *saved* recipe, reopens it,
+   and prints a quoted CLI replay command. Every recipe-level rejection comes from that one
+   loader; nothing is repaired silently.
+   Invocation: the custom local website, `python src/composer_site.py` (loopback only, per-run
+   token printed as a file path; no Marimo, no framework, no build step). It serves the page, a
+   JSON API and the completed report package from one origin and calls the same workspace
+   service, so the service remains the only implementation of copying, editing, previewing and
+   replaying, e.g. `create_workspace`, `copy_recipe`, `move_block`, `set_block_option`,
+   `save_in_place`, `preview(workspace, recipe, bundle=…, data_root=…, workflow_config=…)`,
+   `replay_command`. The website exposes only `series-collection`
+   `presentation.style`/`presentation.default_topic` and `series-trend`
+   `presentation.style`; `reference-comparison` `topic` stays on the service/CLI because it
+   selects a different saved result. The website renders exactly one job at a time and keeps
+   the job's immutable recipe snapshot.
+   Preset-first journey (C2a-SITE-02/03): three audience choices — Researcher, Health institution,
+   Public — plus a Custom card that is visible but disabled until the block library exists. A
+   standard choice resolves its own maintained recipe *and* its own saved bundle, so a mismatched
+   pair cannot be selected and nothing falls back to another dataset. Selecting a standard
+   collapses the editor and leaves generation as the next explicit action; nothing renders on
+   load. **Editing keeps the audience selected.** “Customized” is computed from the pending
+   composition against the maintained default (blocks, order, inclusion, disease set and order,
+   expanded disease, chart height) and never from the editor being opened or a copy existing;
+   returning every setting clears it, and “Reset to default” rewrites the copy in place after an
+   inline confirmation without touching generated reports. The first accepted edit creates one
+   managed copy per audience under `<work-root>/drafts/<audience>/`, holding `recipe.json` (the
+   last accepted, always-renderable composition) and `editor.json`
+   (`health-report/composer-draft/2`: exclusions, the *pending* disease selection and a monotonic
+   revision). A disease choice may therefore be incomplete **in the editor** without ever putting
+   an invalid composition on disk: an empty selection is shown as customized and not ready, and
+   generation is refused with “Select at least one disease, or turn off ‘Annual trends by
+   disease’.” until a disease is checked or the section is turned off; a successful generation
+   commits the choice into the recipe. Every saved section is listed with an Include checkbox,
+   up/down order controls, a disease picker (per-disease checkboxes, Select all, Clear, and an
+   expanded-disease choice restricted to checked diseases) and, under collapsed advanced options,
+   a “Chart height” control that changes figure height only. `limitations` and `reproduction` are
+   required and explained; the loader stays the final authority. Display labels and descriptions
+   are a frontend map over stable block ids. Switching to another audience reads that audience's
+   own copy (or its default) and never touches the first one. Generation metadata records a
+   `default`/`customized` classification and the comparison basis used at that moment; history
+   rows show audience, classification, time, recipe digest and a summary of the job's own snapshot,
+   and records written before that field existed are shown as “Customization status not recorded”
+   rather than reclassified. When the current settings match a successful, still-valid report, the
+   page offers that report instead of an identical generation: Generate is disabled, **Show here**
+   loads the retained URL and replay without rendering or copying anything, and the match is keyed
+   on the normalised effective composition, the bundle/snapshot identity, the renderer/code/
+   environment identity and the render parameters — never on a recipe name, badge or file
+   existence. Jobs without that recorded identity (earlier revisions) stay in history but are not
+   auto-reused.
+   Workspace layout (the service path used by the CLI and tests): a `workspace.json` marker, saved
+   recipes beside it, and one directory per preview under `previews/<UTC>-<pid>-<12 hex>/` holding
+   `composition.json` (a byte copy of the saved recipe), `report.html`, `methods.html`,
+   `provenance.json` and `preview.json`.
+   Preview boundary: a preview is a real render marked `Preview — not an accepted publication.`
+   in its provenance, its `preview.json` and a single page banner. It is not a publication:
+   nothing writes `release.json`, an accepted-output pointer or a catalogue entry, and
+   `publish.publish_evidence` is reused only for what it is — byte copies of the saved bundle
+   into `data/` with digest checks. A replay through the CLI is an ordinary render and carries
+   no preview marker. Presentation edits change only the collection presentation identity; the
+   members' analytical, rows and instance identities and all saved values are unchanged.
 
 Full analysis-to-three-composed-output reproduction remains an explicit workflow
 integration/acceptance concern. Broader CSV mapping, repeated comparisons, composed PDF and
