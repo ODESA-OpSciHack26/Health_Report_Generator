@@ -1830,6 +1830,367 @@ Uncommitted, tests only; no render, ledger or acceptance change in this checkpoi
   structurally asserted only; pre-revision reports remain non-reusable by design. G0/G1/R02 and
   challenge acceptance unchanged; nothing was committed, tagged, staged or published.
 
+## Candidate entry B1-CUSTOM-01: Custom block-library composer (author-run, live review pending)
+
+- Scope: Round B1 authorization — enable the 🛠️ Custom card as a genuine block-library composer
+  over **one** saved data context, without changing composition/provenance schemas, scientific
+  identities, validation strength or the accepted audience workflows.
+- Base commit `2938b897d21d0ebe15b792151bdcae3d34433ad2` on `design/contracts` (parent
+  `d2b811b545e055c27cd1381229eb98b46196f05a`), verified clean before editing. The candidate is
+  **uncommitted** working-tree state; nothing was staged, committed, tagged or pushed.
+- Changed paths and hashes at the time of this entry:
+  `A scripts/health_pipeline/composer_library.py 4a9b31ae9e35`,
+  `M scripts/health_pipeline/composer_workspace.py c4e922fdd5e2`,
+  `M src/composer_site.py 82f6d73dba0a`,
+  `M src/composer_web/index.html 925095b2adbf`,
+  `M src/composer_web/app.js 0fd8e19c4d2f`,
+  `M src/composer_web/app.css e853a7c655cf`,
+  `A tests/test_composer_custom.py 8dc4c1111340`,
+  `M tests/test_composer_site.py c5dfb909d27e` (only the assertion that Custom was disabled),
+  `M docs/build/composer/BLOCK-CATALOGUE.md`, `M docs/build/composer/REVIEW_AND_RESUME.md`.
+  `publish.py`, `composer_contracts.py`, the composition/series/draft schemas, the maintained
+  recipes, the reuse-key version and the R templates are **unchanged**.
+- **Contract effects: none.** Recipes stay `health-report/composition-recipe/2` with
+  `contract`/`audience`/`blocks`; `recipe.audience` is the selected bundle's stakeholder id.
+  Provenance and composition records gain no field. The only new state is site-level: draft editor
+  schema `health-report/composer-draft/3` (origin marker, monotonic id counter, retired ids, pending
+  additions) beside the existing `/2` audience drafts, which still read, and optional `origin` /
+  `context` fields in the site's own `job.json`. Older job records are read as preset work and are
+  never rewritten or reclassified.
+- **Capabilities.** Complete nine-type library with builder-derived availability and a specific
+  reason when unavailable; add/remove/restore/duplicate/reorder/configure; explicit confirmed
+  replacement for the three contract singletons and the trend/collection exclusion; options
+  `topics`/`measure`/`years`/`presentation.style`/`presentation.default_topic` and the
+  contract-supported `reference-comparison.topic` saved-result binding (with its identity
+  explanation); stable `c-<slug>-NNNN` ids never reissued; one independent custom draft per data
+  context; generation commits the pending disease choice; history marks custom-library output and
+  reuse uses the effective composition, so an equivalent report stays reusable across modes.
+- **Tests (pinned image `sha256:1ddf322f…`, rootless, `--pull never`, repository and baseline
+  read-only, `PYTHONDONTWRITEBYTECODE=1`).** Evidence
+  `~/.local/state/composer-bootstrap/b-round-b1-20261029T232154Z-78941`:
+  `capability-probe-2.log` (all nine block types buildable from all three retained bundles),
+  `focused-baseline.log` **106 passed exit 0** before editing,
+  `focused-2.log` **283 passed exit 0** (workspace + drafts + site + custom + composition/series/
+  collection/blocks), `custom-6.log` **24 passed exit 0**,
+  `maintained-suite-b1.log` **759 passed (94.65s) exit 0**, `r-smokes-b1.log` seven R smokes
+  **exit 0 each, overall 0**.
+- **Live run (real renders, no stubs).** `attempt-3-live/live-driver.log` **49 checks, 0 failures,
+  exit 0**: custom document and full library; monitoring-overview (absent from the starting
+  composition and from the researcher preset) added; reference-comparison bound to `aids`;
+  collection narrowed to three diseases with an expanded disease; a conflicting single-disease
+  trend refused with `combination_conflict`; out-of-window years and an unavailable saved result
+  refused; reorder/remove/restore/duplicate without id churn; save/reopen identical; real HTTP
+  generation `20261029T235739Z-cf06bef4d8` with `origin=custom`, `context=researcher`,
+  `classification=custom` and a snapshot whose `audience` is `researcher`; provenance equal to the
+  snapshot; exactly one preview banner; reuse confirmed without a second job; the recorded CLI
+  replay re-rendered the same bytes into `attempt-3-live/replay/` with no preview marker; and the
+  three maintained audience editors/renders unchanged (`20261030T000012Z-8e76e5ab51`).
+  Earlier failed attempt `attempt-2-live/` is preserved: 48 passed / 1 failed, the failure being
+  the reuse-candidate defect below.
+- **Defect found and fixed during the live run:** the custom document computed reuse from the saved
+  `recipe.json` (which keeps removed sections) instead of the effective composition, so a report
+  generated with a removed section was not offered for reuse. Fixed in `custom_document`
+  (`current = draft.pending()`), regression test
+  `test_reuse_follows_the_effective_composition_not_the_saved_file`, then the full live run passed.
+- **Requirements advanced, not completed:** R07 (add/remove/duplicate/reorder/configure blocks)
+  advanced for the same-roster composition case — profile cloning and explicit batch selection are
+  still absent; R08 advanced (previews labelled, saved recipes replay through UI and CLI) but not
+  closed. G0/G1/R02/G3/G6 and every acceptance ledger entry are unchanged.
+- **Limits.** No browser was used: keyboard order, focus restoration, live-region announcements,
+  the replacement and Reset confirmations, and the narrow layout are structurally asserted only;
+  no screenshots, accessibility or independent scientific review, no cross-browser claim. The
+  `reference-comparison` slot is a single saved result (one block, one topic) because the contract
+  forbids repeats. `Start from [existing preset]`, uploads, generic tables, profile cloning and
+  analytical scope selection are not implemented. G0/G1/G2 remain open as before.
+
+### Follow-up B1-CUSTOM-01a: block library did not render (user-reported browser FAIL, fixed)
+
+- **Reported defect (user, real browser):** the Custom panel opened with the data-context choices,
+  source summary and section headings, but no library, no sections and “Saved composition —”;
+  console error `Cannot set properties of undefined (setting 'className')`.
+- **Root cause (frontend only).** `renderLibrary()` ended each item with
+  `li.append(document.createElement("div")).className = "inline-confirm";`. `Element.append()`
+  returns `undefined`, so the assignment threw inside the first item's loop, aborting
+  `renderLibrary()` and every later step of `applyCustom()` (sections, readiness, digest, reuse).
+  The API was never at fault: `/api/custom` returned nine library entries and three initial
+  sections for all three contexts in the no-draft state.
+- **Fix.** Build the confirmation container as its own node and append it
+  (`app.js 601e2d9ebe83`). No catch, no skipped rendering, no backend change.
+- **Source-summary check.** Each context's summary title comes from that bundle's
+  `stakeholder.json` and differs (`… technical data report` / `… monitoring brief for health
+  institutions` / `… a public summary`); the observed public title therefore means the public
+  context was selected. The title is legitimate shared per-context metadata, not a mislabel.
+  The new harness asserts the summary belongs to the selected context.
+- **Regression coverage.** `tests/js/minidom.mjs` (spec-faithful DOM subset: `append()` returns
+  undefined; missing ids are null), `tests/js/custom_dom_check.mjs` (loads the real `app.js`,
+  fires `DOMContentLoaded`, opens Custom, renders and switches all three no-draft contexts, and
+  asserts nine library entries, three initial sections with their controls, the composition
+  digest, readiness and the per-context source summary) and `tests/test_composer_custom_ui.py`
+  (runs the harness under pytest, plus a negative control against the pre-fix statement and a
+  static guard against chained DOM mutators). The harness reproduces the exact reported error and
+  a zero-entry library against the pre-fix file.
+- Evidence: `…/b-round-b1-20261029T232154Z-78941/ui-check/dom-check-2.log` **58 checks, 0
+  failures** (real captured payloads), `dom-check-prefix-negative-control.log` reproduces the
+  defect, `focused-ui-fix-4.log` **3 passed exit 0** inside the pinned image with the existing
+  Node binary mounted read-only, `focused-ui-fix-2.log` 85 passed / 2 skipped exit 0 without Node
+  (the skip states the limitation). Earlier attempt logs are kept unchanged.
+- **Still not accepted.** The user's browser retest is required; this DOM harness proves the
+  rendering statements execute and build the expected elements, not layout, focus or
+  accessibility. Round B1 browser acceptance remains **not claimed**.
+
+### Follow-up B1-CUSTOM-01b: one shared section editor for presets and Custom
+
+- **User-reported state:** the library defect is **resolved** (the user can add blocks); the
+  remaining request was parity — Custom should behave like the audience editors rather than keep a
+  second, reduced editor. This is recorded as user-reported resolution of the library defect only;
+  Round B1 acceptance is still not claimed.
+- **Shared code.** `renderSections(doc, adapter, list)` is now the only section renderer:
+  include checkbox, up/down order, label + explanation, the derived option controls, the
+  readiness/blocking messages and the Advanced display options all come from it. The only
+  mode-specific part is a small adapter (`presetAdapter` / `customAdapter`) that maps a control to
+  that mode's server action. Adding blocks stays Custom-only (`renderLibrary` + `addBlock`), and
+  the two draft stores and every existing instance id are untouched.
+- **Parity fixes that fell out of the reuse.** Custom now uses the Include checkbox for recoverable
+  exclusions (Remove/Restore buttons and their duplicate state rules deleted); the collection's
+  disease picker is the preset picker (all eligible diseases, per-disease checkboxes, Select
+  all/Clear, expanded disease restricted to checked diseases, subset and order preserved across
+  exclusion); chart height and the display-year window live under the same Advanced disclosure.
+  A latent defect was fixed at the same time: the old Custom chart-height control sent
+  `option: "style"`, which the service refuses (it expects `presentation.style`), so it could never
+  have worked.
+- **Option coverage by block.** `series-collection`: topics, default-open disease, measure, display
+  years, chart height. `series-trend`: eligible-disease picker (one disease, stated), measure,
+  display years, chart height. `reference-comparison`: saved-result picker with the identity
+  explanation. `coverage-selection`, `monitoring-overview`, `sensitivity-comparison`, `intro`,
+  `limitations`, `reproduction`: no options, and none are invented. The audience editors keep their
+  recorded option surface; only Custom exposes the options its blocks already support.
+- **Server change (additive only).** Both block documents now carry the same keys (`label`,
+  `description`, `options`, `repeatable`, `topic_choices`, `reference_choices`, `measures`,
+  `years_window`); existing keys are unchanged. No recipe, draft, provenance or validation change.
+- Evidence: `shared-editor-harness.log` **43 checks, 0 failures** (real app.js + a transcript from
+  a real Site: preset Clear/Select all, Custom add, Clear, two-disease subset, expanded disease,
+  chart height, display window, reorder, ex-/include, reference topic, the refused trend conflict
+  and its cancel, context switch and restore), `focused-shared-editor-suite.log` **285 passed, 2
+  skipped exit 0**, `maintained-suite-shared-editor.log` **760 passed, 2 skipped exit 0**,
+  `live-shared-editor/driver.log` **25 checks, 0 failures**: real generation of a Custom report
+  with a three-disease collection, compact height, 2022–2025 window and a bound reference result —
+  snapshot, checked members, three rendered panels, one preview banner, and an exact CLI replay.
+- **Limits.** No browser was used; the DOM harness has no layout, CSS, focus or accessibility
+  semantics. User browser retest still required.
+
+### Follow-up B1-CUSTOM-01c: one ordered editor, no separate library
+
+- **User-reported:** the shared editor "works very well" — recorded as scoped positive feedback on
+  the editor behaviour only; accessibility, narrow layout and every block combination remain
+  untested and unaccepted.
+- **Simplified layout.** The Custom card is now a single ordered list under
+  "2. Report sections, in order". Removed: the preamble paragraph, the Data context selector, its
+  summary and status paragraphs, the "Block library" heading/explanation and the separate Add
+  list. Kept unchanged: Include checkbox, ↑/↓, disease pickers, Select all/Clear and the
+  empty-selection guard, expanded-disease handling, chart height, display years, measure, the
+  saved-result picker and its explanation, Duplicate, explicit replacement/Cancel, Reset,
+  Generate/reuse/history/CLI replay.
+- **Discovery without a library.** Every registered type is a row in the ordered list: saved
+  sections in their saved order first (included and excluded alike), then, after them, each
+  supported type the draft does not contain yet as an unchecked "Not in this report" row in
+  library order. Checking one asks the service for one real instance (`add-block`); unavailable
+  types keep their checkbox disabled with the reason beside the row, and a repeat restriction is
+  shown as the row note. Opening the editor allocates nothing and writes nothing.
+- **Duplicate / Delete duplicate.** Duplication is unchanged and offered only for the contract
+  repeatable types — `coverage-selection`, `monitoring-overview`, `sensitivity-comparison`.
+  "Delete duplicate" appears on an instance only while its type has **more than one** instance in
+  the draft (excluded ones counted), asks for an inline confirmation, removes exactly that
+  instance and its pending editor state, retires its id (never reissued) and disappears when one
+  instance remains. The last instance of a type is never deleted this way; required sections can
+  be neither duplicated nor deleted. No block type supports multiple instances? Not the case here,
+  so the capability is real, not invented.
+- **Data binding without a visible selector.** A Custom report is still bound to exactly one saved
+  context; `recipe.audience` remains that bundle's stakeholder id and no mixing is introduced.
+  Resolution is deterministic and server-side: an explicit `context` (API/tests) wins; otherwise
+  an existing Custom draft keeps its own context (the audience being viewed is preferred only when
+  several drafts exist); with no draft at all the currently selected audience is used. Visiting an
+  audience preset never moves, merges or deletes a Custom draft, and opening the editor writes
+  nothing. The binding, source title, periods, reference year, geography and snapshot stay in the
+  generated report and in "Data and source locations", which now also offers a compact per-context
+  "Open … custom draft" route so older drafts stay reachable without a main-editor selector.
+- **Repair found during review.** Reopening the reviewer's own researcher draft failed with
+  "Draft selection names an unknown block": an explicit conflict replacement removed an instance
+  from the recipe but left that instance's pending disease selection in `editor.json` (written, then
+  rejected on the next open). Replacement now drops the removed instance's editor state, and a
+  custom draft prunes such orphaned entries on open so an already-written draft becomes readable
+  again; audience drafts keep the strict rejection. The reviewer's draft reopened without loss.
+- **Tests.** `unified-editor-harness.log` **46 checks, 0 failures** (real app.js + a transcript from
+  a real Site): simplified markup absent, nine ordered rows, add-from-row, no draft on open,
+  subset/expanded/chart-height/years/order, exclude/restore, reference binding, duplicate →
+  delete duplicate → control disappears, single instance not deletable, refused trend with Cancel,
+  and every request matched against the transcript. `focused-unified-suite.log` **299 passed exit
+  0**, `maintained-suite-unified-editor.log` **767 passed, 2 skipped exit 0** (the two Node-only
+  tests skip where Node is absent). New server cases: duplicate deletion, last-instance and
+  singleton refusal, context resolution, two-draft isolation, and "opening writes nothing".
+  No render was re-run: instance/composition semantics are unchanged apart from deletion, which the
+  service-level tests cover.
+- **Limits.** No browser: no layout, focus or accessibility proof. User browser retest required.
+
+### Follow-up B1-CUSTOM-01d: orphaned editor references (user-reported blocker) and the single-trend choice
+
+- **Reported (user, review browser):** "Annual trends by disease is blocked by: Draft excludes blocks
+  it does not contain: ['c-trend-0016']". Reproduced on the reviewer's own researcher draft
+  (`/review/work/drafts/custom/researcher`), bytes preserved first:
+  recipe `2b81bc8fed85e3f1…`, editor `a6781a8507102b7c…` in `draft-repair/*.bak`.
+- **Root cause.** The conflict-replacement transaction removed the replaced instance from
+  `recipe.json` and added it to `retired`, but left the same id in `editor.excluded` (it had been
+  excluded earlier). The next open rejected the draft. This is a mutation-transaction defect, not a
+  validation defect: `_check_editor` was right to refuse a draft whose exclusion names a section it
+  does not contain. The same class of leak existed for `selection` and for `delete-instance`.
+- **Fix.** Every path that removes an instance (`plan_add` with `replace`, `plan_replace`,
+  `plan_delete_instance`) now drops that instance from **all** active editor references — exclusions,
+  pending selection/options and pending replacement state — in the same write, and keeps the id in
+  `retired`. `Draft.orphans()` reports any reference that still names a missing instance; opening the
+  editor reports it and refuses generation, but never rewrites the draft. A new explicit action
+  `repair-draft` removes exactly those references, bumps the revision and records a `repairs` trail;
+  recipe bytes, ids, options, history and retired ids are untouched.
+- **Repair of the existing draft (explicit action, not a side effect of opening).**
+  `draft-repair/driver.log` 14 checks, 0 failures: GET reported `needs_repair=['c-trend-0016']` and
+  wrote nothing; one POST `repair-draft` cleared it; `excluded` became `[]`, `retired` still holds
+  `c-trend-0016`, the recipe bytes are **identical** (`2b81bc8f…`), the revision advanced by one and
+  the repair is recorded. The draft is ready again and the collection is bound to its context.
+- **Single-disease trend removed from the new composer (product-owner direction).** `series-trend`
+  keeps its contract, builder, evidence and CLI replay (`publish.KNOWN_BLOCKS`,
+  `validate_composition` and the series contract are unchanged) but is no longer offered as a new
+  section: `composer_library.composable_blocks()` drives the editor's rows and the library payload.
+  An existing draft that already contains one still opens, renders and is editable; nothing is
+  converted or deleted on load. Wording now says the collection takes one **or more** diseases.
+- **Display labels.** `composer_library.DISPLAY_LABELS` + `display_label()` provide one shared
+  reader-facing map (Hepatitis A/B/C/E, HIV, AIDS, EHEC, Gonorrhoea, …) exposed as `topic_labels`;
+  controls and the expanded-disease select use it while every canonical id stays unchanged. Report
+  legend/table/heading labels are part of the proposed combined-chart work below, not changed here.
+- **Combined chart: design only.** The product-owner direction (one chart, all selected diseases,
+  legend, shared axis) needs a presentation-contract decision before implementation:
+  a `presentation.layout` option on the series-collection entry plus `series-collection-identity/2`.
+  Recorded as a proposal in [BLOCK-CATALOGUE.md](BLOCK-CATALOGUE.md) §6.3a; not implemented.
+- **Tests.** `focused-trend-removal-1…3.log` (41 / 265 passed), `maintained-suite-trend-removal.log`
+  **774 passed, 2 skipped exit 0**, `unified-trend-harness.log` **44 checks, 0 failures** (8 ordered
+  rows, no trend row, add/configure/exclude/restore, duplicate → delete duplicate, request transcript
+  match), `draft-repair/driver.log` 14 checks. New cases: the exact replacement sequence that left
+  `c-trend-0016` behind, orphan reporting + generation refusal + untouched bytes, repair removing
+  only orphans and keeping valid exclusions, historical trend draft still opening, trend absent from
+  the offered library while still valid for the loader, display labels versus ids.
+- **Still not accepted.** Round B1 acceptance is not claimed; the browser retest and the combined
+  chart decision remain open.
+
+### Candidate entry B1-LAYOUT-01: combined annual-trends presentation
+
+- **Authorized decision:** `presentation.layout` (`panels` | `combined`) on the series-collection
+  entry. `panels` is the historical behaviour and identity; `combined` renders one shared chart
+  over the checked members while keeping every per-disease detail panel.
+- **Compatibility.** A collection without a layout — every historical recipe and record — builds
+  the **same** `series-collection-identity/1` payload and digest as before; an explicit
+  `"layout": "panels"` produces the identical identity. Only `combined` moves to
+  `series-collection-identity/2`, whose payload adds `layout`. Analytical, rows and every member
+  instance identity are untouched. Verified by rebuilding a historical payload shape and comparing
+  digests, and by rendering a record that carries no layout (panels rendering).
+- **Renderer (`report_helpers.R`).** Combined: one `<figure class="series-figure
+  series-figure--combined">` with all selected series on a shared linear count axis, legend labelled
+  with the shared display labels, line-type and marker differentiation in addition to colour,
+  wrapped legend, alt text listing the series and scope, one caption stating unit, geography, period,
+  gaps and that reported counts do not establish comparable disease risks. Each member keeps its
+  `<details class="series-panel" id="<member-id>">` with heading, exact-value table, gap note and
+  inspector, and renders **without** its own chart. Native disclosures, no accordion.
+- **Default-open detail.** `presentation.default_topic` still selects which detail panel is expanded,
+  in both layouts; in the composer the control reads "Disease details expanded when the report
+  opens" with the note that all selected diseases are plotted in the chart. The value must belong to
+  the selected set (existing validation) and is never ignored or discarded on a layout switch.
+- **UI.** The collection row gains "Chart layout" (`Separate chart per disease` / `One combined
+  chart`) in both the preset and Custom editors, through the same shared control. A collection
+  created in the composer starts `combined`; a working copy of a maintained preset keeps that
+  preset's presentation until the layout is switched explicitly, because forcing it at copy time
+  would make every fresh draft differ from its preset (permanent “Customized”, changed reset/reuse
+  semantics). The three maintained recipes are **not** changed; making `combined` their permanent
+  default would be a separate follow-up.
+- **Navigation.** C1 monitoring links were verified against the retained detail-panel ids in a real
+  institutional render: every link target resolves to a `series-panel` id, the anchor works without
+  JavaScript, and the combined chart does not replace those ids.
+- **Reuse.** The composition digest includes the layout and `report_helpers.R` is part of the
+  renderer identity, so combined and panels reports never share a reuse key and older keys stop
+  matching the new renderer. Historical jobs keep their bytes, timestamps and metadata.
+- **Evidence.** `r-collection-layout-1.log` (R smoke with combined and explicit panels),
+  `focused-layout-*.log`, `combined-layout-harness.log` (49 checks, layout switching included),
+  `live-combined/driver.log` (real Custom subset and institutional renders, CLI replay). Full
+  counts in the handover.
+- **Limits.** No browser: legend wrapping, chart readability and narrow layout are structurally
+  asserted only. Not a scientific comparison claim: the chart plots saved counts, nothing else.
+
+### Candidate entry B1-NAMING-01: one naming source, section titles, duplicate collections
+
+- **Shared labels.** `scripts/health_pipeline/config/composer/block-labels.json` is now the only
+  reader-facing name/description source; the composer (`composer_library`) and the R renderer
+  (`report_helpers`) both read it, so the library, editor rows, report headings and report
+  navigation use one name per block. Names: Report context, Annual trends by disease, Annual trend
+  for one disease (historical), Change from the reference year, Latest observations by disease,
+  Coverage and included data, Comparison across analysis choices, Limitations and cautions,
+  Reproduction and evidence. The file is in the renderer reuse inputs, so a wording change
+  invalidates reuse. Canonical block ids, recipe fields and analytical inputs are untouched.
+- **Section titles.** Optional top-level `titles: {"<instance_id>": "<plain text>"}` on
+  `health-report/composition-recipe/2` (additive; no `/3`). Validation: existing instance ids only,
+  trimmed, non-empty after trim, ≤ 80 characters, no control characters; blank input removes the
+  override. Renderer uses the title as the section heading and keeps the stable name plus the
+  effective summary beside it; without a title the stable name is the heading and the summary sits
+  beneath. Titles are escaped (`<`, `>`, `&`) and quote-escaped inside the navigation aria-label.
+  Provenance records `composition.section_titles`; the recipe digest covers them.
+- **Identity treatment (verified, not assumed).** No existing identity covers a whole section's
+  presentation. The collection identity (`/1` or `/2`) covers the chart's own inputs — measure,
+  style, layout, default-open disease, periods, members — and deliberately does **not** include a
+  section title; a titled and untitled collection with identical settings produce the same
+  collection identity. The title changes the recipe bytes, hence the composition digest and the
+  reuse key, and is recorded separately in provenance. Analytical, rows and member identities are
+  unchanged by a title.
+- **Editor.** Each row shows the stable name, the instance title when supplied, a factual summary
+  of the effective content (e.g. "Campylobacteriosis, Influenza and Shigellosis · combined chart ·
+  2022–2025 · cases") and its included/excluded state. Summaries use the saved entry with the
+  pending, validated disease choice applied — never the free-text title. Duplicate instances get an
+  editor-only "Copy 2" ordinal derived from the instance id (not from position), so reordering never
+  renumbers it; it is never published.
+- **Duplicate collections.** The single-collection-per-recipe restriction is lifted; the collection
+  is repeatable, keeps a fresh instance id per copy, copies the source title, and keeps its own
+  diseases, layout, chart height, display years, default-open disease, title, order and inclusion.
+  Reference-comparison stays a singleton and the legacy trend/collection exclusion is unchanged.
+  `display_scope` gains a per-section `collections` list; the legacy `collection_default_topic`
+  still describes the first collection in effective recipe order (an excluded section never
+  supplies it).
+- **Monitoring links.** Deterministic rule: the first included, verified and *compatible* collection
+  in effective recipe order (same topic, measure, geography, saved dataset and effective years as
+  the monitoring window). Reordering compatible collections can change the destination; an
+  incompatible collection is never used. The link carries the destination's section title or stable
+  name in its aria-label.
+- **Periods.** Read-only explanations only: the reference comparison states its reporting year and
+  reference year, monitoring states the window and the latest-saved-observation rule (and each row's
+  observation year), and collection display years are labelled as a display window. No per-block
+  analytical overrides were added; a separate design for a report-level analysis-settings workflow
+  accompanies this handover.
+- **Tests and evidence** (`~/.local/state/composer-bootstrap/b-round-b1-20261029T232154Z-78941`):
+  `focused-naming-1..5.log`, `focused-titles-1..5.log`, `focused-naming-ui-*.log`; seven R smokes
+  `r-smokes-naming-3.log` exit 0 each, plus `r-composition-titles-2.log` and
+  `r-monitoring-caption-2.log` for the new heading/title/caption assertions; maintained suite
+  `maintained-suite-naming-3.log` **791 passed, 2 skipped, exit 0**. Real reports in
+  `live-naming-4/`: a two-collection researcher report (combined + panels, titled, one title
+  carrying `"` and `<B>`), its exact CLI replay, and two institutional reports with overlapping
+  collection membership before and after reordering. The driver log itself recorded 3 failed
+  string assertions (Quarto adds an `anchored` class to headings and converts straight quotes to
+  typographic quotes), superseded by `live-naming-4/verify-2.log` **16 checks, 0 failures** over
+  the same packages — heading text normalised, escaping checked in the raw markup, navigation
+  positions, link destinations and caption wording. Earlier attempts `live-naming/`,
+  `live-naming-2/`, `live-naming-3/` are preserved unchanged with their failures.
+- **Corrections made during this slice** (all recorded, not silently fixed): titles of excluded
+  sections were rejected by the effective-composition validator (now filtered out of the effective
+  recipe, kept in the saved draft); `htmlEscape` leaves double quotes, so the navigation attribute
+  uses a quote-escaping helper; the R label loader needed a project-independent fallback (the
+  tabular presentation smoke sources the templates from a temporary directory and now names the
+  project explicitly).
+- **Limits.** No browser acceptance for this slice; summaries are display text derived from saved
+  settings (no new analysis); the analysis-settings workflow is design-only.
+
+
+
 ## Feedback and revision
 
 Use F-001 onward. Record candidate, affected requirement/block, requested change, rationale and blocking/nonblocking status. Classify presentation, behavior, scientific/contract, disclosure or scope; assign one owner and acceptance check. Never change metric meaning to satisfy visual preference.
@@ -1965,12 +2326,89 @@ C2a-SITE-04: the Round A handover's “no overwrite anywhere” was inaccurate f
 This is scoped product acceptance of the reviewed workflow only. It is **not** whole-project
 acceptance, not G0/G1/R02 or G6 acceptance, not scientific acceptance and not release approval;
 no ledger, tag or deployment is changed by this entry.
+### F-006 — user-reported browser acceptance of the combined-layout candidate (scoped)
+
+Reviewer: the product owner. **User-reported PASS**: "the current browser checks all passed" for
+the candidate handed over after the combined annual-trends work. The scope is exactly that
+statement — the reviewer's own browser walkthrough of the composed-report and Custom editor
+behaviour as delivered. No browser version, screenshot, accessibility certification, cross-browser
+or device result, keyboard/focus verification or independent scientific review is claimed or
+inferred, and none of the earlier structurally-asserted items is upgraded by this entry.
+
+Candidate at acceptance (working tree on `design/contracts`, HEAD
+`2938b897d21d0ebe15b792151bdcae3d34433ad2`, uncommitted):
+`publish.py 877d6d0d0afb11ae…`, `composer_library.py 405a14ec96eb9cfe…`,
+`composer_workspace.py a0484438870f364f…`, `report_helpers.R 180254aebd55091b…`,
+`composer_site.py 1dd87133c2a164a1…`, `src/composer_web/app.js 0cc079d9348769fb…`, plus
+`index.html`, `app.css`, the tests and the JS harness listed in B1-LAYOUT-01. These are the bytes
+the reviewer exercised; this record entry is the only change made after acceptance (documentation
+only — no code, recipe, schema, renderer or dependency changed).
+
+Evidence retained unchanged: `~/.local/state/composer-bootstrap/b-round-b1-20261029T232154Z-78941`
+(`combined-layout-harness.log` 49 checks, `maintained-suite-layout.log` 782 passed / 2 skipped,
+`r-smokes-layout.log` seven smokes exit 0, `live-combined/` real Custom and institutional packages
+with CLI replay, `verify-2.log` 32 checks). The review service runs these sources on loopback with
+its own per-run token.
+
+Known limits carried forward: the composed report is HTML-only; no browser, accessibility,
+cross-browser or scientific acceptance; titles, instance duplication of collections and block-level
+period controls are **not** implemented — they are proposed in the next handover and need a
+decision before any schema or contract change.
+
+### F-007 — user-reported acceptance of naming, section titles and duplicate blocks (scoped)
+
+Reviewer: the product owner. **User-reported PASS**: "I have reviewed the website and accept the
+current naming, custom section titles and duplicate-block behaviour." Scope is exactly that
+statement for the delivered workbench: the shared block names, the optional per-section report
+title with its summary, and independent duplicate `Annual trends by disease` instances (including
+their layout, disease and title independence). Nothing further is inferred — no accessibility,
+cross-browser, narrow-layout, keyboard/focus or independent scientific acceptance, and no claim
+about block combinations the reviewer did not exercise.
+
+Candidate at acceptance (working tree on `design/contracts`, HEAD
+`2938b897d21d0ebe15b792151bdcae3d34433ad2`, parent `d2b811b545e055c27cd1381229eb98b46196f05a`,
+index empty, 17 modified + 5 untracked paths, all unstaged): `block-labels.json 1c1019448da1f247…`,
+`composer_library.py 5a986b1c7b8bd94b…`, `composer_workspace.py fef5a8e471ca1644…`,
+`publish.py 481f8e2214933ee0…`, `report_helpers.R b9901e24fca871af…`,
+`composer_site.py 853972a3563ac23d…`, `app.js 7ba76f940f9137df…`, `app.css 53c90c919aa70e5b…`,
+`index.html a63955a63ca3996e…`. This record and the closeout handoff are the only changes made
+after acceptance.
+
+Automated status on those bytes: maintained suite **791 passed, 2 skipped, exit 0**
+(`maintained-suite-naming-3.log`); seven R smokes exit 0 (`r-smokes-naming-3.log`) plus
+`r-composition-titles-2.log`, `r-monitoring-caption-2.log`, `r-collection-layout-1.log`,
+`r-tabular-labels-2.log`; DOM harness re-run against the final tree
+(`focused-naming-ui-final.log` **3 passed, exit 0**); real renders and their replay in
+`live-naming-4/` (`verify-2.log` **16 checks, 0 failures**). Superseded failures are preserved and
+explained in B1-NAMING-01 and the closeout handoff; none is presented as passing.
+
+Known limits carried forward: the composed report is HTML-only; no per-block analytical period
+controls (design-only); the combined chart layout is the composer default for new collections but
+the three maintained presets still render `panels`; browser/visual review of this slice is
+user-reported only for the three accepted behaviours listed above.
+
 
 ## Resume record
 
 Before pausing persist actual branch/commit/worktree status, owned uncommitted paths, task/dependencies, checked artifacts, failures/repair attempts, unresolved decisions, locks/other writers, next executable action and prohibited shortcuts. Raw/private logs remain in approved storage. Commit durable decision/checkpoint summaries at useful boundaries, not every transient thought.
 
 On resume fetch/read current refs, inspect other writers, validate candidate/manifests and reconcile intervening changes. Never reset/stash/delete shared work or reuse stale success. Open questions are not implicit approvals.
+
+### Current resume point — Round B1 closeout (naming, titles, duplicate collections)
+
+- Candidate: working tree on `design/contracts` at `2938b897d21d0ebe15b792151bdcae3d34433ad2`,
+  parent `d2b811b545e055c27cd1381229eb98b46196f05a`; 17 modified + 5 untracked paths, index empty,
+  everything unstaged and uncommitted. Nothing was committed, pushed, merged or deployed.
+- Durable handoff for the next agent:
+  [ROUND-B1-CLOSEOUT.md](ROUND-B1-CLOSEOUT.md) (accepted scope, key files/contracts, evidence,
+  limits, review-service access, first safe action, prohibited actions).
+- Live review service: container `e6c0233ca79e` running from these sources on `127.0.0.1:2719`
+  only (token file named in the handoff; never printed). It was **not** restarted at closeout.
+- Preserved user state: Custom drafts for `researcher` and `health_institution` and nine saved
+  reports in `b-round-b1-20261029T232154Z-78941/review/work` (the researcher draft carries the
+  reviewer's own edits made during acceptance).
+- Open, design-only: the report-level "Analysis settings" workflow (window/reference-year choice
+  with a new analysis bundle) — see the handoff; no code exists for it.
 
 ## Runner opening instruction
 
