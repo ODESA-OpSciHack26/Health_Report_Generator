@@ -2410,6 +2410,66 @@ On resume fetch/read current refs, inspect other writers, validate candidate/man
 - Open, design-only: the report-level "Analysis settings" workflow (window/reference-year choice
   with a new analysis bundle) — see the handoff; no code exists for it.
 
+### Checkpoint entry — Round B1 source checkpoint (2026-10-30, owner-approved commit scope)
+
+This entry is written by the preservation/source-checkpoint milestone after the F-007 candidate
+was committed exactly as accepted. The entries above (B1-NAMING-01, F-006, F-007, the closeout
+handoff and the earlier resume point) stay dated historical records of the uncommitted candidate
+they describe; they are intentionally not rewritten.
+
+- **Preserved pre-commit candidate identity** (approved commit scope): working tree on
+  `design/contracts` at `2938b897d21d0ebe15b792151bdcae3d34433ad2`, parent
+  `d2b811b545e055c27cd1381229eb98b46196f05a`, 17 modified + 7 untracked files (24 paths, which
+  include the closeout handoff), index empty. All 24 files were verified against
+  `source-manifest.tsv` (sha256/size/mode/mtime) inside the preservation snapshot before staging.
+- **Checkpoint commits** (both on top of that tree; no history rewritten, original authorship):
+  - `c04c89fd75da96e5168e4c4b60e11df808509633` — the 21 code/test/config files (Custom block
+    library composer, combined layout, shared names, section titles, duplicate collections).
+  - `a2cc51034a67b821475f374f64d84ce9166b3027` — the 3 B1 acceptance/closeout documentation
+    files (this protocol entry predates it, so this checkpoint entry itself is carried by a third
+    commit whose SHA is recorded in the preservation manifest and handover, not inside this file).
+  Staged bytes for every file were checked against the audited manifest (`git cat-file blob :<p>`
+  sha256 comparison), `git diff --cached --check` exit 0, and post-commit `git diff-tree --check`
+  exit 0. Working tree clean at close.
+- **Relationship to historical evidence**: the F-006/F-007 evidence in
+  `b-round-b1-20261029T232154Z-78941` and the C2a rounds was produced from the then-uncommitted
+  tree and is not relabelled as a run of these commits. New pre-commit verification on the exact
+  candidate bytes (pinned image, repo read-only, network disabled, `source-hashes.txt`):
+  791 passed, 2 skipped (`maintained-suite.log`), seven R smokes exit 0 — in
+  `~/.local/state/composer-bootstrap/preserve-b1-precommit-20261030T220708Z-280901`.
+  The 2 skips are `test_shared_editor_renders_and_drives_both_modes` and
+  `test_rendering_harness_still_catches_the_chained_append_defect`, both
+  `skipif(NODE is None)` — the pinned image has no Node; the equivalent DOM harness ran green
+  pre-commit in `focused-naming-ui-final.log` (3 passed). The final bytes of those two tests are
+  covered by that retained harness log plus the closeout hash prefixes; a Node-bearing fresh
+  checkout is the remaining gap. Nothing skipped in this checkpoint run was counted as passing.
+- **Local-checkpoint recovery** (fresh local clone, distinct from remote recovery): clone of the
+  committed repository at `a2cc510…` (worktree clean, zero secret-scan hits); in the pinned image,
+  maintained suite **791 passed, 2 skipped** and seven R smokes exit 0; the three retained
+  live-naming-4 jobs re-rendered with their exact recorded replay commands into fresh packages;
+  the retained 16-check semantic verifier ran over those fresh packages **16/16, 0 failures**
+  (titles, escaping, navigation, combined charts, monitoring links/captions). The 2 skips are the
+  same Node-gated harness tests as the pre-commit run (pinned image has no Node; covered by the
+  retained `focused-naming-ui-final.log`). One recovery-run failure was a harness defect: the
+  read-only `/app` mount broke the snakemake dry-run in `test_release_docs.py` (it writes
+  `.snakemake/`); rerun in a writable run root passed. Evidence:
+  `/home/builder/preservation/round-b1-20261030T215949Z/recovery-local-20261030T222431Z`
+  (authoritative; the earlier `…T221657Z-attempt1-harness` dir is retained, not counted as
+  passing). User-state restore: hash-validated against the same-disk snapshot; a separate review
+  server was **not** started (no cut-over — see the handover record).
+- **Remote publication status**: intended `git push origin
+  refs/heads/design/contracts:refs/heads/design/contracts` remains **pending** at the time this
+  entry is written; the host has no GitHub credential. Owner-approved host authentication, live
+  remote ref confirmation and a remote-backed checkout check are required before the milestone
+  can be called complete. Local verification is not remote recovery.
+- **Preservation** (original, prior to the pre-commit checks): `/home/builder/preservation/
+  round-b1-20261030T215949Z` — git bundle, candidate patch + untracked tar + source manifest,
+  full repo tar, quiescence-checked user-state tar (tokens excluded), evidence tar + 18 923-file
+  hash list, `docker save` of `sha256:1ddf322f…`, per-file final SHA256SUMS; same-disk only.
+  A supplemental manifest covering the newer pre-commit evidence and the checkpoint commits is
+  recorded with that snapshot; see the final handover for its identity and the independent-backup
+  status.
+
 ## Runner opening instruction
 
 Read this protocol, HANDOFF.md, requirements.json, five task briefs and governing product documents. Verify seed/frozen refs; establish preparation dispositions and current baseline; report unrun/failed checks. Assign the earliest unblocked minimal task before editing. Use its design branch from the current build tip. Preserve source/request contracts and workflow policy. Produce tested incremental commits and independently reviewed internal PRs to build/composer. At visual checkpoints supply actual rendered output and pause acceptance for human feedback. Continue only independent unblocked work. Do not merge the umbrella PR, modify frozen/main/releases or claim an unattended runner started merely by reading these instructions.
