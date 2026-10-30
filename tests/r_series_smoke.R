@@ -180,7 +180,7 @@ writeLines(toJSON(list(contract = 'health-report/composition-recipe/2', audience
 composed <- compose_report_html(b, recipe_path, evidence_file = path)
 stopifnot(grepl('id="series-a"', composed, fixed = TRUE))
 stopifnot(count_of(composed, 'href="#series-a"') == 1L)
-stopifnot(grepl('Time trend', composed, fixed = TRUE))
+stopifnot(grepl('Annual trend for one disease', composed, fixed = TRUE))
 stopifnot(grepl('2021–2024', composed, fixed = TRUE))
 stopifnot(grepl('id="ref-a-inspect"', composed, fixed = TRUE))
 

@@ -146,4 +146,43 @@ stopifnot(grepl('.composed-report summary:focus-visible', style, fixed = TRUE))
 stopifnot(grepl('.composed-report .series-panel>summary', style, fixed = TRUE))
 stopifnot(grepl('overflow-wrap:anywhere', style, fixed = TRUE))
 
+# --- Combined layout: one shared chart, per-disease details without their own charts ---
+combined_record <- function(members, default = 'beta') {
+  record <- collection(members, default = default)
+  record$presentation$layout <- 'combined'
+  record$identities$contract <- 'series-collection-identity/2'
+  record
+}
+combined <- render(list(combined_record(list(alpha, beta, gamma))))
+stopifnot(lengths(regmatches(combined, gregexpr(
+  '<figure class="series-figure series-figure--combined"', combined, fixed = TRUE))) == 1)
+stopifnot(lengths(regmatches(combined, gregexpr('<img', combined, fixed = TRUE))) == 1)
+stopifnot(grepl('Alpha, Beta, Gamma', combined, fixed = TRUE))          # legend/alt labels
+stopifnot(grepl('do not establish comparable individual disease risks', combined, fixed = TRUE))
+stopifnot(grepl('shared linear axis', combined, fixed = TRUE))
+stopifnot(grepl('Switzerland and Liechtenstein', combined, fixed = TRUE))
+stopifnot(lengths(regmatches(combined, gregexpr(
+  '<details class="series-panel"', combined, fixed = TRUE))) == 3)
+stopifnot(lengths(regmatches(combined, gregexpr(
+  'class="series-panel" id="sc-2-beta" open', combined, fixed = TRUE))) == 1)
+for(id in c('sc-1-alpha', 'sc-2-beta', 'sc-3-gamma')) {
+  start <- regexpr(paste0('id="', id, '"'), combined, fixed = TRUE)[[1]]
+  stopifnot(start > 0)
+  tail <- substr(combined, start, nchar(combined))
+  end <- regexpr('</details>\\s*<details class="series-panel"', tail)
+  p <- if(end[[1]] > 0) substr(tail, 1, end[[1]]) else tail
+  stopifnot(grepl('View exact values', p, fixed = TRUE))
+  stopifnot(grepl('-inspect"', p, fixed = TRUE))
+  stopifnot(!grepl('<img', p, fixed = TRUE))          # no duplicate per-disease charts
+}
+# Gaps and single points stay honest in the combined details.
+stopifnot(grepl('Not available', combined, fixed = TRUE))
+stopifnot(grepl('single point', combined, fixed = TRUE))
+
+# The panels layout is unchanged when it is requested explicitly.
+panels <- render(list(do.call(function(...) { r <- collection(...); r$presentation$layout <- 'panels'; r },
+                              list(list(alpha, beta), default = 'alpha'))))
+stopifnot(lengths(regmatches(panels, gregexpr('<img', panels, fixed = TRUE))) == 2)
+stopifnot(!grepl('series-figure--combined', panels, fixed = TRUE))
+
 cat('r-collection smoke passed\n')

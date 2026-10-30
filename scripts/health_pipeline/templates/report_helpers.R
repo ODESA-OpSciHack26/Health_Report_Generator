@@ -23,6 +23,10 @@ change_table <- function(b) {
 }
 
 esc <- function(x) as.character(htmltools::htmlEscape(as.character(x)))
+# Attribute-safe escaping: htmlEscape leaves double quotes alone, which is fine in element text
+# but not in an attribute such as the navigation label.
+esc_attr <- function(x) gsub('"', '&quot;', gsub("'", '&#39;', esc(x), fixed = TRUE),
+                             fixed = TRUE)
 metric_value <- function(b,id) { x<-b$metrics$value[match(id,b$metrics$metric_id)]; if(length(x)) x else NA_real_ }
 format_pct <- function(x,digits=0) ifelse(is.na(x),'Not available',sprintf(paste0('%+.',digits,'f%%'),as.numeric(x)))
 fmt_num <- function(x) if(is.null(x) || is.na(x)) '—' else format(as.numeric(x), big.mark = ',', scientific = FALSE, trim = TRUE)
@@ -623,13 +627,37 @@ source('audience_reports.R')
 # block is the primary finding, and a renderer that receives the recipe entry. The entry's
 # instance_id is the section's DOM identity and is passed into the renderer so descendant
 # ids can be namespaced per instance.
-composition_labels <- c(intro = 'Context', 'series-trend' = 'Time trend',
-                        'series-collection' = 'Time trends by topic',
-                        'coverage-selection' = 'What this report covers',
-                        'monitoring-overview' = 'Monitoring overview',
-                        'sensitivity-comparison' = 'Sensitivity comparison',
-                        'reference-comparison' = 'Reference comparison',
-                        limitations = 'Limitations', reproduction = 'Reproduction')
+# One shared reader-facing name/description source, also read by the composer
+# (scripts/health_pipeline/config/composer/block-labels.json). Canonical block ids and every
+# analytical input stay untouched; these are display strings only.
+block_labels_path <- function() {
+  project <- Sys.getenv('HEALTH_REPORT_PROJECT', '')
+  relative <- file.path('scripts', 'health_pipeline', 'config', 'composer', 'block-labels.json')
+  candidates <- c(if(nzchar(project)) file.path(project, relative) else character(0),
+                  file.path(getwd(), '..', '..', 'config', 'composer', 'block-labels.json'),
+                  file.path(getwd(), relative))
+  # Walk up from the working directory as a last resort: the templates directory, the repository
+  # root and a rendered temporary directory are all covered without another copy of the labels.
+  directory <- normalizePath(getwd(), mustWork = FALSE)
+  for(step in seq_len(6)) {
+    candidates <- c(candidates, file.path(directory, relative))
+    directory <- dirname(directory)
+  }
+  hit <- candidates[file.exists(candidates)]
+  if(!length(hit)) stop('Block labels are missing: composer/block-labels.json was not found')
+  hit[[1]]
+}
+
+load_block_labels <- function() {
+  payload <- jsonlite::fromJSON(block_labels_path(), simplifyVector = FALSE)
+  blocks <- payload$blocks
+  if(is.null(blocks) || !length(blocks)) stop('Block labels are malformed')
+  names <- vapply(names(blocks), function(key) as.character(blocks[[key]]$name), character(1))
+  if(any(!nzchar(names))) stop('Block labels carry an empty name')
+  setNames(names, names(blocks))
+}
+
+composition_labels <- load_block_labels()
 
 # One explicit mapping from the existing presentation layout to composed-block explanation.
 # No new configuration field: layout/detail_level already live in each audience's stakeholder.json.
@@ -1120,7 +1148,7 @@ series_trend_block <- function(b, evidence_file = '', instance_id = NULL) {
 
 # Body of one saved annual series panel: heading, chart, exact values, inspector. Reused by the
 # single-topic block and by each collection member, so there is exactly one series renderer.
-series_body_html <- function(b, block, instance_id) {
+series_body_html <- function(b, block, instance_id, include_chart = TRUE) {
   req <- block$periods$requested
   years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
   label <- label_topic(b, block$selection$topic)
@@ -1195,9 +1223,10 @@ series_body_html <- function(b, block, instance_id) {
     else paste0('<p class="series-meta">', esc(label), ' · measure ', esc(block$selection$measure),
                 ' · ', esc(geography), ' · displayed years ', esc(displayed), '</p>')
 
-  paste0('<h3>', esc(heading), '</h3>', meta_line,
+  figure <- if(include_chart) paste0(
     '<figure class="series-figure', if(compact) ' series-figure--compact' else '', '">',
-    chart_image(plot_series_trend(block), alt, 7.2, if(compact) 2.4 else 3.6), '</figure>',
+    chart_image(plot_series_trend(block), alt, 7.2, if(compact) 2.4 else 3.6), '</figure>') else ''
+  paste0('<h3>', esc(heading), '</h3>', meta_line, figure,
     '<p class="caption">', explanation, '</p>',
     '<details class="series-values" id="', esc(paste0(instance_id, '-values')),
     '"><summary>View exact values</summary><div class="table-scroll">',
@@ -1236,6 +1265,63 @@ series_body_html <- function(b, block, instance_id) {
 }
 
 
+# --- Combined collection chart: every checked member series on one shared axis ---
+# One point per saved observation, taken from the members' checked records. No value is
+# recalculated, aggregated, normalised or smoothed; a year without a saved observation breaks the
+# line for that series.
+collection_series_data <- function(members) {
+  parts <- lapply(seq_along(members), function(i) {
+    obs <- members[[i]]$observations
+    if(is.null(obs) || !length(obs)) return(NULL)
+    data.frame(year = vapply(obs, function(o) as.integer(o$year), integer(1)),
+               value = vapply(obs, function(o) as.numeric(o$value), numeric(1)),
+               order = rep(i, length(obs)), stringsAsFactors = FALSE)
+  })
+  parts <- Filter(Negate(is.null), parts)
+  if(!length(parts)) return(NULL)
+  d <- do.call(rbind, parts)
+  d <- d[order(d$order, d$year), , drop = FALSE]
+  d$segment <- unlist(lapply(split(d$year, d$order), function(y) cumsum(c(TRUE, diff(y) > 1L))),
+                      use.names = FALSE)
+  d
+}
+
+collection_series_labels <- function(b, members) {
+  vapply(members, function(m) label_topic(b, as.character(m$selection$topic)), character(1))
+}
+
+COLLECTION_LINE_COLOURS <- c('#247c85', '#b95d35', '#1f6b4a', '#52656b',
+                             '#7d5ba6', '#a8602a', '#2b5d8c', '#8a5a1f')
+COLLECTION_LINE_TYPES <- c('solid', '22', '42', 'dotdash', 'dashed', 'twodash')
+COLLECTION_POINT_SHAPES <- c(16, 17, 15, 18, 3, 4, 8, 1)
+
+plot_collection_combined <- function(b, members, measure, years) {
+  d <- collection_series_data(members)
+  labels <- collection_series_labels(b, members)
+  d$series <- factor(labels[d$order], levels = unique(labels))
+  n <- nlevels(droplevels(d$series))
+  legend_rows <- max(1, ceiling(n / 4))
+  ggplot2::ggplot(d, ggplot2::aes(year, value)) +
+    ggplot2::geom_line(ggplot2::aes(group = interaction(series, segment), colour = series,
+                                    linetype = series), linewidth = 0.9, na.rm = TRUE) +
+    ggplot2::geom_point(ggplot2::aes(colour = series, shape = series), size = 2.2, na.rm = TRUE) +
+    ggplot2::scale_colour_manual(values = rep(COLLECTION_LINE_COLOURS, length.out = n)) +
+    ggplot2::scale_linetype_manual(values = rep(COLLECTION_LINE_TYPES, length.out = n)) +
+    ggplot2::scale_shape_manual(values = rep(COLLECTION_POINT_SHAPES, length.out = n)) +
+    ggplot2::guides(colour = ggplot2::guide_legend(nrow = legend_rows, byrow = TRUE),
+                    linetype = ggplot2::guide_legend(nrow = legend_rows, byrow = TRUE),
+                    shape = ggplot2::guide_legend(nrow = legend_rows, byrow = TRUE)) +
+    ggplot2::scale_x_continuous(breaks = years,
+                                limits = c(min(years) - 0.2, max(years) + 0.2),
+                                labels = function(x) as.character(as.integer(x))) +
+    ggplot2::scale_y_continuous(limits = c(0, NA),
+                                expand = ggplot2::expansion(mult = c(0, .08)),
+                                labels = function(x) format(x, big.mark = ',',
+                                                            scientific = FALSE, trim = TRUE)) +
+    ggplot2::labs(x = 'Year', y = paste('Reported', measure)) +
+    report_theme()
+}
+
 # --- Saved annual series collection: one native disclosure panel per topic ---
 series_panel_span <- function(block) {
   req <- block$periods$requested
@@ -1273,6 +1359,9 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
   measure <- as.character(block$measure)
   editorial <- identical(presentation_profile(b)$layout, 'editorial')
   count <- length(members)
+  # Absent layout (every record written before layouts existed) is the historical panels layout.
+  layout <- if(!is.null(block$presentation$layout)) as.character(block$presentation$layout) else 'panels'
+  combined <- identical(layout, 'combined')
   default_label <- NULL
   for(m in members) if(identical(as.character(m$selection$topic), default_topic))
     default_label <- label_topic(b, as.character(m$selection$topic))
@@ -1280,7 +1369,8 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
     default_label <- label_topic(b, as.character(members[[1]]$selection$topic))
   ordering_text <- if(identical(as.character(block$ordering), 'author')) 'author order'
     else 'deterministic topic order'
-  intro <- if(editorial)
+  intro <- if(combined) ''
+  else if(editorial)
     paste0('<p class="collection-intro">Reported ', esc(measure), ' for ', count,
            ' notifiable diseases. <strong>', esc(default_label),
            '</strong> is open first; open another disease to explore it. Each disease is shown on ',
@@ -1289,6 +1379,31 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
     paste0('<p class="collection-intro">Saved annual series for ', count,
            ' topics, one panel each bound through its own count metrics. Panels are independent: ',
            'values, units and gaps belong to the topic in that panel. A missing year is a gap, not zero.</p>')
+
+  combined_html <- ''
+  if(combined) {
+    req <- block$periods$requested
+    years <- seq.int(as.integer(req[[1]]), as.integer(req[[2]]))
+    span <- paste0(years[[1]], '–', years[[length(years)]])
+    geography <- if(identical(as.character(members[[1]]$selection$geography), 'CHFL'))
+      'Switzerland and Liechtenstein' else 'Switzerland'
+    series_labels <- collection_series_labels(b, members)
+    alt <- paste0('Reported ', measure, ' by year for ', count, ' diseases on one shared linear ',
+                  'axis: ', paste(series_labels, collapse = ', '), '. ', span, ', ', geography,
+                  '. A year without a saved observation is a gap, not zero.')
+    combined_html <- paste0(
+      '<p class="collection-intro">Reported ', esc(measure), ' for ', count,
+      ' notifiable diseases on one shared linear axis (', esc(geography), ', ', esc(span),
+      '). Every selected disease is plotted. A line breaks where a year has no saved observation. ',
+      'Reported counts alone do not establish comparable individual disease risks.</p>',
+      '<figure class="series-figure series-figure--combined">',
+      chart_image(plot_collection_combined(b, members, measure, years), alt, 8.4, 4.4),
+      '</figure>',
+      '<p class="caption">One line per selected disease, drawn from that disease\'s own saved ',
+      'annual observations. No value is summed, normalised, indexed, smoothed or estimated, and a ',
+      'missing year is a gap rather than a zero. The expandable details below keep each disease\'s ',
+      'exact saved values.</p>')
+  }
 
   body <- character(0)
   for(member in members) {
@@ -1301,7 +1416,7 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
     body <- c(body, paste0(
       '<details class="series-panel" id="', esc(member$instance_id), '"',
       if(open) ' open' else '', '><summary>', meta, '</summary>',
-      series_body_html(b, member, member$instance_id),
+      series_body_html(b, member, member$instance_id, include_chart = !combined),
       '</details>'))
   }
   members_list <- paste(vapply(members, function(member) paste0(
@@ -1314,6 +1429,7 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
     '<div class="audit-row"><span>Topics</span><strong>', count, ' (', esc(ordering_text), ')</strong></div>',
     '<div class="audit-row"><span>Measure</span><strong>', esc(measure), '</strong></div>',
     '<div class="audit-row"><span>Style</span><strong>', esc(block$presentation$style), '</strong></div>',
+    '<div class="audit-row"><span>Chart layout</span><strong>', esc(layout), '</strong></div>',
     '<div class="audit-row"><span>Default open topic</span><strong>', esc(default_topic), '</strong></div>',
     '<div class="audit-row"><span>Requested years</span><strong>',
     esc(paste(block$periods$requested, collapse = '–')), '</strong></div>',
@@ -1327,7 +1443,7 @@ series_collection_block <- function(b, evidence_file = '', instance_id = NULL) {
     '<p class="caption">Each member is a separately checked series record. Identities show that ',
     'these records agree with each other; they do not prove the numbers are correct. Opening a ',
     'panel performs no calculation.</p></details>')
-  paste0(intro, paste(body, collapse = '\n'), inspect)
+  paste0(intro, combined_html, paste(body, collapse = '\n'), inspect)
 }
 
 # --- Composites of saved records: coverage, monitoring, sensitivity (no calculation) ---
@@ -1338,7 +1454,7 @@ read_composed_records <- function(evidence_file) {
                      error = function(e) NULL)
   if(is.null(record)) return(list(error = 'evidence file is not valid JSON'))
   if(is.null(record$blocks) || !length(record$blocks)) return(list(error = 'evidence file carries no blocks'))
-  list(blocks = record$blocks)
+  list(blocks = record$blocks, composition = record$composition)
 }
 
 composed_record <- function(evidence_file, instance_id, type) {
@@ -1400,34 +1516,54 @@ panel_link_plan <- function(evidence_file, rows, geography, years) {
     if(is.null(members)) members <- list()
     years_match <- length(effective) > 0L && identical(effective, window)
     for(member in members)
-      candidates[[length(candidates) + 1L]] <- list(member = member, years_match = years_match)
+      candidates[[length(candidates) + 1L]] <- list(member = member, years_match = years_match,
+                                                    collection = collection)
   }
+  # Destination naming: the target section's own title when it has one, else the stable block
+  # name. No instance id is ever shown to the reader.
+  titles <- if(!is.null(parsed$composition$section_titles)) parsed$composition$section_titles else list()
+  section_name <- function(collection) {
+    instance <- as.character(collection$instance_id)
+    value <- titles[[instance]]
+    if(!is.null(value) && nzchar(as.character(value))) as.character(value)
+    else as.character(composition_labels[['series-collection']])
+  }
+  plan$names <- vector('list', length(rows))
   for(index in seq_along(rows)) {
     item <- rows[[index]]
     topic <- as.character(item$topic)
     same <- Filter(function(candidate)
       identical(as.character(candidate$member$selection$topic), topic), candidates)
     if(!length(same)) { plan$notes[[index]] <- 'absent'; next }
-    # Two checked collections claiming the same topic would mean two panels for one topic, so
-    # the row is left unlinked instead of picking one.
-    if(length(same) > 1L) { plan$notes[[index]] <- 'ambiguous'; next }
-    target_id <- as.character(same[[1]]$member$instance_id)
-    if(length(target_id) != 1L || !grepl('^[a-z0-9][a-z0-9_-]{2,39}$', target_id)) {
-      plan$notes[[index]] <- 'invalid'; next }
-    member <- same[[1]]$member
-    if(!identical(member$status, 'verified')) { plan$notes[[index]] <- 'unchecked'; next }
-    measure <- item$measure
-    if(is.null(measure) || !nzchar(as.character(measure))) { plan$notes[[index]] <- 'empty'; next }
-    if(!identical(as.character(measure), as.character(member$selection$measure))) {
-      plan$notes[[index]] <- 'measure'; next }
-    if(!identical(as.character(geography), as.character(member$selection$geography))) {
-      plan$notes[[index]] <- 'source'; next }
-    row_dataset <- item$dataset_id; member_dataset <- member$selection$dataset_id
-    if(!is.null(row_dataset) && !is.null(member_dataset) &&
-       !identical(as.character(row_dataset), as.character(member_dataset))) {
-      plan$notes[[index]] <- 'source'; next }
-    if(!isTRUE(same[[1]]$years_match)) { plan$notes[[index]] <- 'period'; next }
-    plan$targets[[index]] <- target_id
+    # Deterministic resolution: the first *compatible* verified collection in effective recipe
+    # order. Reordering compatible collections can therefore change the destination; an
+    # incompatible collection is never used just because it comes first.
+    chosen <- NULL
+    reason <- NULL
+    for(candidate in same) {
+      member <- candidate$member
+      if(!identical(member$status, 'verified')) { if(is.null(reason)) reason <- 'unchecked'; next }
+      measure <- item$measure
+      if(is.null(measure) || !nzchar(as.character(measure))) {
+        if(is.null(reason)) reason <- 'empty'; next }
+      if(!identical(as.character(measure), as.character(member$selection$measure))) {
+        if(is.null(reason)) reason <- 'measure'; next }
+      if(!identical(as.character(geography), as.character(member$selection$geography))) {
+        if(is.null(reason)) reason <- 'source'; next }
+      row_dataset <- item$dataset_id; member_dataset <- member$selection$dataset_id
+      if(!is.null(row_dataset) && !is.null(member_dataset) &&
+         !identical(as.character(row_dataset), as.character(member_dataset))) {
+        if(is.null(reason)) reason <- 'source'; next }
+      if(!isTRUE(candidate$years_match)) { if(is.null(reason)) reason <- 'period'; next }
+      target_id <- as.character(member$instance_id)
+      if(length(target_id) != 1L || !grepl('^[a-z0-9][a-z0-9_-]{2,39}$', target_id)) {
+        if(is.null(reason)) reason <- 'invalid'; next }
+      chosen <- target_id
+      plan$names[[index]] <- section_name(candidate$collection)
+      break
+    }
+    if(is.null(chosen)) plan$notes[[index]] <- if(is.null(reason)) 'absent' else reason
+    else plan$targets[[index]] <- chosen
   }
   plan
 }
@@ -1435,9 +1571,13 @@ panel_link_plan <- function(evidence_file, rows, geography, years) {
 panel_link_cell <- function(plan, index) {
   if(!isTRUE(plan$present)) return('')
   target <- plan$targets[[index]]
-  if(!is.null(target))
+  if(!is.null(target)) {
+    destination <- if(!is.null(plan$names) && length(plan$names) >= index &&
+                      !is.null(plan$names[[index]])) paste0(': ', plan$names[[index]]) else ''
     return(paste0('<a class="panel-link" href="#', esc(target),
-                  '" data-panel-link="1">View annual series</a>'))
+                  '" data-panel-link="1" aria-label="View annual series for this disease',
+                  esc(destination), '">View annual series</a>'))
+  }
   code <- plan$notes[[index]]
   if(is.null(code) || is.na(code)) code <- 'absent'
   paste0('<span class="panel-link-note">', esc(panel_link_notes(code)), '</span>')
@@ -1630,8 +1770,11 @@ monitoring_overview_block <- function(b, evidence_file = '', instance_id = NULL)
       esc(if(!length(item$comparisons)) '—' else paste(
         vapply(item$comparisons, function(cmp) cmp$metric_id, character(1)), collapse = ', ')),
       '</td></tr>'), character(1)), collapse = '')
-  paste0('<p class="caption">One row per included topic, using its latest saved annual value ',
-    'inside the reporting window. Units are named per row and are never put on a common scale.</p>',
+  paste0('<p class="caption">One row per included topic. Each value is the latest saved ',
+    'annual observation inside the reporting window (',
+    esc(paste(b$cfg$years, collapse = '–')),
+    '), not a fixed reporting year, with that observation year shown per row. Units are named ',
+    'per row and are never put on a common scale.</p>',
     '<div class="table-scroll"><table class="report-table"><caption>Latest saved observation by topic</caption>',
     '<thead><tr><th scope="col">Topic</th><th scope="col">Measure</th><th scope="col">Year</th>',
     '<th scope="col">Value</th><th scope="col">Saved comparison</th><th scope="col">Availability</th>',
@@ -1775,7 +1918,8 @@ composition_style <- function() paste0('<style>',
   '@media (max-width:480px){.composed-report{padding:20px 12px 28px}.composed-report .finding-counts{gap:18px;flex-wrap:wrap}}',
   '.composed-report .provenance-list dd code,.composed-report .report-settings td code,.composed-report .audit-row strong,.composed-report .audit-row code{min-width:0;overflow-wrap:anywhere;white-space:normal}',
   '.composed-kicker{margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#52656b}',
-  '.composed-heading{margin:0 0 12px;font-size:21px;color:#18343c}',
+  '.composed-heading{margin:0 0 6px;font-size:21px;color:#18343c}',
+  '.composed-section-meta{margin:0 0 14px;font-size:14px;color:#52656b}',
   '.finding-value{margin:6px 0 2px;font-size:44px;line-height:1;font-weight:700;color:#247c85}',
   '.finding-meta{margin:6px 0 0;color:#52656b}',
   '.finding-counts{display:flex;gap:34px;margin:16px 0 4px}',
@@ -1785,6 +1929,59 @@ composition_style <- function() paste0('<style>',
   '.block-inspect{margin-top:16px;border-top:1px dashed #dfe6e5;padding-top:10px}',
   '.block-inspect summary{cursor:pointer;color:#247c85;font-weight:600}',
   '</style>')
+
+# Compact, factual summary of what a section actually shows, built from the checked record.
+# It never repeats the section title and never invents a scientific difference.
+compact_topics <- function(labels) {
+  labels <- as.character(labels)
+  n <- length(labels)
+  if(n == 0L) return(NULL)
+  if(n == 1L) return(labels[[1]])
+  if(n <= 3L) return(paste0(paste(labels[-n], collapse = ', '), ' and ', labels[[n]]))
+  paste0(paste(labels[1:3], collapse = ', '), ' and ', n - 3L, ' more')
+}
+
+compose_section_summary <- function(b, entry, record) {
+  kind <- as.character(entry$block)
+  if(is.null(record) || !identical(record$status, 'verified')) return(NULL)
+  span <- function(periods) {
+    req <- periods$requested
+    if(is.null(req) || length(req) < 2L) return(NULL)
+    paste0(as.integer(req[[1]]), '–', as.integer(req[[length(req)]]))
+  }
+  if(kind == 'series-collection') {
+    members <- Filter(function(m) identical(m$status, 'verified'), record$members)
+    labels <- vapply(members, function(m) label_topic(b, as.character(m$selection$topic)),
+                     character(1))
+    layout <- if(!is.null(record$presentation$layout)) as.character(record$presentation$layout)
+              else 'panels'
+    parts <- c(compact_topics(labels),
+               if(identical(layout, 'combined')) 'combined chart' else 'separate charts',
+               span(record$periods), as.character(record$measure))
+    return(paste(parts[!vapply(parts, is.null, logical(1))], collapse = ' · '))
+  }
+  if(kind == 'series-trend')
+    return(paste(c(compact_topics(label_topic(b, as.character(record$selection$topic))),
+                   span(record$periods), as.character(record$measure)), collapse = ' · '))
+  if(kind == 'reference-comparison')
+    return(paste0(record$latest_year, ' reporting year vs ', record$reference_year,
+                  ' reference year · saved ', record$result$unit, ' change'))
+  if(kind == 'monitoring-overview') {
+    window <- span(list(requested = as.integer(b$cfg$years)))
+    with_saved <- Filter(function(row) identical(row$availability, 'saved observation'),
+                         record$rows)
+    return(paste0('Latest saved observation per disease · window ', window, ' · ',
+                  length(with_saved), ' of ', length(record$rows), ' diseases with a saved value'))
+  }
+  if(kind == 'coverage-selection') {
+    counts <- record$counts
+    return(paste0(counts$datasets_included, ' datasets included, ', counts$datasets_excluded,
+                  ' excluded · ', counts$topics_included, ' topics'))
+  }
+  if(kind == 'sensitivity-comparison')
+    return(paste0(length(record$pairs), ' saved specification pairs'))
+  NULL
+}
 
 compose_report_html <- function(b, recipe_path, evidence_file='', registry=composition_registry) {
   if(!nzchar(recipe_path) || !file.exists(recipe_path))
@@ -1807,6 +2004,22 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
   # reusing a record under a second identity.
   if(sum(ids == 'reference-comparison') > 1L)
     stop('Repeated reference-comparison blocks are not supported yet')
+  # Optional per-instance section titles. Absent in every historical recipe; opening a draft
+  # never writes one. Plain text only, escaped on output, and never used as an identifier.
+  titles <- if(!is.null(recipe$titles) && is.list(recipe$titles)) recipe$titles else list()
+  parsed_records <- tryCatch(read_composed_records(evidence_file), error = function(e) NULL)
+  records <- if(!is.null(parsed_records) && is.null(parsed_records$error)) parsed_records$blocks else list()
+  record_for <- function(instance_id) {
+    hit <- Filter(function(x) identical(as.character(x$instance_id), as.character(instance_id)),
+                  records)
+    if(length(hit)) hit[[1]] else NULL
+  }
+  section_heading <- function(instance_id, stable) {
+    value <- titles[[instance_id]]
+    if(is.null(value)) return(stable)
+    value <- trimws(as.character(value))
+    if(!nzchar(value)) stable else value
+  }
   sections <- list()
   for(i in seq_along(ids)) {
     entry <- blocks[[i]]
@@ -1816,14 +2029,38 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
     body <- spec$render(b, entry, evidence_file=evidence_file)
     if(!is.character(body) || !nzchar(body)) stop('Block rendered nothing: ', entry$block)
     primary <- isTRUE(spec$primary)
-    sections[[length(sections)+1L]] <- list(id=entry$instance_id, label=spec$label, html=paste0(
+    stable <- as.character(spec$label)
+    heading <- section_heading(entry$instance_id, stable)
+    summary <- compose_section_summary(b, entry, record_for(entry$instance_id))
+    # A custom title replaces the heading; the stable name and the effective summary stay
+    # beside it. Without a title the stable name is the heading and the summary sits beneath.
+    meta_parts <- c(if(!identical(heading, stable)) stable else NULL,
+                    if(!is.null(summary) && nzchar(summary)) summary else NULL)
+    meta <- if(length(meta_parts)) paste(meta_parts, collapse = ' · ') else NULL
+    sections[[length(sections)+1L]] <- list(id=entry$instance_id, label=heading,
+      stable=stable, summary=summary, html=paste0(
       '<section class="composed-block', if(primary) ' composed-block--primary' else '',
-      '" id="', esc(entry$instance_id), '"><p class="composed-kicker">', if(primary) 'Primary finding' else 'Supporting block',
-      '</p><h2 class="composed-heading">', esc(spec$label), '</h2>', body, '</section>'))
+      '" id="', esc(entry$instance_id), '"><p class="composed-kicker">',
+      if(primary) 'Primary finding' else 'Supporting block',
+      '</p><h2 class="composed-heading">', esc(heading), '</h2>',
+      if(!is.null(meta)) paste0('<p class="composed-section-meta">', esc(meta), '</p>') else '',
+      body, '</section>'))
   }
+  # Navigation: the heading text, disambiguated by the compact summary when two sections would
+  # read alike, and always carrying its position for assistive technology.
+  nav_labels <- vapply(sections, function(s) s$label, character(1))
+  duplicated <- duplicated(nav_labels) | duplicated(nav_labels, fromLast = TRUE)
+  nav_text <- vapply(seq_along(sections), function(i) {
+    section <- sections[[i]]
+    if(!duplicated[[i]] || is.null(section$summary) || !nzchar(section$summary))
+      return(section$label)
+    paste0(section$label, ' · ', section$summary)
+  }, character(1))
   nav <- paste0('<nav class="composed-nav" aria-label="Report blocks">',
-    paste(vapply(sections, function(s) paste0('<a href="#', esc(s$id), '">', esc(s$label), '</a>'),
-                 character(1)), collapse=''), '</nav>')
+    paste(vapply(seq_along(sections), function(i) paste0(
+      '<a href="#', esc(sections[[i]]$id), '" aria-label="Section ', i, ' of ',
+      length(sections), ': ', esc_attr(nav_text[[i]]), '">', esc(nav_text[[i]]), '</a>'),
+      character(1)), collapse=''), '</nav>')
   pr_title <- read_provenance()
   # A preview render records its status in provenance; the page states it once. Absent for every
   # ordinary composed render, so default output keeps its exact markup.

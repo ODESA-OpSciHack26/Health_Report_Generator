@@ -133,6 +133,9 @@ coll3 <- collection(list(alpha, beta, gamma))
 html <- render_mon(list(monitor(rows3), coll3))
 stopifnot(identical(hrefs(html), c('sc-1-alpha', 'sc-2-beta', 'sc-3-gamma')))
 stopifnot(identical(hrefs(html), panel_ids(render_collection(list(coll3)))))
+stopifnot(grepl('latest saved annual observation inside the reporting window (2021–2025)',
+                html, fixed = TRUE))
+stopifnot(grepl('not a fixed reporting year', html, fixed = TRUE))
 stopifnot(count_of(html, 'data-panel-link="1"') == 3L)
 stopifnot(count_of(html, '>View annual series</a>') == 3L)
 stopifnot(count_of(html, 'if(window.__composedPanelLinkOpen) return;') == 1L)
@@ -166,7 +169,10 @@ stopifnot(!length(hrefs(plain)))
 stopifnot(count_of(plain, 'data-panel-link') == 0L, count_of(plain, '<script') == 0L)
 stopifnot(count_of(plain, 'panel-link-note') == 0L, count_of(plain, '<noscript>') == 0L)
 stopifnot(grepl('<td>Alpha</td><td>cases</td><td>2025</td><td>16</td>', plain, fixed = TRUE))
-stopifnot(grepl('<td>Alpha<a class="panel-link" href="#sc-1-alpha" data-panel-link="1">View annual series</a></td><td>cases</td><td>2025</td><td>16</td>',
+stopifnot(grepl(paste0('<td>Alpha<a class="panel-link" href="#sc-1-alpha" data-panel-link="1" ',
+                       'aria-label="View annual series for this disease: ',
+                       'Annual trends by disease">View annual series</a></td><td>cases</td>',
+                       '<td>2025</td><td>16</td>'),
                 html, fixed = TRUE))
 for(surface in c('<td>cases</td><td>2025</td><td>9</td>', 'Reference +60.0% (2019→2025)',
                  'id="mon-a-endpoints"', 'id="mon-a-bindings"', 'No composite score is derived.')) {
@@ -198,12 +204,19 @@ failed <- render_mon(list(monitor(rows3), collection(list(), status = 'failed', 
 stopifnot(!length(hrefs(failed)))
 stopifnot(count_of(failed, 'No panel: collection not checked') == 3L)
 
-# 8. Ambiguous and invalid targets are detected rather than guessed.
-ambiguous <- render_mon(list(monitor(list(row('alpha'))),
-                             collection(list(alpha)),
-                             collection(list(alpha), instance = 'sc-other')))
-stopifnot(!length(hrefs(ambiguous)))
-stopifnot(grepl('No panel: ambiguous target', ambiguous, fixed = TRUE))
+# 8. Overlapping membership resolves deterministically to the first compatible collection in
+# recipe order; an invalid target is still refused rather than guessed.
+overlap <- render_mon(list(monitor(list(row('alpha'))),
+                           collection(list(alpha)),
+                           collection(list(member('sc-9-alpha', 'alpha')),
+                                      instance = 'sc-other')))
+stopifnot(identical(hrefs(overlap), 'sc-1-alpha'))
+# Reversing two compatible collections changes the destination, as documented.
+reversed_order <- render_mon(list(monitor(list(row('alpha'))),
+                                  collection(list(member('sc-9-alpha', 'alpha')),
+                                             instance = 'sc-other'),
+                                  collection(list(alpha))))
+stopifnot(identical(hrefs(reversed_order), 'sc-9-alpha'))
 invalid <- render_mon(list(monitor(list(row('alpha'))), collection(list(member('SC-BAD', 'alpha')))))
 stopifnot(!length(hrefs(invalid)))
 stopifnot(grepl('No panel: invalid target', invalid, fixed = TRUE))

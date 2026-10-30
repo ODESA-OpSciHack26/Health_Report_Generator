@@ -533,10 +533,14 @@ def test_topic_change_changes_analytical_identity(tmp_path):
     assert virus["identities"]["analytical"] != other["identities"]["analytical"]
 
 
-def _render(tmp_path, monkeypatch, bundle, blocks, name="render"):
+def _render(tmp_path, monkeypatch, bundle, blocks, name="render", titles=None):
     work = tmp_path / name
     work.mkdir(parents=True)
     recipe = write_recipe(work, blocks)
+    if titles:
+        payload = json.loads(recipe.read_text())
+        payload["titles"] = titles
+        recipe.write_text(json.dumps(payload))
     commands = []
 
     def fake_package(source, dest):

@@ -495,6 +495,11 @@ def build_series_block(bundle,project_root,instance_id,topic,measure,years=None,
 
 COLLECTION_CONTRACT='health-report/series-collection/1'
 COLLECTION_IDENTITY_CONTRACT='series-collection-identity/1'
+# Presentation identity for a collection that renders one combined multi-disease chart. The
+# analytical, rows and member identities are untouched; only the presentation payload gains the
+# effective layout. A collection without a layout keeps the historical /1 payload byte for byte.
+COLLECTION_IDENTITY_CONTRACT_V2='series-collection-identity/2'
+COLLECTION_LAYOUTS=('panels','combined')
 MEMBER_ID_PREFIX='sc'
 IDENTIFIER_RE=re.compile(r'[a-z0-9][a-z0-9_-]{2,39}')
 
@@ -529,16 +534,21 @@ def build_series_collection(bundle,project_root,instance_id,topics,measure,years
     """
     import composer_contracts as contracts
     bundle=Path(bundle)
-    style='standard'; default_topic=None
+    style='standard'; default_topic=None; layout='panels'
     try:
         if presentation is not None:
-            if not isinstance(presentation,dict) or not set(presentation)<={'style','default_topic'}:
+            if (not isinstance(presentation,dict)
+                    or not set(presentation)<={'style','default_topic','layout'}):
                 raise contracts.ContractError('presentation',
-                    'presentation accepts only style and default_topic')
+                    'presentation accepts only style, default_topic and layout')
             style=presentation.get('style','standard')
             if style not in SERIES_STYLES:
                 raise contracts.ContractError('presentation',
                     f'unsupported presentation style {style!r}; supported {list(SERIES_STYLES)}')
+            layout=presentation.get('layout','panels')
+            if layout not in COLLECTION_LAYOUTS:
+                raise contracts.ContractError('presentation',
+                    f'unsupported layout {layout!r}; supported {list(COLLECTION_LAYOUTS)}')
             default_topic=presentation.get('default_topic')
         loaded=contracts.load_bundle(bundle)
         eligible=sorted({row.get('topic') for row in loaded.selection
@@ -588,7 +598,12 @@ def build_series_collection(bundle,project_root,instance_id,topics,measure,years
         effective=sorted({int(year) for member in members
                           for year in member['periods']['effective']})
 
-        payload={'contract':COLLECTION_IDENTITY_CONTRACT,'instance_id':instance_id,
+        # The historical panels presentation keeps the /1 payload exactly, so a recipe without a
+        # layout (or with an explicit "panels") verifies against records written before layouts
+        # existed. Only a combined collection moves to /2, whose payload names the layout.
+        identity_contract=(COLLECTION_IDENTITY_CONTRACT if layout=='panels'
+                           else COLLECTION_IDENTITY_CONTRACT_V2)
+        payload={'contract':identity_contract,'instance_id':instance_id,
                  'measure':measure,'style':style,'default_topic':default_topic,
                  'periods':{'requested':[int(start),int(end)],'effective':effective},
                  'members':[{'instance_id':member['instance_id'],
@@ -596,14 +611,16 @@ def build_series_collection(bundle,project_root,instance_id,topics,measure,years
                              'status':member['status'],
                              'instance_identity':member['identities']['instance']}
                             for member in members]}
+        if layout!='panels':
+            payload['layout']=layout
         record={'status':'verified','instance_id':instance_id,
             'component':{'type':'series-collection','version':'1'},
             'contract':{'series':contracts.SERIES_CONTRACT,'collection':COLLECTION_CONTRACT},
             'topics':requested,'ordering':ordering,'measure':measure,
-            'presentation':{'style':style,'default_topic':default_topic},
+            'presentation':{'style':style,'default_topic':default_topic,'layout':layout},
             'periods':payload['periods'],'members':members,
             'identities':{'collection':_collection_identity(payload),
-                          'contract':COLLECTION_IDENTITY_CONTRACT,
+                          'contract':identity_contract,
                           'members':payload['members']},
             'snapshot':{'snapshot_id':loaded.snapshot['snapshot_id'],
                         'snapshot_path':loaded.snapshot.get('snapshot_path')},
@@ -1014,7 +1031,10 @@ def _resolved_scope(recipe, records):
     """
     by_id = {record['instance_id']: record for record in records}
     standalone, collected, monitored, groups = set(), set(), set(), []
+    # The legacy field describes the first included collection in effective recipe order; the
+    # per-section list keeps every collection separate.
     collection_default = None
+    collections = []
     for entry in recipe['blocks']:
         record = by_id.get(entry['instance_id'])
         if not record or record.get('status') != 'verified':
@@ -1026,7 +1046,15 @@ def _resolved_scope(recipe, records):
             collected.update((member.get('selection') or {}).get('topic')
                              for member in (record.get('members') or [])
                              if member.get('status') == 'verified')
-            collection_default = (record.get('presentation') or {}).get('default_topic')
+            default_topic = (record.get('presentation') or {}).get('default_topic')
+            collections.append({'instance_id': record['instance_id'],
+                                'default_topic': default_topic,
+                                'layout': (record.get('presentation') or {}).get('layout'),
+                                'topics': sorted({(member.get('selection') or {}).get('topic')
+                                                  for member in (record.get('members') or [])
+                                                  if member.get('status') == 'verified'})})
+            if collection_default is None:
+                collection_default = default_topic
         elif kind == 'reference-comparison':
             standalone.add(record['subject'])
         elif kind == 'monitoring-overview':
@@ -1041,6 +1069,7 @@ def _resolved_scope(recipe, records):
     return {'standalone_topics': sorted(standalone),
             'collection_topics': sorted(collected),
             'collection_default_topic': collection_default,
+            'collections': collections,
             'monitoring_topics': sorted(monitored),
             'displayed_topics': sorted(standalone | collected | monitored),
             'group_summaries': groups}
@@ -1126,7 +1155,7 @@ def validate_composition(recipe):
     use this function rather than re-implementing any of these rules.
     """
     if not isinstance(recipe, dict): raise ValueError('Composition recipe must be an object')
-    unknown = set(recipe) - {'contract','audience','blocks'}
+    unknown = set(recipe) - {'contract','audience','titles','blocks'}
     if unknown: raise ValueError(f'Unsupported composition fields: {sorted(unknown)}')
     contract = recipe.get('contract')
     if contract not in (COMPOSITION_CONTRACT, COMPOSITION_CONTRACT_V2):
@@ -1201,12 +1230,15 @@ def validate_composition(recipe):
             presentation = entry.get('presentation')
             if presentation is not None:
                 if (not isinstance(presentation, dict)
-                        or not set(presentation) <= {'style', 'default_topic'}):
+                        or not set(presentation) <= {'style', 'default_topic', 'layout'}):
                     raise ValueError(f'Invalid presentation for block instance {instance!r}: '
                                      'expected style and optionally default_topic')
                 if 'style' in presentation and presentation['style'] not in SERIES_STYLES:
                     raise ValueError(f'Unsupported presentation style for block instance {instance!r}: '
                                      f'{presentation["style"]!r}; supported {list(SERIES_STYLES)}')
+                if 'layout' in presentation and presentation['layout'] not in COLLECTION_LAYOUTS:
+                    raise ValueError(f'Unsupported layout for block instance {instance!r}: '
+                                     f'{presentation["layout"]!r}; supported {list(COLLECTION_LAYOUTS)}')
                 if 'default_topic' in presentation:
                     default_topic = presentation['default_topic']
                     if not isinstance(default_topic, str) or not TOPIC_ID.fullmatch(default_topic):
@@ -1230,14 +1262,47 @@ def validate_composition(recipe):
         raise ValueError('Repeated reference-comparison blocks are not supported yet')
     if sum(1 for entry in blocks if entry['block'] == 'series-trend') > 1:
         raise ValueError('Repeated series-trend blocks are not supported yet')
-    # A collection binds the same saved rows a standalone series block would; allowing both (or
-    # two collections) in one recipe would duplicate the same chart under different identities.
-    if sum(1 for entry in blocks if entry['block'] == 'series-collection') > 1:
-        raise ValueError('Repeated series-collection blocks are not supported yet')
     if (any(entry['block'] == 'series-collection' for entry in blocks)
             and any(entry['block'] == 'series-trend' for entry in blocks)):
         raise ValueError('A recipe cannot combine series-trend and series-collection blocks')
+    # Several collection instances are allowed: each keeps its own diseases, layout, display
+    # window, title and position, and its members are checked independently.
+    _validate_titles(recipe, blocks)
     return recipe
+
+
+MAX_SECTION_TITLE = 80
+
+
+def _validate_titles(recipe, blocks):
+    """Optional per-instance section titles: plain text, existing instances only.
+
+    The map is additive and absent in every historical recipe. Titles are presentation: they
+    never reach an analytical, rows or member identity, but they are part of the recipe bytes and
+    therefore of the composition/reuse key.
+    """
+    titles = recipe.get('titles')
+    if titles is None:
+        return
+    if not isinstance(titles, dict):
+        raise ValueError('Composition titles must be an object of instance id -> title')
+    ids = {entry['instance_id'] for entry in blocks}
+    for instance_id, value in titles.items():
+        if instance_id not in ids:
+            raise ValueError(f'Composition title names an unknown block instance: {instance_id!r}')
+        if not isinstance(value, str):
+            raise ValueError(f'Composition title for {instance_id!r} must be text')
+        if value != value.strip():
+            raise ValueError(f'Composition title for {instance_id!r} has leading or trailing '
+                             'whitespace')
+        if not value:
+            raise ValueError(f'Composition title for {instance_id!r} is empty; omit the entry '
+                             'instead')
+        if len(value) > MAX_SECTION_TITLE:
+            raise ValueError(f'Composition title for {instance_id!r} is longer than '
+                             f'{MAX_SECTION_TITLE} characters')
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError(f'Composition title for {instance_id!r} contains control characters')
 
 def load_composition(path):
     """Load a recipe file and validate it through the single shared validator."""
@@ -1285,7 +1350,9 @@ def composition_provenance(recipe, path, blocks):
         instances.append(instance)
     return {'contract': recipe['contract'], 'audience': recipe.get('audience'),
             'recipe_path': Path(path).resolve().as_posix(), 'recipe_sha256': digest(path),
-            'effective_recipe': recipe['blocks'], 'instances': instances, 'mode': 'composed'}
+            'effective_recipe': recipe['blocks'],
+            'section_titles': dict(recipe.get('titles') or {}),
+            'instances': instances, 'mode': 'composed'}
 
 def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None,composition=None):
     if composition is not None and fmt != 'html':

@@ -41,6 +41,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "scripts" / "health_pipeline"))
 
 import composer_workspace as workbench  # noqa: E402
+import composer_library as library  # noqa: E402
 
 WEB_DIR = HERE / "composer_web"
 CUSTOM = "custom"
@@ -67,11 +68,17 @@ REUSE_FILES = ("scripts/health_pipeline/publish.py",
 # deliberately absent: it selects a different saved result and changes analytical identities.
 SITE_OPTIONS = {
     "series-collection": {"style": "presentation.style",
-                          "default_topic": "presentation.default_topic"},
+                          "default_topic": "presentation.default_topic",
+                          "layout": "presentation.layout"},
     "series-trend": {"style": "presentation.style"},
 }
-EDIT_ACTIONS = ("move-up", "move-down", "set-style", "set-topics", "set-default-open",
-                "include", "exclude")
+EDIT_ACTIONS = ("move-up", "move-down", "set-style", "set-layout", "set-topics",
+                "set-default-open", "set-title", "include", "exclude")
+# Custom composition mode: the same draft machinery over the registered block library, plus
+# explicit replacement/discard for singleton and mutually exclusive sections.
+CUSTOM_ACTIONS = ("add-block", "remove", "restore", "move-up", "move-down", "duplicate",
+                  "delete-instance", "repair-draft", "set-option", "set-topics",
+                  "set-default-open", "set-title", "replace-pending", "discard-pending")
 GEOGRAPHY_LABELS = {"CHFL": "Switzerland and Liechtenstein", "CH": "Switzerland"}
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -118,6 +125,8 @@ class Job:
     recipe_sha256: str
     classification: str | None = None
     classification_basis: str | None = None
+    context: str | None = None
+    origin: str = "preset"
     created_ns: int | None = field(default_factory=lambda: time.time_ns())
     reuse_key: str | None = None
     reuse_components: dict | None = None
@@ -136,6 +145,7 @@ class Job:
         return {"job_id": self.job_id, "preset": self.preset, "mode": self.mode,
                 "classification": self.classification,
                 "classification_basis": self.classification_basis,
+                "context": self.context, "origin": self.origin,
                 "created_ns": self.created_ns,
                 "reuse_key": self.reuse_key,
                 "reuse_components": self.reuse_components,
@@ -187,7 +197,7 @@ class Site:
     # Fields a browser may see. Paths, snapshots and preview directories stay internal.
     PUBLIC_FIELDS = ("job_id", "preset", "mode", "classification", "status", "created_utc",
                      "started_utc", "finished_utc", "recipe_sha256", "error",
-                     "replay_command", "report_url", "open_url")
+                     "replay_command", "report_url", "open_url", "origin", "context")
 
     @classmethod
     def public_job(cls, payload):
@@ -195,6 +205,11 @@ class Site:
         # Records written before this revision carry bundle_id and no preset. The audience is
         # recorded evidence; the render mode is not, so it stays blank instead of being guessed.
         public["preset"] = public["preset"] or payload.get("bundle_id")
+        # Records written before composition modes existed are preset work; a custom job is only
+        # called custom when it recorded both the mode and its data context.
+        if not public.get("origin"):
+            public["origin"] = ("custom" if (payload.get("preset") == CUSTOM
+                                             and payload.get("context")) else "preset")
         return public
 
     def wait_idle(self, timeout=15.0):
@@ -266,6 +281,7 @@ class Site:
             key["topics"] = "eligible" if resolved == list(eligible) else resolved
             key["measure"] = entry.get("measure")
             key["years"] = entry.get("years")
+            key["layout"] = presentation.get("layout") or "panels"
             default = presentation.get("default_topic")
             key["default_topic"] = default or (resolved[0] if resolved else None)
         elif block == "series-trend":
@@ -298,8 +314,10 @@ class Site:
         selection = [key for key in draft_order
                      if by_draft[key]["topics"] != by_default[key]["topics"]
                      or by_draft[key]["default_topic"] != by_default[key]["default_topic"]]
+        layout = [key for key in draft_order
+                  if by_draft[key].get("layout") != by_default[key].get("layout")]
         return {"excluded": excluded, "reordered": draft_order != default_order,
-                "style": style, "selection": selection}
+                "style": style, "selection": selection, "layout": layout}
 
     # ------------------------------------------------------------------ reuse identity
     @staticmethod
@@ -434,13 +452,8 @@ class Site:
                             code="draft_not_ready")
         return draft.pending(), bundle, eligible
 
-    def reuse_candidate(self, preset):
-        """Newest eligible successful job for the current pending settings, or None."""
-        try:
-            recipe, bundle, eligible = self._pending_recipe(preset)
-        except SiteError:
-            return None
-        key = self.reuse_key(self.reuse_components(recipe, bundle, eligible))
+    def _best_reuse(self, key):
+        """Newest eligible successful job for a reuse key, or None."""
         best = None
         for directory in sorted(self.jobs_root.glob("*"), reverse=True):
             record_path = directory / "job.json"
@@ -457,11 +470,44 @@ class Site:
                      record.get("created_ns") or 0, record.get("job_id") or "")
             if best is None or stamp > best[0]:
                 best = (stamp, record)
-        return self._reuse_payload(best[1]) if best else None
+        return best[1] if best else None
+
+    def reuse_candidate(self, preset):
+        """Newest eligible successful job for the current pending settings, or None."""
+        try:
+            recipe, bundle, eligible = self._pending_recipe(preset)
+        except SiteError:
+            return None
+        key = self.reuse_key(self.reuse_components(recipe, bundle, eligible))
+        found = self._best_reuse(key)
+        return self._reuse_payload(found) if found else None
 
     def confirm_reuse(self, preset, job_id):
         """Revalidate one retained job against the current settings before showing it."""
         recipe, bundle, eligible = self._pending_recipe(preset)
+        key = self.reuse_key(self.reuse_components(recipe, bundle, eligible))
+        record = self._job_record(job_id)
+        allowed, reason = self._reuse_eligible(record, key)
+        if not allowed:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            f"That report can no longer be reused: {reason}.",
+                            code="reuse_unavailable")
+        return self._reuse_payload(record)
+
+    def confirm_reuse_custom(self, context, job_id):
+        """Revalidate one retained job against the current custom composition."""
+        context = self._custom_context(context)
+        _recipe_path, bundle = self.preset(context)
+        eligible = list(self.topics(context))
+        draft = self.custom_draft(context)
+        if draft is None:
+            recipe = library.initial_recipe(context)
+        else:
+            problem = draft.pending_problem()
+            if problem is not None:
+                raise SiteError(HTTPStatus.BAD_REQUEST, problem["message"],
+                                code="draft_not_ready")
+            recipe = draft.pending()
         key = self.reuse_key(self.reuse_components(recipe, bundle, eligible))
         record = self._job_record(job_id)
         allowed, reason = self._reuse_eligible(record, key)
@@ -497,10 +543,17 @@ class Site:
                 # A broken draft does not take the audience away; it is reported, not hidden.
                 entry["draft_error"] = str(error)
             entries.append(entry)
-        entries.append({"id": CUSTOM, "label": "Custom", "available": False, "draft": False,
-                        "customized": False, "draft_error": None, "source": None,
-                        "recipe_sha256": None,
-                        "reason": "Build from the block library — coming in the next revision."})
+        # Custom is a composition mode over one saved data context, not a fourth stakeholder and
+        # not another audience preset. It is offered whenever at least one context can be read.
+        usable = [entry["id"] for entry in entries if entry["available"]]
+        entries.append({"id": CUSTOM, "label": "Custom", "available": bool(usable),
+                        "draft": False, "customized": False, "draft_error": None,
+                        "source": None, "recipe_sha256": None, "mode": "composition",
+                        "detail": "Compose a report from the block library over one saved data "
+                                  "context.",
+                        "reason": (None if usable else
+                                   "No saved data context is installed, so nothing can be "
+                                   "composed.")})
         return entries
 
     # ------------------------------------------------------------------ drafts
@@ -551,21 +604,38 @@ class Site:
             raise SiteError(HTTPStatus.CONFLICT, str(error), code="bundle_unreadable") from None
 
     def _block_document(self, recipe, excluded, eligible, pending_by_id):
-        """Every saved section, included or not, with the values the editor should show."""
+        """Every saved section, included or not, with the values the editor should show.
+
+        The shape here is shared with the Custom editor: the same keys drive the same
+        frontend controls. Only ``editable`` differs by mode, which is what keeps the
+        accepted audience surface unchanged while Custom exposes the options its blocks
+        already support.
+        """
         document = []
         for entry in recipe["blocks"]:
             instance_id = entry["instance_id"]
             pending = pending_by_id.get(instance_id) or entry
             presentation = pending.get("presentation") or {}
+            spec = library.LIBRARY.get(entry["block"]) or {}
             item = {"instance_id": instance_id, "block": entry["block"],
-                    "included": instance_id not in excluded}
+                    "label": spec.get("label") or entry["block"],
+                    "description": spec.get("description") or "",
+                    "included": instance_id not in excluded,
+                    "repeatable": spec.get("repeatable", False),
+                    "repeat_reason": spec.get("repeat_reason"),
+                    "options": {}, "topic_choices": list(eligible),
+                    "reference_choices": []}
             reason = workbench.REQUIRED_BLOCKS.get(entry["block"])
             item["required"] = reason is not None
             item["required_reason"] = reason
             editable = []
             if "style" in SITE_OPTIONS.get(entry["block"], {}):
                 item["style"] = presentation.get("style") or "standard"
+                item["options"]["style"] = item["style"]
                 editable.append("style")
+            if entry["block"] == "series-collection":
+                item["options"]["layout"] = presentation.get("layout") or "panels"
+                editable.append("layout")
             if entry["block"] in workbench.SELECTABLE_BLOCKS:
                 topics = pending.get("topics")
                 selected = list(eligible) if topics == "eligible" else list(topics or [])
@@ -573,6 +643,8 @@ class Site:
                 item.update({"selected_topics": selected,
                              "default_topic": default_topic or (selected[0] if selected else None),
                              "topic_choices": list(eligible)})
+                item["options"].update({"topics": selected,
+                                        "default_topic": item["default_topic"]})
                 editable.extend(["topics", "default_topic"])
             item["editable"] = editable
             document.append(item)
@@ -605,6 +677,7 @@ class Site:
                 "differences": self._differences(pending, maintained, eligible),
                 "source": self._bundle_source(bundle),
                 "eligible_topics": list(eligible),
+                "topic_labels": library.topic_labels(eligible, bundle),
                 "source_recipe_sha256": workbench.file_digest(recipe_path),
                 "default_recipe_sha256": hashlib.sha256(
                     workbench.recipe_bytes(maintained)).hexdigest(),
@@ -613,14 +686,22 @@ class Site:
                 "pending_sha256": hashlib.sha256(workbench.recipe_bytes(pending)).hexdigest(),
                 "excluded": excluded,
                 "reuse": self.reuse_candidate(preset),
-                "blocks": self._block_document(draft.recipe if draft else maintained,
-                                               excluded, eligible, pending_by_id),
+                "blocks": self._annotate_sections(
+                    self._block_document(draft.recipe if draft else maintained,
+                                         excluded, eligible, pending_by_id),
+                    draft.recipe if draft else maintained,
+                    library.bundle_context(bundle),
+                    selection={instance: {"topics": (chosen or {}).get("topics")}
+                               for instance, chosen in (draft.selection.items()
+                                                        if draft is not None else [])}),
                 "required_blocks": dict(workbench.REQUIRED_BLOCKS)}
 
     def _plan_edit(self, draft, action, instance, value):
         """Map a website action onto the workspace service and validate it; writes nothing."""
         if action in ("move-up", "move-down", "include", "exclude"):
             return workbench.edit_plan(draft, action, instance)
+        if action == "set-title":
+            return workbench.plan_title(draft, instance, value)
         entry = next((item for item in draft.recipe["blocks"]
                       if item["instance_id"] == instance), None)
         if entry is None:
@@ -686,6 +767,508 @@ class Site:
             raise SiteError(HTTPStatus.CONFLICT, str(error), code="reset_refused") from None
         return self.editor_document(preset)
 
+    # ------------------------------------------------------------------ section identification
+    def _section_summary(self, entry, context):
+        """Factual summary of a section's effective content, from the recipe entry and bundle."""
+        block = entry["block"]
+        window = context.get("years_window") or []
+        span = f"{window[0]}–{window[-1]}" if len(window) >= 2 else None
+        labels = context.get("topic_labels") or {}
+        if block == "series-collection":
+            topics = entry.get("topics")
+            resolved = (list(context["included_topics"]) if topics == "eligible"
+                        else list(topics or []))
+            presentation = entry.get("presentation") or {}
+            layout = presentation.get("layout") or "panels"
+            years = entry.get("years") or window
+            names = [labels.get(topic, topic) for topic in resolved]
+            parts = [library.summary_topics(names) if names else "no diseases selected",
+                     "combined chart" if layout == "combined" else "separate charts",
+                     (f"{years[0]}–{years[-1]}" if len(years) >= 2 else None),
+                     entry.get("measure")]
+            return " · ".join(part for part in parts if part)
+        if block == "series-trend":
+            years = entry.get("years") or window
+            parts = [labels.get(entry.get("topic"), entry.get("topic")),
+                     (f"{years[0]}–{years[-1]}" if len(years) >= 2 else None),
+                     entry.get("measure")]
+            return " · ".join(part for part in parts if part)
+        if block == "reference-comparison":
+            latest = window[-1] if window else None
+            return (f"{latest} reporting year vs {context.get('reference_year')} reference year "
+                    "· saved percent change")
+        if block == "monitoring-overview":
+            count = len(context.get("included_topics") or [])
+            return (f"Latest saved observation per disease · window {span} · {count} diseases")
+        if block == "coverage-selection":
+            datasets = context.get("datasets") or {}
+            return (f"{datasets.get('included')} datasets included, "
+                    f"{datasets.get('excluded')} excluded · "
+                    f"{len(context.get('included_topics') or [])} topics")
+        if block == "sensitivity-comparison":
+            return "Saved main and sensitivity specifications"
+        return None
+
+    @staticmethod
+    def _copy_labels(blocks):
+        """Editor-only 'Copy N' ordinal per block type, ordered by instance id (not by position)."""
+        counts = {}
+        labels = {}
+        for entry in sorted(blocks, key=lambda item: (item["block"], item["instance_id"])):
+            counts[entry["block"]] = counts.get(entry["block"], 0) + 1
+            labels[entry["instance_id"]] = counts[entry["block"]]
+        return labels
+
+    def _annotate_sections(self, blocks, recipe, context, selection=None):
+        """Titles, summaries and editor-only copy labels for the saved sections.
+
+        A summary describes the composition the editor would generate: the saved entry with the
+        pending (validated) disease choice applied, never the free-text title and never a raw form
+        value that has not been accepted.
+        """
+        titles = recipe.get("titles") or {}
+        copies = self._copy_labels(recipe["blocks"])
+        selection = selection or {}
+        for item in blocks:
+            instance = item["instance_id"]
+            title = titles.get(instance)
+            item["title"] = title
+            entry = dict(next(entry for entry in recipe["blocks"]
+                              if entry["instance_id"] == instance))
+            chosen = (selection.get(instance) or {}).get("topics")
+            if chosen is not None:
+                entry["topics"] = list(chosen)
+            item["summary"] = self._section_summary(entry, context)
+            ordinal = copies.get(instance, 1)
+            item["copy_label"] = f"Copy {ordinal}" if ordinal > 1 else None
+        return blocks
+
+    # ------------------------------------------------------------------ custom mode
+    def _custom_draft_contexts(self):
+        """Contexts that already own a Custom draft, in the fixed audience order."""
+        parent = self.drafts_root / CUSTOM
+        if not parent.is_dir():
+            return []
+        return [audience for audience, _label in AUDIENCES
+                if (parent / audience / workbench.DRAFT_EDITOR).is_file()]
+
+    def resolve_custom_context(self, requested=None, selected=None):
+        """Which saved data context a Custom report is bound to.
+
+        The context selector is gone from the editor, so the binding must be deterministic:
+        an explicit request wins; otherwise an existing draft keeps its own context (preferring
+        the audience the reader is on when several drafts exist); with no draft at all the
+        currently selected audience is used. Opening the editor never writes anything.
+        """
+        if requested:
+            return self._custom_context(requested)
+        drafts = self._custom_draft_contexts()
+        if drafts:
+            return self._custom_context(selected if selected in drafts else drafts[0])
+        if selected:
+            return self._custom_context(selected)
+        for audience, _label in AUDIENCES:
+            try:
+                return self._custom_context(audience)
+            except SiteError:
+                continue
+        raise SiteError(HTTPStatus.NOT_FOUND,
+                        "No saved data context is installed, so nothing can be composed.",
+                        code="no_context")
+
+    def _custom_context(self, context):
+        """A Custom report names exactly one saved data context, never a new stakeholder."""
+        if context not in dict(AUDIENCES):
+            raise SiteError(HTTPStatus.BAD_REQUEST,
+                            "Choose a saved data context for this custom report.",
+                            code="context_required")
+        self.preset(context)                    # the bundle must exist and identify itself
+        return context
+
+    def _custom_root(self, context):
+        parent = Path(os.path.realpath(self.drafts_root / CUSTOM))
+        target = Path(os.path.realpath(parent / context))
+        if target != parent and parent not in target.parents:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Custom draft escapes the work root.")
+        return target
+
+    def custom_draft(self, context):
+        """The saved Custom draft for this context, or None. Read-only."""
+        root = self._custom_root(context)
+        if not (root / workbench.DRAFT_EDITOR).is_file():
+            return None
+        try:
+            draft = workbench.open_draft(root)
+        except workbench.WorkspaceError as error:
+            raise SiteError(HTTPStatus.CONFLICT, str(error), code="draft_invalid") from None
+        if draft.origin != workbench.CUSTOM_ORIGIN:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "This saved copy is an audience draft, not a custom composition.",
+                            code="draft_invalid")
+        return draft
+
+    def _create_custom(self, context):
+        try:
+            return workbench.create_custom_draft(self._custom_root(context), context)
+        except workbench.WorkspaceError as error:
+            raise SiteError(HTTPStatus.CONFLICT, str(error), code="draft_refused") from None
+
+    def _probe_custom(self, context):
+        """A transient draft over the initial composition: validation without any write."""
+        recipe = library.initial_recipe(context)
+        return workbench.Draft(root=self._custom_root(context), recipe=recipe,
+                               editor={"schema": workbench.CUSTOM_DRAFT_SCHEMA,
+                                       "audience": context,
+                                       "origin": workbench.CUSTOM_ORIGIN,
+                                       "excluded": [], "selection": {}, "pending": [],
+                                       "next_seq": library.last_seq(recipe), "retired": [],
+                                       "revision": 0})
+
+    def capabilities(self, context):
+        """What the selected saved bundle can actually build, from real builder probes."""
+        bundle = self._bundle_path(context)
+        try:
+            return library.inspect(bundle, self.data_root)
+        except (library.LibraryError, OSError, ValueError) as error:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            f"This data context cannot be inspected: {error}",
+                            code="context_unavailable") from None
+
+    def _check_available(self, capabilities, block):
+        info = (capabilities.get("blocks") or {}).get(block)
+        if info is None:
+            raise SiteError(HTTPStatus.BAD_REQUEST, f"Unknown block type: {block!r}")
+        if not info["available"]:
+            spec = library.LIBRARY.get(block) or {}
+            raise SiteError(HTTPStatus.CONFLICT,
+                            f"{spec.get('label', block)} cannot be built from this data "
+                            f"context. {info['reason']}", code="block_unavailable")
+
+    def _check_domain(self, capabilities, block, options):
+        """Refuse a saved-result binding the selected context does not actually contain."""
+        if not isinstance(options, dict):
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Section options must be an object.")
+        if block == "reference-comparison":
+            topic = options.get("topic")
+            if topic and capabilities["reference_topics"] \
+                    and topic not in capabilities["reference_topics"]:
+                raise SiteError(HTTPStatus.CONFLICT,
+                                f"The saved data context records no reference change for "
+                                f"{topic!r}.", code="saved_result_unavailable")
+        if block in ("series-trend", "series-collection"):
+            available = capabilities.get("topics_by_measure") or {}
+            measure = options.get("measure")
+            if measure and available and measure not in available:
+                raise SiteError(HTTPStatus.CONFLICT,
+                                f"The saved data context has no annual series with measure "
+                                f"{measure!r}.", code="saved_result_unavailable")
+            fallback = capabilities["measures"][0] if capabilities.get("measures") else ""
+            topics = available.get(measure or fallback, [])
+            if block == "series-trend":
+                topic = options.get("topic")
+                if topic and topics and topic not in topics:
+                    raise SiteError(HTTPStatus.CONFLICT,
+                                    f"The saved data context has no annual series for "
+                                    f"{topic!r}.", code="saved_result_unavailable")
+            if block == "series-collection" and isinstance(options.get("topics"), list):
+                missing = [topic for topic in options["topics"] if topic not in topics]
+                if missing:
+                    raise SiteError(HTTPStatus.CONFLICT,
+                                    "Not in this saved data context: " + ", ".join(missing),
+                                    code="saved_result_unavailable")
+        years = options.get("years")
+        window = capabilities.get("years_window") or []
+        if years and len(window) >= 2 and not (window[0] <= years[0] and years[1] <= window[-1]):
+            raise SiteError(HTTPStatus.BAD_REQUEST,
+                            f"Choose years inside the saved reporting window "
+                            f"{window[0]}–{window[-1]}.", code="invalid_years")
+
+    def _custom_blocks(self, recipe, excluded, selection, eligible, capabilities=None):
+        excluded = set(excluded)
+        document = []
+        for entry in recipe["blocks"]:
+            block = entry["block"]
+            spec = library.LIBRARY[block]
+            pending = selection.get(entry["instance_id"]) or {}
+            presentation = entry.get("presentation") or {}
+            item = {"instance_id": entry["instance_id"], "block": block,
+                    "label": spec["label"], "description": spec["description"],
+                    "included": entry["instance_id"] not in excluded,
+                    "required": block in workbench.REQUIRED_BLOCKS,
+                    "required_reason": workbench.REQUIRED_BLOCKS.get(block),
+                    "repeatable": spec["repeatable"],
+                    "repeat_reason": spec["repeat_reason"],
+                    "editable": [], "options": {},
+                    "topic_choices": list(eligible), "reference_choices": [],
+                    "measures": [], "years_window": []}
+            if "presentation.style" in spec["options"]:
+                item["options"]["style"] = presentation.get("style") or "standard"
+                item["editable"].append("style")
+            for name in ("topic", "measure", "years"):
+                if name in spec["options"]:
+                    item["options"][name] = entry.get(name)
+                    item["editable"].append(name)
+            series_topics = ((capabilities or {}).get("topics_by_measure") or {}).get(
+                entry.get("measure")) or list(eligible)
+            if block in ("series-trend", "series-collection"):
+                item["topic_choices"] = list(series_topics)
+                item["measures"] = [measure for measure in
+                                    ((capabilities or {}).get("measures") or [])
+                                    if ((capabilities or {}).get("topics_by_measure") or {})
+                                    .get(measure)]
+                item["years_window"] = (capabilities or {}).get("years_window") or []
+            if block == "reference-comparison":
+                item["reference_choices"] = list(
+                    (capabilities or {}).get("reference_topics") or [])
+            if block == "series-collection":
+                item["options"]["layout"] = presentation.get("layout") or "panels"
+                item["editable"].insert(0, "layout")
+                chosen = pending.get("topics")
+                if chosen is None:
+                    chosen = entry.get("topics")
+                chosen = list(eligible) if chosen in (None, "eligible") else list(chosen)
+                default_topic = pending.get("default_topic") or presentation.get("default_topic")
+                item["options"]["topics"] = chosen
+                item["options"]["default_topic"] = default_topic or (chosen[0] if chosen else None)
+                item["editable"].extend(["topics", "default_topic"])
+            document.append(item)
+        return document
+
+    def _custom_contexts(self):
+        contexts = []
+        for audience, label in AUDIENCES:
+            entry = {"id": audience, "label": label, "available": False, "reason": None,
+                     "source": None, "draft": False, "block_count": 0, "draft_error": None}
+            try:
+                _recipe_path, bundle = self.preset(audience)
+                entry.update({"available": True, "source": self._bundle_source(bundle)})
+            except SiteError as error:
+                entry["reason"] = error.message
+                contexts.append(entry)
+                continue
+            try:
+                draft = self.custom_draft(audience)
+            except SiteError as error:
+                entry["draft_error"] = error.message
+                contexts.append(entry)
+                continue
+            entry["draft"] = draft is not None
+            entry["block_count"] = (len(draft.included()) if draft is not None
+                                    else len(library.initial_recipe(audience)["blocks"]))
+            contexts.append(entry)
+        return contexts
+
+    def _custom_differs(self, context, recipe, eligible):
+        """True when the composition differs in content from that context's maintained preset."""
+        maintained = workbench.open_recipe(self._recipe_path(context))
+
+        def content(composition):
+            items = []
+            for entry in composition["blocks"]:
+                item = self._block_key(entry, eligible)
+                item.pop("instance_id", None)
+                items.append(item)
+            return items
+
+        return content(recipe) != content(maintained)
+
+    def reuse_candidate_custom(self, context, recipe, bundle, eligible):
+        """Newest eligible successful job whose inputs equal this custom composition."""
+        key = self.reuse_key(self.reuse_components(recipe, bundle, eligible))
+        found = self._best_reuse(key)
+        return self._reuse_payload(found) if found else None
+
+    def custom_document(self, context=None, selected=None):
+        context = self.resolve_custom_context(context, selected)
+        recipe_path, bundle = self.preset(context)
+        eligible = list(self.topics(context))
+        capabilities = self.capabilities(context)
+        draft = self.custom_draft(context)
+        if draft is None:
+            recipe = library.initial_recipe(context)
+            excluded, selection, revision = [], {}, 0
+            pending_entries, problem = [], None
+            renderable = recipe
+        else:
+            recipe = draft.recipe
+            excluded, selection, revision = list(draft.excluded), draft.selection, draft.revision
+            pending_entries = [dict(item) for item in draft.pending_additions]
+            problem = draft.pending_problem()
+            renderable = draft.effective()
+        pending = []
+        for item in pending_entries:
+            entry = item["entry"]
+            block = entry["block"]
+            spec = library.LIBRARY[block]
+            reason = library.entry_problem(entry)
+            conflict = library.combination_conflict(recipe["blocks"], block)
+            if reason is None and conflict is not None:
+                reason = conflict["reason"]
+            pending.append({"instance_id": item["instance_id"], "block": block,
+                            "label": spec["label"], "description": spec["description"],
+                            "options": {key: value for key, value in entry.items()
+                                        if key not in ("block", "instance_id")},
+                            "problem": reason or "This section is not part of the saved "
+                                                 "composition yet.",
+                            "replace": (conflict or {}).get("instances") or []})
+        blocks = self._annotate_sections(
+            self._custom_blocks(recipe, excluded, selection, eligible, capabilities),
+            recipe, library.bundle_context(bundle), selection)
+        removed = [{"instance_id": item["instance_id"], "block": item["block"],
+                    "label": item["label"]} for item in blocks if not item["included"]]
+        # Reuse and the default comparison follow the composition that would actually render
+        # (exclusions and the pending disease choice applied), never the saved file alone.
+        current = draft.pending() if draft is not None else recipe
+        blocking = None
+        if problem is not None:
+            blocking = (COLLECTION_EMPTY_MESSAGE if problem["kind"] == "empty-selection"
+                        else problem["message"])
+        library_entries = []
+        for spec in library.inventory():
+            info = (capabilities.get("blocks") or {}).get(spec["block"]) or {}
+            library_entries.append({**spec,
+                                    "available": bool(info.get("available")),
+                                    "reason": info.get("reason")})
+        return {"mode": "custom", "context": context, "label": "Custom report",
+                "audience": recipe["audience"],
+                "contexts": self._custom_contexts(),
+                "draft": draft is not None, "revision": revision,
+                "source": self._bundle_source(bundle),
+                "library": library_entries,
+                "blocks": blocks, "removed": removed, "pending": pending,
+                "required_blocks": dict(workbench.REQUIRED_BLOCKS),
+                "ready": problem is None, "blocking_reason": blocking,
+                "details": (None if problem is None else problem),
+                "recipe_sha256": hashlib.sha256(workbench.recipe_bytes(recipe)).hexdigest(),
+                "renderable_sha256": hashlib.sha256(
+                    workbench.recipe_bytes(renderable)).hexdigest(),
+                "pending_sha256": hashlib.sha256(
+                    workbench.pending_bytes(draft)).hexdigest() if draft is not None else
+                    hashlib.sha256(workbench.recipe_bytes(recipe)).hexdigest(),
+                "initial_sha256": hashlib.sha256(
+                    workbench.recipe_bytes(library.initial_recipe(context))).hexdigest(),
+                "different_from_preset": self._custom_differs(context, current, eligible),
+                "reuse": self.reuse_candidate_custom(context, current, bundle, eligible),
+                "excluded": excluded,
+                "needs_repair": draft.orphans() if draft is not None else [],
+                "topic_labels": library.topic_labels(eligible, bundle),
+                "eligible_topics": eligible,
+                "measures": capabilities["measures"],
+                "topics_by_measure": capabilities["topics_by_measure"],
+                "reference_topics": capabilities["reference_topics"],
+                "years_window": capabilities["years_window"],
+                "missing_artifacts": capabilities["missing_artifacts"]}
+
+    def custom_edit(self, context, action, instance, value):
+        """Apply one Custom editor action and return the rebuilt document."""
+        context = self._custom_context(context)
+        if action not in CUSTOM_ACTIONS:
+            raise SiteError(HTTPStatus.BAD_REQUEST, f"Unknown custom action {action!r}.")
+        eligible = list(self.topics(context))
+        capabilities = self.capabilities(context)
+        draft = self.custom_draft(context)
+        note = None
+        try:
+            if action == "add-block":
+                payload = value if isinstance(value, dict) else {}
+                block = payload.get("block")
+                options = payload.get("options") or {}
+                replace = payload.get("replace") or None
+                if isinstance(replace, list):
+                    if len(replace) != 1:
+                        raise SiteError(HTTPStatus.BAD_REQUEST,
+                                        "Confirm exactly one section to replace.")
+                    replace = replace[0]
+                if replace is not None and not isinstance(replace, str):
+                    raise SiteError(HTTPStatus.BAD_REQUEST, "Invalid replacement section.")
+                if not isinstance(block, str):
+                    raise SiteError(HTTPStatus.BAD_REQUEST, "Choose a section to add.")
+                self._check_available(capabilities, block)
+                self._check_domain(capabilities, block, options)
+                if draft is None:
+                    # Validate first, so a refused addition never leaves a draft behind.
+                    workbench.plan_add(self._probe_custom(context), block, options, replace)
+                    draft = self._create_custom(context)
+                draft = workbench.commit_addition(
+                    draft, workbench.plan_add(draft, block, options, replace))
+            elif action == "duplicate":
+                draft = self._require_draft(draft)
+                draft = workbench.commit_addition(
+                    draft, workbench.plan_duplicate(draft, instance))
+            elif action == "repair-draft":
+                draft = self._require_draft(draft)
+                draft = workbench.repair_custom_draft(draft)
+            elif action == "delete-instance":
+                draft = self._require_draft(draft)
+                draft = workbench.commit_deletion(
+                    draft, workbench.plan_delete_instance(draft, instance))
+            elif action == "replace-pending":
+                draft = self._require_draft(draft)
+                payload = value if isinstance(value, dict) else {}
+                draft = workbench.commit_addition(draft, workbench.plan_replace(
+                    draft, payload.get("pending") or instance, payload.get("existing") or ""))
+            elif action == "discard-pending":
+                draft = self._require_draft(draft)
+                draft = workbench.commit_addition(
+                    draft, workbench.discard_pending(draft, instance))
+            elif action in ("remove", "restore", "move-up", "move-down"):
+                draft = self._require_draft(draft)
+                plan_action = {"remove": "exclude", "restore": "include"}.get(action, action)
+                recipe, excluded = workbench.edit_plan(draft, plan_action, instance)
+                draft = workbench.commit_edit(draft, recipe, excluded)
+            elif action == "set-title":
+                draft = self._require_draft(draft)
+                recipe, excluded = workbench.plan_title(draft, instance, value)
+                draft = workbench.commit_edit(draft, recipe, excluded)
+            elif action == "set-option":
+                draft = self._require_draft(draft)
+                payload = value if isinstance(value, dict) else {}
+                option, option_value = payload.get("option"), payload.get("value")
+                entry = next((item for item in draft.recipe["blocks"]
+                              if item["instance_id"] == instance), None)
+                if entry is None:
+                    raise SiteError(HTTPStatus.BAD_REQUEST, f"Unknown section {instance!r}.")
+                self._check_domain(capabilities, entry["block"], {str(option): option_value})
+                recipe, excluded = workbench.edit_plan(draft, "set-option", instance,
+                                                       option_value, option=option)
+                draft = workbench.commit_edit(draft, recipe, excluded)
+            else:                                    # set-topics / set-default-open
+                if draft is None:
+                    workbench.plan_selection(self._probe_custom(context), action, instance,
+                                             value, eligible)
+                    draft = self._create_custom(context)
+                selection, note = workbench.plan_selection(draft, action, instance, value,
+                                                           eligible)
+                draft = workbench.commit_selection(draft, selection)
+        except workbench.LibraryConflict as conflict:
+            raise SiteError(HTTPStatus.CONFLICT, str(conflict),
+                            code="combination_conflict") from None
+        except workbench.WorkspaceError as error:
+            raise SiteError(HTTPStatus.BAD_REQUEST, str(error), code="edit_rejected") from None
+        document = self.custom_document(context)
+        if note:
+            document["notes"] = [note]
+        return document
+
+    def _require_draft(self, draft):
+        """Return the draft, or refuse: this action needs a saved custom composition."""
+        if draft is None:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "This data context has no custom composition yet.",
+                            code="no_draft")
+        return draft
+
+    def custom_reset(self, context):
+        """Reset only this context's custom composition; audience drafts and reports are kept."""
+        context = self._custom_context(context)
+        draft = self.custom_draft(context)
+        self._require_draft(draft)
+        try:
+            workbench.reset_custom(draft, context)
+        except workbench.WorkspaceError as error:
+            raise SiteError(HTTPStatus.CONFLICT, str(error), code="reset_refused") from None
+        return self.custom_document(context)
+
     # ------------------------------------------------------------------ jobs
     def _job_dir(self, job_id):
         if not JOB_ID.fullmatch(str(job_id or "")):
@@ -738,6 +1321,19 @@ class Site:
                                           != self._signature(maintained, eligible))
                           else "default")
         classification_basis = hashlib.sha256(workbench.recipe_bytes(maintained)).hexdigest()
+        return self._launch(preset=preset, recipe=recipe, bundle=bundle, eligible=eligible,
+                            audience=audience, mode=mode, classification=classification,
+                            classification_basis=classification_basis, origin="preset",
+                            context=None)
+
+    def _launch(self, *, preset, recipe, bundle, eligible, audience, mode, classification,
+                classification_basis, origin, context):
+        """Reserve the single render slot, freeze the recipe bytes and start the worker.
+
+        The caller has already decided *which* composition is rendered. Everything here is
+        shared by the audience and Custom modes so their job records, snapshots and replay
+        commands cannot drift apart.
+        """
         components = self.reuse_components(recipe, bundle, eligible)
         reuse_key = self.reuse_key(components)
         job_id = (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-"
@@ -765,11 +1361,15 @@ class Site:
                 raise SiteError(HTTPStatus.BAD_REQUEST,
                                 f"Recipe audience {recorded['audience']!r} does not match the "
                                 f"selected bundle {audience!r}.")
+            if context is not None and recorded["audience"] != context:
+                raise SiteError(HTTPStatus.BAD_REQUEST,
+                                "A custom composition must keep the selected data context.")
             package = job_directory / "package"
             job = Job(job_id=job_id, preset=preset, mode=mode,
                       recipe_sha256=workbench.file_digest(snapshot),
                       classification=classification,
                       classification_basis=classification_basis,
+                      context=context, origin=origin,
                       reuse_key=reuse_key, reuse_components=components,
                       snapshot=str(snapshot.relative_to(self.work_root)),
                       preview_dir=str(package.relative_to(self.work_root)))
@@ -801,6 +1401,36 @@ class Site:
             raise SiteError(HTTPStatus.INTERNAL_SERVER_ERROR,
                             "The render could not be started; nothing was replaced.",
                             code="submit_failed") from None
+
+    def submit_custom(self, context):
+        """Render one Custom composition; the job records its origin and its data context."""
+        context = self._custom_context(context)
+        _recipe_path, bundle = self.preset(context)
+        eligible = list(self.topics(context))
+        draft = self.custom_draft(context)
+        if draft is None:
+            recipe = library.initial_recipe(context)
+            mode = "custom-initial"
+        else:
+            problem = draft.pending_problem()
+            if problem is not None:
+                if problem["kind"] == "empty-selection":
+                    raise SiteError(HTTPStatus.BAD_REQUEST, COLLECTION_EMPTY_MESSAGE,
+                                    code="collection_empty")
+                raise SiteError(HTTPStatus.BAD_REQUEST,
+                                f"The custom composition cannot be generated yet: "
+                                f"{problem['message']}", code="draft_not_ready")
+            # Generation commits the pending disease choice, exactly as the audience editor does.
+            draft = workbench.commit_pending(draft, eligible)
+            recipe = draft.effective()
+            mode = "custom"
+        if recipe["audience"] != context:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "The custom composition does not belong to the selected data context.",
+                            code="context_mismatch")
+        return self._launch(preset=CUSTOM, recipe=recipe, bundle=bundle, eligible=eligible,
+                            audience=context, mode=mode, classification="custom",
+                            classification_basis=None, origin="custom", context=context)
 
     def _run(self, job, snapshot, bundle, package):
         job_directory = self.jobs_root / job.job_id
@@ -900,6 +1530,25 @@ class Site:
         return {"eligible": True, "code": "eligible",
                 "reason": "Matches the current settings and can be reused."}
 
+    def _custom_reuse_context(self, context):
+        """The key and composition digest this context's current custom draft would render."""
+        if context not in dict(AUDIENCES):
+            return None, None
+        try:
+            _recipe_path, bundle = self.preset(context)
+            eligible = list(self.topics(context))
+            draft = self.custom_draft(context)
+            if draft is None:
+                recipe = library.initial_recipe(context)
+            else:
+                if draft.pending_problem() is not None:
+                    return None, None
+                recipe = draft.pending()
+            components = self.reuse_components(recipe, bundle, eligible)
+            return self.reuse_key(components), components["composition_sha256"]
+        except (SiteError, workbench.WorkspaceError):
+            return None, None
+
     def _composition_match(self, record, current_composition):
         """Composition-only comparison (sections, order, diseases) for history display."""
         if current_composition is None:
@@ -907,11 +1556,12 @@ class Site:
         snapshot = self.work_root / (record.get("snapshot") or "")
         if not record.get("snapshot") or not snapshot.is_file():
             return "unknown"
+        audience = (record.get("context") if record.get("origin") == "custom"
+                    else (record.get("preset") or record.get("bundle_id") or ""))
         try:
             recipe = _read_json(snapshot)
-            bundle = self._bundle_path(record.get("preset") or
-                                       record.get("bundle_id") or "")
-            eligible = self.topics(record.get("preset") or record.get("bundle_id") or "")
+            bundle = self._bundle_path(audience)
+            eligible = self.topics(audience)
         except (OSError, ValueError, SiteError):
             return "unknown"
         components = self.reuse_components(recipe, bundle, eligible)
@@ -937,15 +1587,24 @@ class Site:
             item = self.public_job(payload)
             item["snapshot_summary"] = self._snapshot_summary(payload)
             item["classification_basis"] = payload.get("classification_basis")
-            audience = payload.get("preset") or payload.get("bundle_id")
-            key, composition = context(audience)
+            if item.get("origin") == "custom" and item.get("context"):
+                audience = item["context"]
+                key, composition = self._custom_reuse_context(audience)
+            else:
+                audience = payload.get("preset") or payload.get("bundle_id")
+                key, composition = context(audience)
             item["reuse"] = self._history_reuse_view(payload, key, composition)
             item["composition_match"] = self._composition_match(payload, composition)
+            item["context_label"] = dict(AUDIENCES).get(audience)
             entries.append(item)
+        custom_drafts = sorted(path.name for path in (self.drafts_root / CUSTOM).glob("*")
+                               if (path / workbench.DRAFT_EDITOR).is_file()) \
+            if (self.drafts_root / CUSTOM).is_dir() else []
         return {"work_root": self.work_root.as_posix(),
                 "inputs_root": self.inputs_root.as_posix(),
                 "drafts": sorted(path.name for path in self.drafts_root.glob("*")
                                  if (path / workbench.DRAFT_EDITOR).is_file()),
+                "custom_drafts": custom_drafts,
                 "jobs": entries[:20]}
 
     # ------------------------------------------------------------------ artifacts
@@ -1094,6 +1753,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/editor":
                 return self._json(HTTPStatus.OK, self.site.editor_document(
                     self._query().get("preset", "")))
+            if path == "/api/custom":
+                return self._json(HTTPStatus.OK, self.site.custom_document(
+                    self._query().get("context") or None,
+                    selected=self._query().get("audience") or None))
             if path == "/api/saved":
                 return self._json(HTTPStatus.OK, self.site.saved())
             if path == "/api/jobs":
@@ -1126,9 +1789,22 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             payload = self._body()
             if path == "/api/reuse":
-                self._check_mutation("reuse", payload, {"preset", "job_id"})
+                self._check_mutation("reuse", payload, {"preset", "job_id", "context"})
+                if payload.get("preset") == CUSTOM:
+                    return self._json(HTTPStatus.OK, self.site.confirm_reuse_custom(
+                        payload.get("context", ""), payload.get("job_id", "")))
                 return self._json(HTTPStatus.OK, self.site.confirm_reuse(
                     payload.get("preset", ""), payload.get("job_id", "")))
+            if path == "/api/custom/edit":
+                self._check_mutation("custom-edit", payload,
+                                     {"context", "action", "instance", "value"})
+                return self._json(HTTPStatus.OK, self.site.custom_edit(
+                    payload.get("context", ""), payload.get("action", ""),
+                    payload.get("instance", ""), payload.get("value")))
+            if path == "/api/custom/reset":
+                self._check_mutation("custom-reset", payload, {"context"})
+                return self._json(HTTPStatus.OK,
+                                  self.site.custom_reset(payload.get("context", "")))
             if path == "/api/reset":
                 self._check_mutation("reset", payload, {"preset"})
                 return self._json(HTTPStatus.OK,
@@ -1140,9 +1816,12 @@ class Handler(BaseHTTPRequestHandler):
                     payload.get("preset", ""), payload.get("action", ""),
                     payload.get("instance", ""), payload.get("value")))
             if path == "/api/generate":
-                self._check_mutation("generate", payload, {"preset"})
-                return self._json(HTTPStatus.ACCEPTED,
-                                  self.site.submit(payload.get("preset", "")))
+                self._check_mutation("generate", payload, {"preset", "context"})
+                preset = payload.get("preset", "")
+                if preset == CUSTOM:
+                    return self._json(HTTPStatus.ACCEPTED,
+                                      self.site.submit_custom(payload.get("context", "")))
+                return self._json(HTTPStatus.ACCEPTED, self.site.submit(preset))
             raise SiteError(HTTPStatus.NOT_FOUND, "Not found.")
         except SiteError as error:
             return self._error(error)

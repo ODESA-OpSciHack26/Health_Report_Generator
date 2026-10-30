@@ -165,16 +165,31 @@ def test_recipe_validation_is_closed(tmp_path):
             publish.load_composition(path)
 
 
-def test_recipe_rejects_repeated_or_mixed_series_blocks(tmp_path):
+def test_recipe_allows_independent_collections_but_keeps_the_other_rules(tmp_path):
     two = write_recipe(tmp_path, [collection_entry("c-1"), collection_entry("c-2")], name="two.json")
-    with pytest.raises(ValueError, match="Repeated series-collection"):
-        publish.load_composition(two)
+    recipe = publish.load_composition(two)
+    assert [entry["instance_id"] for entry in recipe["blocks"]] == ["c-1", "c-2"]
+    # Independent collections may differ in every supported setting.
+    different = write_recipe(tmp_path, [
+        collection_entry("c-1", topics=["virus"], presentation={"layout": "combined"}),
+        collection_entry("c-2", topics=["fungus"], presentation={"layout": "panels"}, years=[2022, 2025]),
+    ], name="different.json")
+    loaded = publish.load_composition(different)
+    assert loaded["blocks"][0]["topics"] == ["virus"]
+    assert loaded["blocks"][1]["presentation"]["layout"] == "panels"
+
     mixed = write_recipe(tmp_path, [
         collection_entry("c-1"),
         {"block": "series-trend", "instance_id": "s-1", "topic": "virus", "measure": "cases"},
     ], name="mixed.json")
     with pytest.raises(ValueError, match="cannot combine"):
         publish.load_composition(mixed)
+    repeated_reference = write_recipe(tmp_path, [
+        {"block": "reference-comparison", "instance_id": "r-1", "topic": "virus"},
+        {"block": "reference-comparison", "instance_id": "r-2", "topic": "fungus"},
+    ], name="ref.json")
+    with pytest.raises(ValueError, match="Repeated reference-comparison"):
+        publish.load_composition(repeated_reference)
 
 
 def test_series_collection_requires_v2(tmp_path):
@@ -299,3 +314,152 @@ def test_collection_cannot_be_silently_partial(tmp_path):
     explicit = build_collection(bundle, topics=["virus", "fungus"])
     assert explicit["status"] == "failed"                    # explicit request is all-or-nothing
     assert "members" not in explicit
+
+
+# --------------------------------------------------------------------------- chart layout
+
+def test_layout_defaults_to_the_historical_panels_identity(tmp_path):
+    bundle = three_topic_bundle(tmp_path)
+    absent = build_collection(bundle)
+    explicit = build_collection(bundle, presentation={"layout": "panels"})
+    assert absent["status"] == "verified" and explicit["status"] == "verified"
+    assert absent["presentation"]["layout"] == "panels"
+    assert absent["presentation"] == explicit["presentation"]
+    assert absent["identities"]["contract"] == "series-collection-identity/1"
+    assert explicit["identities"]["contract"] == "series-collection-identity/1"
+    # No layout, and an explicit "panels", are the same historical record.
+    assert absent["identities"]["collection"] == explicit["identities"]["collection"]
+
+
+def test_combined_layout_versions_the_presentation_identity_only(tmp_path):
+    bundle = three_topic_bundle(tmp_path)
+    panels = build_collection(bundle)
+    combined = build_collection(bundle, presentation={"layout": "combined"})
+    assert combined["status"] == "verified"
+    assert combined["presentation"]["layout"] == "combined"
+    assert combined["identities"]["contract"] == "series-collection-identity/2"
+    assert combined["identities"]["collection"] != panels["identities"]["collection"]
+    # Scientific identities are untouched by a presentation change.
+    assert [m["identities"] for m in combined["members"]] == \
+        [m["identities"] for m in panels["members"]]
+    assert [m["identities"]["analytical"] for m in combined["members"]] == \
+        [m["identities"]["analytical"] for m in panels["members"]]
+    assert combined["periods"] == panels["periods"]
+
+
+def test_historical_collection_record_still_verifies(tmp_path):
+    """A record written before layouts existed recomputes to the same digest."""
+    bundle = three_topic_bundle(tmp_path)
+    record = build_collection(bundle)
+    assert record["identities"]["contract"] == "series-collection-identity/1"
+    historical_payload = {
+        "contract": "series-collection-identity/1",
+        "instance_id": record["instance_id"],
+        "measure": record["measure"],
+        "style": record["presentation"]["style"],
+        "default_topic": record["presentation"]["default_topic"],
+        "periods": record["periods"],
+        "members": [{"instance_id": member["instance_id"],
+                     "topic": member["selection"]["topic"],
+                     "status": member["status"],
+                     "instance_identity": member["identities"]["instance"]}
+                    for member in record["members"]],
+    }
+    assert publish._collection_identity(historical_payload) == \
+        record["identities"]["collection"]
+    # The same payload with a layout is a different identity, which is why it is versioned.
+    with_layout = dict(historical_payload, contract="series-collection-identity/2",
+                       layout="combined")
+    assert publish._collection_identity(with_layout) != record["identities"]["collection"]
+
+
+def test_combined_layout_is_a_closed_recipe_option(tmp_path):
+    recipe = publish.load_composition(write_recipe(tmp_path, [
+        collection_entry(presentation={"layout": "combined"})]))
+    assert recipe["blocks"][0]["presentation"]["layout"] == "combined"
+    for bad in ({"layout": "stacked"}, {"layout": None}, {"layout": "combined", "colour": "red"}):
+        with pytest.raises(ValueError):
+            publish.load_composition(write_recipe(tmp_path, [
+                collection_entry(presentation=bad)]))
+
+
+# --------------------------------------------------------------------------- several collections
+
+def test_two_collections_keep_independent_records_and_scope(tmp_path, monkeypatch):
+    bundle = three_topic_bundle(tmp_path)
+    sidecar = _render(tmp_path, monkeypatch, bundle, [
+        collection_entry("c-one", topics=["virus", "fungus"],
+                         presentation={"layout": "combined", "default_topic": "fungus"}),
+        collection_entry("c-two", topics=["virus"],
+                         presentation={"layout": "panels", "default_topic": "virus",
+                                       "style": "compact"}),
+    ])
+    records = {block["instance_id"]: block for block in sidecar["blocks"]
+               if block.get("component", {}).get("type") == "series-collection"}
+    assert set(records) == {"c-one", "c-two"}
+    assert [member["selection"]["topic"] for member in records["c-one"]["members"]] == \
+        ["virus", "fungus"]
+    assert [member["selection"]["topic"] for member in records["c-two"]["members"]] == ["virus"]
+    assert records["c-one"]["presentation"]["layout"] == "combined"
+    assert records["c-two"]["presentation"]["layout"] == "panels"
+    assert records["c-one"]["identities"]["contract"] == "series-collection-identity/2"
+    assert records["c-two"]["identities"]["contract"] == "series-collection-identity/1"
+    # Member ids stay unique across the two instances (they derive from the collection id).
+    ids = [member["instance_id"] for block in records.values() for member in block["members"]]
+    assert len(ids) == len(set(ids))
+
+    scope = sidecar["composition"]["display_scope"]
+    assert [entry["instance_id"] for entry in scope["collections"]] == ["c-one", "c-two"]
+    assert scope["collection_default_topic"] == "fungus"      # first collection in order
+    assert scope["collection_topics"] == ["fungus", "virus"]
+
+
+def test_display_scope_uses_the_first_included_collection(tmp_path, monkeypatch):
+    bundle = three_topic_bundle(tmp_path)
+    # The effective recipe is what the renderer and the scope see: the excluded first collection
+    # is simply absent, so the second one supplies the legacy default.
+    sidecar = _render(tmp_path, monkeypatch, bundle, [
+        collection_entry("c-two", topics=["virus"], presentation={"default_topic": "virus"}),
+    ])
+    scope = sidecar["composition"]["display_scope"]
+    assert scope["collection_default_topic"] == "virus"
+    assert [entry["instance_id"] for entry in scope["collections"]] == ["c-two"]
+
+
+# --------------------------------------------------------------------------- section titles
+
+def test_section_titles_are_validated_and_recorded(tmp_path, monkeypatch):
+    bundle = three_topic_bundle(tmp_path)
+    recipe_path = write_recipe(tmp_path, [
+        collection_entry("c-one", topics=["virus"]),
+    ], name="titled.json")
+    payload = json.loads(recipe_path.read_text())
+    payload["titles"] = {"c-one": "Virus focus"}
+    recipe_path.write_text(json.dumps(payload))
+    assert publish.load_composition(recipe_path)["titles"] == {"c-one": "Virus focus"}
+
+    for bad in ({"c-one": ""}, {"c-one": " padded"}, {"c-one": "x" * 81},
+                {"c-one": "bad\u0007title"}, {"c-missing": "Title"}):
+        broken = dict(payload, titles=bad)
+        recipe_path.write_text(json.dumps(broken))
+        with pytest.raises(ValueError):
+            publish.load_composition(recipe_path)
+
+    recipe_path.write_text(json.dumps(payload))
+    sidecar = _render(tmp_path, monkeypatch, bundle, publish.load_composition(recipe_path)["blocks"],
+                      titles={"c-one": "Virus focus"})
+    assert sidecar["composition"]["section_titles"] == {"c-one": "Virus focus"}
+    # A historical recipe without titles records an empty map and stays valid.
+    sidecar_plain = _render(tmp_path, monkeypatch, bundle,
+                            [collection_entry("c-one", topics=["virus"])], name="plain")
+    assert sidecar_plain["composition"]["section_titles"] == {}
+    # Titles are presentation only: the member and analytical identities do not move.
+    titled = sidecar["blocks"][0]
+    plain = sidecar_plain["blocks"][0]
+    assert [member["identities"] for member in titled["members"]] == \
+        [member["identities"] for member in plain["members"]]
+    # A section title is not part of the collection's presentation identity: that identity covers
+    # the chart's own inputs (measure, style, layout, default-open, periods, members). The title
+    # changes the recipe bytes, hence the composition/reuse key, and is recorded separately.
+    assert titled["identities"]["collection"] == plain["identities"]["collection"]
+    assert sidecar["composition"]["recipe_sha256"] != sidecar_plain["composition"]["recipe_sha256"]

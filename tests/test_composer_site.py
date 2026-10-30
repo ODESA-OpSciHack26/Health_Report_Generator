@@ -243,12 +243,18 @@ def test_frontend_has_no_custom_redirect_and_restores_focus():
     assert "Other checked diseases remain available in the report." in source
 
 
-def test_custom_card_is_disabled_with_the_approved_text(web):
+def test_custom_card_opens_the_block_library_without_becoming_an_audience(web):
     _, host = web
     presets = payload(call(host, "GET", "/api/presets"))["presets"]
     custom = next(item for item in presets if item["id"] == "custom")
-    assert custom["available"] is False
-    assert custom["reason"] == "Build from the block library — coming in the next revision."
+    # The block library exists now, so Custom is a selectable composition mode.
+    assert custom["available"] is True and custom["reason"] is None
+    assert custom["mode"] == "composition"
+    assert [entry["id"] for entry in presets] == ["researcher", "health_institution",
+                                                 "public", "custom"]
+    # Custom is a composition mode over a saved context, never a fourth stakeholder id.
+    document = payload(call(host, "GET", "/api/custom?context=researcher"))
+    assert document["mode"] == "custom" and document["audience"] == "researcher"
 
 
 # --------------------------------------------------------------------------- session
@@ -386,7 +392,7 @@ def test_opening_the_editor_is_not_customization(web):
     assert chosen["selected_topics"] == doc["eligible_topics"]
     assert chosen["topic_choices"] == doc["eligible_topics"]
     assert chosen["default_topic"] in chosen["selected_topics"]
-    assert set(chosen["editable"]) == {"style", "topics", "default_topic"}
+    assert set(chosen["editable"]) == {"layout", "style", "topics", "default_topic"}
     assert block(doc, "limitations-0001")["required"] is True
     assert "Always" not in doc["required_blocks"]["limitations"]
     assert list(site.drafts_root.iterdir()) == []
@@ -403,7 +409,7 @@ def test_edit_and_exact_return_to_default(web):
     assert status == 200
     assert doc["customized"] is False
     assert doc["differences"] == {"excluded": [], "reordered": False, "style": [],
-                                 "selection": []}
+                                 "selection": [], "layout": []}
     assert doc["pending_sha256"] == before["pending_sha256"]
 
 

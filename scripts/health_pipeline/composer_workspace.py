@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import publish
+import composer_library as library
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -46,10 +47,13 @@ PREVIEW_SCHEMA = "health-report/composer-preview/1"
 PREVIEW_NOTICE = publish.PREVIEW_NOTICE
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}\.json")
 # Supported presentation options, per block type. Anything else is refused rather than
-# guessed; adding an option here also needs the loader to accept it.
+# guessed; adding an option here also needs the loader to accept it. ``topic`` and ``measure``
+# select a different *saved* result for the block that owns them: they are bindings, not
+# formatting, and the library states that to the reader.
 SUPPORTED_OPTIONS = {
-    "series-collection": ("presentation.style", "presentation.default_topic"),
-    "series-trend": ("presentation.style",),
+    "series-collection": ("presentation.style", "presentation.default_topic", "measure",
+                          "years", "presentation.layout"),
+    "series-trend": ("presentation.style", "topic", "measure", "years"),
     "reference-comparison": ("topic",),
 }
 STYLE_VALUES = ("standard", "compact")
@@ -260,7 +264,7 @@ def _entry(recipe, instance_id):
 
 
 def set_block_option(recipe, instance_id, option, value):
-    """Set one supported presentation option; the loader decides whether it is allowed."""
+    """Set one supported option; the loader decides whether the result is a valid recipe."""
     recipe = validate_recipe(recipe)
     entry = _entry(recipe, instance_id)
     options = SUPPORTED_OPTIONS.get(entry["block"], ())
@@ -268,11 +272,17 @@ def set_block_option(recipe, instance_id, option, value):
         raise WorkspaceError(
             f"Block {entry['block']!r} does not support {option!r}. "
             f"Supported options: {', '.join(options) if options else 'none'}.")
-    value = "" if value is None else str(value)
-    if not value:
-        raise WorkspaceError(f"No value supplied for {option!r}.")
-    if option.endswith("style") and value not in STYLE_VALUES:
-        raise WorkspaceError(f"Unsupported style {value!r}; choose one of {list(STYLE_VALUES)}.")
+    if option == "years" and value in (None, "", "none"):
+        coerced = None
+    else:
+        if isinstance(value, str):
+            value = value.strip()
+        if value in (None, ""):
+            raise WorkspaceError(f"No value supplied for {option!r}.")
+        try:
+            coerced = library.coerce_option(entry["block"], option, value)
+        except library.LibraryError as error:
+            raise WorkspaceError(str(error)) from None
     blocks = []
     for item in recipe["blocks"]:
         if item["instance_id"] != instance_id:
@@ -282,10 +292,12 @@ def set_block_option(recipe, instance_id, option, value):
         if option.startswith("presentation."):
             field = option.split(".", 1)[1]
             presentation = dict(changed.get("presentation") or {})
-            presentation[field] = value
+            presentation[field] = coerced
             changed["presentation"] = presentation
+        elif coerced is None:
+            changed.pop(option, None)
         else:
-            changed[option] = value
+            changed[option] = coerced
         blocks.append(changed)
     return validate_recipe({**recipe, "blocks": blocks})
 
@@ -447,6 +459,8 @@ def replay_command(*, recipe_path, bundle, output_dir, data_root=None, workflow_
 # renderer is the recipe minus excluded blocks, validated again through the shared loader.
 DRAFT_SCHEMA = "health-report/composer-draft/1"      # readable legacy state
 DRAFT_SCHEMA_V2 = "health-report/composer-draft/2"   # current: pending selection beside the recipe
+CUSTOM_DRAFT_SCHEMA = "health-report/composer-draft/3"  # Custom: origin, id counter, pending adds
+CUSTOM_ORIGIN = "custom-library"
 DRAFT_RECIPE = "recipe.json"
 DRAFT_EDITOR = "editor.json"
 # Sections the product requires in every report, with the explanation shown beside the
@@ -456,6 +470,14 @@ REQUIRED_BLOCKS = {
     "reproduction": "Required: readers must be able to reach the evidence and reproduction record.",
 }
 SELECTABLE_BLOCKS = ("series-collection",)
+
+
+class LibraryConflict(WorkspaceError):
+    """A block cannot join this composition without an explicit, confirmed replacement."""
+
+    def __init__(self, conflict):
+        super().__init__(conflict["reason"])
+        self.conflict = conflict
 
 
 @dataclass(frozen=True)
@@ -480,14 +502,69 @@ class Draft:
     def selection(self):
         return dict(self.editor.get("selection") or {})
 
+    @property
+    def pending_additions(self):
+        """Blocks the editor has described but that are not in the saved recipe yet."""
+        return tuple(self.editor.get("pending") or ())
+
+    @property
+    def retired(self):
+        return tuple(self.editor.get("retired") or ())
+
+    @property
+    def next_seq(self):
+        return int(self.editor.get("next_seq") or 0)
+
+    @property
+    def origin(self):
+        return self.editor.get("origin")
+
+    def orphans(self):
+        """Editor references to instances this draft no longer contains.
+
+        Only an explicit repair removes them; opening the editor reports them instead, so a
+        saved composition is never rewritten as a side effect of being looked at.
+        """
+        ids = {entry["instance_id"] for entry in self.recipe["blocks"]}
+        found = [item for item in self.editor.get("excluded") or [] if item not in ids]
+        found.extend(key for key in (self.editor.get("selection") or {}) if key not in ids)
+        return sorted(set(found))
+
+    def taken_ids(self):
+        """Every instance id this draft has used or reserved; none of them is reissued."""
+        ids = {entry["instance_id"] for entry in self.recipe["blocks"]}
+        ids.update(item["instance_id"] for item in self.pending_additions)
+        ids.update(self.retired)
+        return ids
+
     def included(self):
         excluded = set(self.editor["excluded"])
         return [entry for entry in self.recipe["blocks"]
                 if entry["instance_id"] not in excluded]
 
+    def _visible_titles(self, blocks):
+        """Titles for the sections that are actually part of this composition.
+
+        The saved recipe keeps a title when its section is excluded, so restoring the section
+        restores its title; the effective composition never names an instance it omits.
+        """
+        ids = {entry["instance_id"] for entry in blocks}
+        return {key: value for key, value in (self.recipe.get("titles") or {}).items()
+                if key in ids}
+
+    def _with_titles(self, recipe, blocks):
+        titles = self._visible_titles(blocks)
+        out = {**recipe, "blocks": blocks}
+        if titles:
+            out["titles"] = titles
+        else:
+            out.pop("titles", None)
+        return out
+
     def effective(self):
         """The last accepted, renderable recipe: the saved copy minus excluded sections."""
-        return publish.validate_composition({**self.recipe, "blocks": self.included()})
+        blocks = self.included()
+        return publish.validate_composition(self._with_titles(self.recipe, blocks))
 
     def pending_blocks(self):
         """Included blocks with the editor's pending topic selection applied.
@@ -518,10 +595,33 @@ class Draft:
 
     def pending(self):
         """The composition the editor is currently describing (not necessarily renderable)."""
-        return {**self.recipe, "blocks": self.pending_blocks()}
+        blocks = self.pending_blocks()
+        return self._with_titles(self.recipe, blocks)
 
     def pending_problem(self):
-        """None when the pending composition could be rendered; otherwise a structured reason."""
+        """None when the pending composition could be rendered; otherwise a structured reason.
+
+        A block the editor has merely described (new, or awaiting a valid choice) blocks
+        generation on purpose: an older valid recipe is never silently rendered instead.
+        """
+        orphans = self.orphans()
+        if orphans:
+            return {"kind": "stale-references", "instances": orphans,
+                    "message": ("This saved draft still refers to sections it no longer "
+                                "contains (" + ", ".join(orphans) + "). Repair the draft to "
+                                "remove those references; nothing else is changed.")}
+        additions = self.pending_additions
+        if additions:
+            item = additions[0]
+            entry = item.get("entry") or {}
+            block = entry.get("block")
+            label = (library.LIBRARY.get(block) or {}).get("label") or block or "A section"
+            problem = library.entry_problem(entry) if block in library.LIBRARY else None
+            return {"kind": "pending-block", "block": block,
+                    "instance_id": item.get("instance_id"),
+                    "message": (f"{label} is not part of the saved composition yet: {problem}"
+                                if problem else
+                                f"{label} is not part of the saved composition yet.")}
         blocks = self.pending_blocks()
         for entry in blocks:
             if entry["block"] in SELECTABLE_BLOCKS and entry.get("topics") == []:
@@ -529,7 +629,7 @@ class Draft:
                         "instance_id": entry["instance_id"],
                         "message": "Select at least one disease."}
         try:
-            publish.validate_composition({**self.recipe, "blocks": blocks})
+            publish.validate_composition(self._with_titles(self.recipe, blocks))
         except ValueError as error:
             return {"kind": "invalid", "message": str(error)}
         return None
@@ -575,10 +675,20 @@ def _write_editor(draft_root, editor):
     return _atomic_replace(Path(draft_root) / DRAFT_EDITOR, payload)
 
 
+def _check_floor(recipe):
+    """The mandatory evidence floor must exist as blocks, not merely be un-excluded."""
+    present = {entry["block"] for entry in recipe["blocks"]}
+    missing = [block for block in REQUIRED_BLOCKS if block not in present]
+    if missing:
+        raise WorkspaceError(
+            "A composition must include " + " and ".join(missing) + ". "
+            + " ".join(REQUIRED_BLOCKS[block] for block in missing))
+
+
 def _check_editor(recipe, editor):
     if not isinstance(editor, dict):
         raise WorkspaceError("Draft editor state must be an object.")
-    if editor.get("schema") not in (DRAFT_SCHEMA, DRAFT_SCHEMA_V2):
+    if editor.get("schema") not in (DRAFT_SCHEMA, DRAFT_SCHEMA_V2, CUSTOM_DRAFT_SCHEMA):
         raise WorkspaceError(f"Unsupported draft state schema: {editor.get('schema')!r}")
     if editor.get("audience") != recipe["audience"]:
         raise WorkspaceError("Draft state audience does not match the saved recipe.")
@@ -590,21 +700,29 @@ def _check_editor(recipe, editor):
     if not isinstance(editor.get("revision"), int) or editor["revision"] < 0:
         raise WorkspaceError("Draft revision must be a non-negative integer.")
     ids = [entry["instance_id"] for entry in recipe["blocks"]]
+    custom = editor.get("schema") == CUSTOM_DRAFT_SCHEMA
     unknown = [item for item in excluded if item not in ids]
-    if unknown:
+    if unknown and not custom:
         raise WorkspaceError(f"Draft excludes blocks it does not contain: {unknown}")
     by_id = {entry["instance_id"]: entry for entry in recipe["blocks"]}
-    forced = [item for item in excluded if by_id[item]["block"] in REQUIRED_BLOCKS]
+    forced = [item for item in excluded
+              if item in by_id and by_id[item]["block"] in REQUIRED_BLOCKS]
     if forced:
         reasons = "; ".join(f"{item}: {REQUIRED_BLOCKS[by_id[item]['block']]}" for item in forced)
         raise WorkspaceError(f"Required section cannot be excluded. {reasons}")
-    if len(excluded) >= len(ids):
+    if sum(1 for item in excluded if item in ids) >= len(ids):
         raise WorkspaceError("A composition needs at least one included section.")
     selection = editor.get("selection") or {}
     if not isinstance(selection, dict):
         raise WorkspaceError("Draft selection must be an object.")
+    # A Custom draft can lose an instance through an explicit conflict replacement. References to
+    # an instance that no longer exists are reported as orphans (see ``Draft.orphans``) and removed
+    # only by the explicit repair action; opening the editor never rewrites a saved draft. Audience
+    # drafts keep the strict rejection because nothing in that path ever removes an instance.
     for instance_id, chosen in selection.items():
         if instance_id not in ids:
+            if custom:
+                continue
             raise WorkspaceError(f"Draft selection names an unknown block: {instance_id!r}")
         if not isinstance(chosen, dict) or set(chosen) - {"topics", "default_topic"}:
             raise WorkspaceError(f"Draft selection for {instance_id!r} has unsupported fields.")
@@ -621,7 +739,43 @@ def _check_editor(recipe, editor):
                                           or not publish.TOPIC_ID.fullmatch(default_topic)):
             raise WorkspaceError(
                 f"Draft selection for {instance_id!r} has an invalid default topic.")
+    if editor.get("schema") == CUSTOM_DRAFT_SCHEMA:
+        _check_custom_editor(recipe, editor, ids)
     return editor
+
+
+def _check_custom_editor(recipe, editor, ids):
+    """Custom-only state: origin, monotonic id counter, retired ids and pending additions."""
+    if editor.get("origin") != CUSTOM_ORIGIN:
+        raise WorkspaceError("A Custom draft must record its composition origin.")
+    next_seq = editor.get("next_seq")
+    if isinstance(next_seq, bool) or not isinstance(next_seq, int) or next_seq < 0:
+        raise WorkspaceError("Custom draft id counter must be a non-negative integer.")
+    retired = editor.get("retired")
+    if (not isinstance(retired, list) or any(not isinstance(item, str) for item in retired)
+            or len(set(retired)) != len(retired)):
+        raise WorkspaceError("Retired instance ids must be a list of distinct ids.")
+    if set(retired) & set(ids):
+        raise WorkspaceError("A retired instance id is still in the composition.")
+    pending = editor.get("pending")
+    if not isinstance(pending, list):
+        raise WorkspaceError("Pending additions must be a list.")
+    seen = set()
+    for item in pending:
+        if not isinstance(item, dict) or set(item) != {"instance_id", "entry"}:
+            raise WorkspaceError("Each pending addition needs exactly instance_id and entry.")
+        instance = item["instance_id"]
+        if not isinstance(instance, str) or not library.INSTANCE_ID.fullmatch(instance):
+            raise WorkspaceError(f"Invalid pending instance id: {instance!r}")
+        if instance in ids or instance in seen or instance in retired:
+            raise WorkspaceError(f"Pending instance id is already used: {instance!r}")
+        entry = item["entry"]
+        if not isinstance(entry, dict) or entry.get("block") not in library.LIBRARY:
+            raise WorkspaceError(f"Pending addition {instance!r} names an unknown block.")
+        if entry.get("instance_id") != instance:
+            raise WorkspaceError(f"Pending addition {instance!r} disagrees with its entry id.")
+        seen.add(instance)
+    _check_floor(recipe)
 
 
 def open_draft(root):
@@ -649,7 +803,11 @@ def open_draft(root):
 
 
 def create_draft(root, recipe_path, *, based_on=None):
-    """Create a draft as a byte copy of a maintained recipe, or resume the existing one."""
+    """Create a draft as a byte copy of a maintained recipe, or resume the existing one.
+
+    The copy keeps the maintained presentation exactly; the collection layout is a per-collection
+    option the editor can change explicitly. A draft that already exists is returned as it is.
+    """
     root = Path(root)
     if (root / DRAFT_EDITOR).is_file():
         return open_draft(root)
@@ -666,7 +824,11 @@ def create_draft(root, recipe_path, *, based_on=None):
 
 def _bump(draft, *, recipe=None, excluded=None, selection=None):
     editor = dict(draft.editor)
-    editor["schema"] = DRAFT_SCHEMA_V2
+    # A Custom draft keeps its own schema: downgrading it would drop the origin, id counter and
+    # pending additions that make the composition explainable after a reopen.
+    editor["schema"] = (CUSTOM_DRAFT_SCHEMA
+                        if draft.editor.get("schema") == CUSTOM_DRAFT_SCHEMA
+                        else DRAFT_SCHEMA_V2)
     if recipe is not None:
         _atomic_replace(Path(draft.root) / DRAFT_RECIPE, recipe_bytes(recipe))
     if excluded is not None:
@@ -830,7 +992,11 @@ def commit_pending(draft, eligible):
             presentation["default_topic"] = default_topic
             changed["presentation"] = presentation
         blocks.append(changed)
-    editor = {**draft.editor, "schema": DRAFT_SCHEMA_V2, "selection": {},
+    editor = {**draft.editor,
+              "schema": (CUSTOM_DRAFT_SCHEMA
+                         if draft.editor.get("schema") == CUSTOM_DRAFT_SCHEMA
+                         else DRAFT_SCHEMA_V2),
+              "selection": {},
               "revision": draft.editor["revision"] + 1, "updated_utc": _now()}
     _atomic_replace(Path(draft.root) / DRAFT_RECIPE,
                     recipe_bytes({**draft.recipe, "blocks": blocks}))
@@ -852,3 +1018,351 @@ def reset_draft(draft, recipe_path, *, based_on=None):
               "updated_utc": _now()}
     _write_editor(draft.root, editor)
     return open_draft(draft.root)
+
+
+# --------------------------------------------------------------------------- section titles
+
+MAX_SECTION_TITLE = 80
+
+
+def _clean_title(value):
+    """Normalise a section title: trimmed plain text, or None for 'no title'."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) > MAX_SECTION_TITLE:
+        raise WorkspaceError(f"A section title may have at most {MAX_SECTION_TITLE} characters.")
+    if any(ord(char) < 32 or ord(char) == 127 for char in text):
+        raise WorkspaceError("A section title cannot contain control characters.")
+    return text
+
+
+def _titles_without(recipe, *instance_ids):
+    """A recipe whose title map no longer names the given instances (removed sections)."""
+    titles = dict(recipe.get("titles") or {})
+    for instance_id in instance_ids:
+        titles.pop(instance_id, None)
+    out = {**recipe}
+    if titles:
+        out["titles"] = titles
+    else:
+        out.pop("titles", None)
+    return out
+
+
+def plan_title(draft, instance_id, value):
+    """Plan a section-title change; blank input removes the override."""
+    _entry(draft.recipe, instance_id)
+    title = _clean_title(value)
+    titles = dict(draft.recipe.get("titles") or {})
+    if title is None:
+        titles.pop(instance_id, None)
+    else:
+        titles[instance_id] = title
+    recipe = {**draft.recipe}
+    if titles:
+        recipe["titles"] = titles
+    else:
+        recipe.pop("titles", None)
+    return validate_recipe(recipe), list(draft.excluded)
+
+
+# --------------------------------------------------------------------------- custom drafts
+
+def create_custom_draft(root, audience):
+    """Create a Custom draft for one data context, or resume the existing one.
+
+    The draft starts from the minimal evidence-floor composition (see
+    ``composer_library.initial_recipe``) and never from a maintained audience preset.
+    """
+    root = Path(root)
+    if (root / DRAFT_EDITOR).is_file():
+        return open_draft(root)
+    recipe = library.initial_recipe(audience)
+    root.mkdir(parents=True, exist_ok=False)
+    _atomic_new(root / DRAFT_RECIPE, recipe_bytes(recipe))
+    editor = {"schema": CUSTOM_DRAFT_SCHEMA, "audience": audience, "origin": CUSTOM_ORIGIN,
+              "excluded": [], "selection": {}, "pending": [],
+              "next_seq": library.last_seq(recipe), "retired": [], "revision": 0,
+              "created_utc": _now(), "updated_utc": _now()}
+    _atomic_new(root / DRAFT_EDITOR, (json.dumps(editor, indent=2) + "\n").encode("utf-8"))
+    return open_draft(root)
+
+
+def _promote(recipe, pending):
+    """Move additions that now form a valid composition into the recipe.
+
+    Returns ``(recipe, remaining, problems)``. An addition that is still incomplete, or that
+    the loader refuses, stays pending with the exact reason; nothing is dropped or guessed.
+    """
+    blocks = list(recipe["blocks"])
+    remaining, problems = [], {}
+    for item in pending:
+        entry = dict(item["entry"])
+        problem = library.entry_problem(entry)
+        if problem is None:
+            conflict = library.combination_conflict(blocks, entry["block"])
+            if conflict is not None:
+                problem = conflict["reason"]
+        candidate = None
+        if problem is None:
+            candidate = {**recipe, "blocks": blocks + [entry]}
+            try:
+                publish.validate_composition(candidate)
+            except ValueError as error:
+                problem = str(error)
+        if problem is None and candidate is not None:
+            blocks = candidate["blocks"]
+        else:
+            remaining.append(item)
+            problems[item["instance_id"]] = problem
+    return {**recipe, "blocks": blocks}, remaining, problems
+
+
+def plan_add(draft, block, options=None, replace=None):
+    """Plan one library addition; writes nothing. Raises LibraryConflict without ``replace``."""
+    if block not in library.LIBRARY:
+        raise WorkspaceError(f"Unknown block type: {block!r}")
+    try:
+        body = library.build_entry(block, options or {})
+    except library.LibraryError as error:
+        raise WorkspaceError(str(error)) from None
+    recipe = draft.recipe
+    retired = list(draft.retired)
+    conflict = library.combination_conflict(recipe["blocks"], block)
+    if conflict is not None:
+        if replace is None:
+            raise LibraryConflict(conflict)
+        if replace not in conflict["instances"]:
+            raise WorkspaceError("Confirm which existing section the new one replaces: "
+                                 + ", ".join(conflict["instances"]))
+        recipe = _titles_without({**recipe, "blocks": [entry for entry in recipe["blocks"]
+                                                       if entry["instance_id"] != replace]},
+                                 replace)
+        retired.append(replace)
+        _check_floor(recipe)
+    instance, seq = library.allocate(block, draft.taken_ids() | set(retired), draft.next_seq)
+    entry = dict(body)
+    entry["instance_id"] = instance
+    pending = [dict(item) for item in draft.pending_additions]
+    pending.append({"instance_id": instance, "entry": entry})
+    recipe, remaining, problems = _promote(recipe, pending)
+    # A replaced instance must leave every active editor reference in the same write, or the saved
+    # draft would name a section it no longer contains.
+    selection = {key: value for key, value in draft.selection.items() if key != replace}
+    excluded = [item for item in draft.excluded if item != replace]
+    return {"recipe": recipe, "pending": remaining, "retired": retired, "next_seq": seq,
+            "instance_id": instance, "state": "pending" if remaining else "added",
+            "problems": problems, "selection": selection, "excluded": excluded}
+
+
+def commit_addition(draft, plan):
+    """Persist one addition plan (or promotion attempt) and bump the revision."""
+    editor = dict(draft.editor)
+    editor["schema"] = CUSTOM_DRAFT_SCHEMA
+    if plan["recipe"] != draft.recipe:
+        _atomic_replace(Path(draft.root) / DRAFT_RECIPE, recipe_bytes(plan["recipe"]))
+    editor["pending"] = [dict(item) for item in plan["pending"]]
+    editor["retired"] = list(plan["retired"])
+    editor["next_seq"] = int(plan["next_seq"])
+    if "selection" in plan:
+        editor["selection"] = dict(plan["selection"])
+    if "excluded" in plan:
+        editor["excluded"] = list(plan["excluded"])
+    editor["revision"] = draft.editor["revision"] + 1
+    editor["updated_utc"] = _now()
+    _write_editor(draft.root, editor)
+    return open_draft(draft.root)
+
+
+def plan_delete_instance(draft, instance_id):
+    """Plan the permanent removal of one *duplicate* instance and its editor state.
+
+    Only an instance of a block type that currently has more than one instance in this draft can
+    be deleted this way; the last remaining instance of a type stays removable only through the
+    Include checkbox, so a section is never deleted by accident. The instance id is retired and is
+    never reissued for another block.
+    """
+    entry = _entry(draft.recipe, instance_id)
+    block = entry["block"]
+    same = [item["instance_id"] for item in draft.recipe["blocks"] if item["block"] == block]
+    if len(same) < 2:
+        raise WorkspaceError(
+            f"{library.LIBRARY[block]['label']} has one instance in this report. Use the Include "
+            "checkbox to set it aside instead of deleting it; nothing is deleted.")
+    if block in REQUIRED_BLOCKS:
+        raise WorkspaceError(f"Cannot delete {instance_id!r}. {REQUIRED_BLOCKS[block]}")
+    blocks = [item for item in draft.recipe["blocks"]
+              if item["instance_id"] != instance_id]
+    recipe = validate_recipe(_titles_without({**draft.recipe, "blocks": blocks}, instance_id))
+    _check_floor(recipe)
+    if len(blocks) < 1:
+        raise WorkspaceError("A composition needs at least one included section.")
+    selection = {key: value for key, value in draft.selection.items() if key != instance_id}
+    excluded = [item for item in draft.excluded if item != instance_id]
+    retired = list(draft.retired) + [instance_id]
+    return {"recipe": recipe, "pending": [dict(item) for item in draft.pending_additions],
+            "retired": retired, "next_seq": draft.next_seq, "instance_id": instance_id,
+            "state": "deleted", "problems": {}, "selection": selection, "excluded": excluded}
+
+
+def commit_deletion(draft, plan):
+    """Persist a deletion plan: recipe, pending additions, retired ids and pending selection."""
+    editor = dict(draft.editor)
+    editor["schema"] = CUSTOM_DRAFT_SCHEMA
+    _atomic_replace(Path(draft.root) / DRAFT_RECIPE, recipe_bytes(plan["recipe"]))
+    editor["pending"] = [dict(item) for item in plan["pending"]]
+    editor["retired"] = list(plan["retired"])
+    editor["next_seq"] = int(plan["next_seq"])
+    editor["selection"] = dict(plan.get("selection") or {})
+    if "excluded" in plan:
+        editor["excluded"] = list(plan["excluded"])
+    editor["revision"] = draft.editor["revision"] + 1
+    editor["updated_utc"] = _now()
+    _write_editor(draft.root, editor)
+    return open_draft(draft.root)
+
+
+def plan_duplicate(draft, instance_id):
+    """Plan a duplicate of one repeatable section, immediately after the original."""
+    entry = _entry(draft.recipe, instance_id)
+    spec = library.LIBRARY[entry["block"]]
+    if not spec["repeatable"]:
+        raise WorkspaceError(f"{spec['label']} cannot be duplicated. {spec['repeat_reason']}")
+    new_id, seq = library.allocate(entry["block"], draft.taken_ids(), draft.next_seq)
+    clone = json.loads(json.dumps(entry))
+    clone["instance_id"] = new_id
+    blocks = list(draft.recipe["blocks"])
+    index = [item["instance_id"] for item in blocks].index(instance_id)
+    blocks.insert(index + 1, clone)
+    titles = dict(draft.recipe.get("titles") or {})
+    duplicated_recipe = {**draft.recipe, "blocks": blocks}
+    if instance_id in titles:
+        # The copy keeps the author's title; the editor only disambiguates it locally.
+        titles[new_id] = titles[instance_id]
+        duplicated_recipe["titles"] = titles
+    return {"recipe": validate_recipe(duplicated_recipe),
+            "pending": [dict(item) for item in draft.pending_additions],
+            "retired": list(draft.retired), "next_seq": seq, "instance_id": new_id,
+            "state": "added", "problems": {}}
+
+
+def plan_replace(draft, pending_id, existing_id):
+    """Explicitly replace one existing section with a pending addition of the same kind."""
+    item = next((entry for entry in draft.pending_additions
+                 if entry["instance_id"] == pending_id), None)
+    if item is None:
+        raise WorkspaceError(f"Unknown pending section: {pending_id!r}")
+    conflict = library.combination_conflict(draft.recipe["blocks"],
+                                            item["entry"]["block"])
+    if conflict is None or existing_id not in conflict["instances"]:
+        raise WorkspaceError("That section is not the one this addition conflicts with.")
+    recipe = _titles_without({**draft.recipe,
+                              "blocks": [entry for entry in draft.recipe["blocks"]
+                                         if entry["instance_id"] != existing_id]},
+                             existing_id)
+    _check_floor(recipe)
+    retired = list(draft.retired) + [existing_id]
+    rest = [entry for entry in draft.pending_additions
+            if entry["instance_id"] != pending_id]
+    recipe, remaining, problems = _promote(recipe, rest)
+    recipe, still_pending, more = _promote(recipe, [item])
+    problems.update(more)
+    pending = remaining + still_pending
+    selection = {key: value for key, value in draft.selection.items()
+                 if key != existing_id}
+    excluded = [item for item in draft.excluded if item != existing_id]
+    return {"recipe": recipe, "pending": pending, "retired": retired,
+            "next_seq": draft.next_seq, "instance_id": pending_id,
+            "state": "added" if not pending else "pending", "problems": problems,
+            "selection": selection, "excluded": excluded}
+
+
+def reset_custom(draft, audience):
+    """Restore a Custom draft to its initial composition; generated reports are untouched.
+
+    Every id the draft has used is retired first, so the restored composition never reissues an
+    instance id for a different block.
+    """
+    if draft.audience != audience:
+        raise WorkspaceError("Reset context belongs to a different data context.")
+    retired = sorted(set(draft.retired) | {entry["instance_id"]
+                                           for entry in draft.recipe["blocks"]}
+                     | {item["instance_id"] for item in draft.pending_additions})
+    recipe = library.initial_recipe(audience, draft.next_seq, set(retired))
+    _atomic_replace(Path(draft.root) / DRAFT_RECIPE, recipe_bytes(recipe))
+    editor = {"schema": CUSTOM_DRAFT_SCHEMA, "audience": audience, "origin": CUSTOM_ORIGIN,
+              "excluded": [], "selection": {}, "pending": [],
+              "next_seq": library.last_seq(recipe), "retired": retired,
+              "revision": draft.editor["revision"] + 1,
+              "created_utc": draft.editor.get("created_utc") or _now(),
+              "updated_utc": _now()}
+    _write_editor(draft.root, editor)
+    return open_draft(draft.root)
+
+
+def repair_custom_draft(draft):
+    """Remove only the orphaned editor references of a Custom draft; keep everything else.
+
+    Explicit action only: opening the editor reports the orphans and refuses generation, but never
+    rewrites the saved draft. The repair touches exclusions and pending selections only; recipe,
+    instance ids, options, history and retired ids are left exactly as they are.
+    """
+    orphans = draft.orphans()
+    if not orphans:
+        return draft
+    editor = dict(draft.editor)
+    editor["excluded"] = [item for item in draft.excluded if item not in orphans]
+    editor["selection"] = {key: value for key, value in draft.selection.items()
+                           if key not in orphans}
+    editor["repairs"] = list(editor.get("repairs") or []) + [
+        {"utc": _now(), "removed": list(orphans),
+         "note": "orphaned editor references removed; composition unchanged"}]
+    editor["revision"] = draft.editor["revision"] + 1
+    editor["updated_utc"] = _now()
+    _write_editor(draft.root, editor)
+    return open_draft(draft.root)
+
+
+def plan_pending_options(draft, pending_id, options):
+    """Replace the option values of a pending addition, then try to promote it again."""
+    item = next((entry for entry in draft.pending_additions
+                 if entry["instance_id"] == pending_id), None)
+    if item is None:
+        raise WorkspaceError(f"Unknown pending section: {pending_id!r}")
+    block = item["entry"]["block"]
+    try:
+        body = library.build_entry(block, options or {})
+    except library.LibraryError as error:
+        raise WorkspaceError(str(error)) from None
+    entry = dict(body)
+    entry["instance_id"] = pending_id
+    remaining = [dict(other) for other in draft.pending_additions
+                 if other["instance_id"] != pending_id]
+    recipe, pending, problems = _promote(draft.recipe, remaining)
+    recipe, still, more = _promote(recipe, [{"instance_id": pending_id, "entry": entry}])
+    problems.update(more)
+    return {"recipe": recipe, "pending": pending + still, "retired": list(draft.retired),
+            "next_seq": draft.next_seq, "instance_id": pending_id,
+            "state": "pending" if (pending or still) else "added", "problems": problems}
+
+
+def discard_pending(draft, pending_id):
+    """Drop one pending addition on request; its id is retired so it is never reissued."""
+    item = next((entry for entry in draft.pending_additions
+                 if entry["instance_id"] == pending_id), None)
+    if item is None:
+        raise WorkspaceError(f"Unknown pending section: {pending_id!r}")
+    retired = list(draft.retired) + [pending_id]
+    remaining = [dict(other) for other in draft.pending_additions
+                 if other["instance_id"] != pending_id]
+    recipe, pending, problems = _promote(draft.recipe, remaining)
+    selection = {key: value for key, value in draft.selection.items()
+                 if key != existing_id}
+    excluded = [item for item in draft.excluded if item != existing_id]
+    return {"recipe": recipe, "pending": pending, "retired": retired,
+            "next_seq": draft.next_seq, "instance_id": pending_id,
+            "state": "added" if not pending else "pending", "problems": problems,
+            "selection": selection, "excluded": excluded}

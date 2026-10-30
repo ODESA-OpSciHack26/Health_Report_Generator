@@ -13,10 +13,12 @@ b <- list(cfg = list(title = 'Composed test', years = c(2021, 2025), reference_y
           manifest = list(snapshot_id = strrep('a', 64)),
           classes = data.frame(topic = 'virus', label = 'Virus', stringsAsFactors = FALSE))
 
-write_recipe <- function(blocks, contract = 'health-report/composition-recipe/1') {
+write_recipe <- function(blocks, contract = 'health-report/composition-recipe/1',
+                         titles = NULL) {
   path <- tempfile(fileext = '.json')
-  writeLines(toJSON(list(contract = contract, audience = 'test',
-                         blocks = blocks), auto_unbox = TRUE), path)
+  payload <- list(contract = contract, audience = 'test', blocks = blocks)
+  if(!is.null(titles)) payload$titles <- titles
+  writeLines(toJSON(payload, auto_unbox = TRUE), path)
   path
 }
 
@@ -115,10 +117,16 @@ stopifnot(grepl('Primary finding', html_p, fixed = TRUE))
 stopifnot(grepl('Supporting block', html_p, fixed = TRUE))
 stopifnot(identical(nav_targets(html_p), c('i-ref', 'i-b')))
 stopifnot(!any(grepl('-', composition_labels, fixed = TRUE)))
-stopifnot(identical(unname(composition_labels),
-                    c('Context', 'Time trend', 'Time trends by topic', 'What this report covers',
-                      'Monitoring overview', 'Sensitivity comparison',
-                      'Reference comparison', 'Limitations', 'Reproduction')))
+stopifnot(setequal(names(composition_labels),
+                   c('intro', 'series-trend', 'series-collection', 'reference-comparison',
+                     'coverage-selection', 'monitoring-overview', 'sensitivity-comparison',
+                     'limitations', 'reproduction')))
+stopifnot(identical(unname(composition_labels[c('intro', 'series-collection',
+                                                 'reference-comparison', 'monitoring-overview',
+                                                 'limitations')]),
+                    c('Report context', 'Annual trends by disease',
+                      'Change from the reference year', 'Latest observations by disease',
+                      'Limitations and cautions')))
 stopifnot(!grepl('dash-footer', html_a, fixed = TRUE))
 stopifnot(!grepl('presentation_open', html_a, fixed = TRUE))
 
@@ -444,6 +452,36 @@ b_scoped$cfg$exclude_topics <- c('other_signal')
 scoped_links <- provenance_summary(b_scoped)
 stopifnot(grepl('virus, bacterium', scoped_links, fixed = TRUE))
 stopifnot(grepl('other_signal', scoped_links, fixed = TRUE))
+
+# 10. Section titles: heading, stable name nearby, escaping and navigation disambiguation.
+titled <- write_recipe(list(list(block = 'alpha', instance_id = 'i-alpha'),
+                            list(block = 'beta', instance_id = 'i-beta')),
+                       titles = list('i-alpha' = 'Focus section'))
+html_t <- compose_report_html(b, titled, registry = registry)
+stopifnot(grepl('<h2 class="composed-heading">Focus section</h2>', html_t, fixed = TRUE))
+stopifnot(grepl('<p class="composed-section-meta">Alpha</p>', html_t, fixed = TRUE))
+stopifnot(grepl('<h2 class="composed-heading">Beta</h2>', html_t, fixed = TRUE))
+
+escaped <- write_recipe(list(list(block = 'alpha', instance_id = 'i-alpha')),
+                        titles = list('i-alpha' = '<script>alert(1)</script> & "quoted"'))
+html_e <- compose_report_html(b, escaped, registry = registry)
+stopifnot(!grepl('<script>alert(1)</script>', html_e, fixed = TRUE))
+stopifnot(grepl('<h2 class="composed-heading">&lt;script&gt;alert(1)&lt;/script&gt; &amp; "quoted"</h2>',
+                html_e, fixed = TRUE))
+# The same text inside the navigation attribute is quote-escaped.
+stopifnot(grepl('aria-label="Section 1 of 1: &lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;quoted&quot;"',
+                html_e, fixed = TRUE))
+
+# Two sections with the same title stay distinguishable in the navigation through their
+# position, without exposing instance ids or inventing a difference.
+same <- write_recipe(list(list(block = 'alpha', instance_id = 'i-1'),
+                          list(block = 'alpha', instance_id = 'i-2')),
+                     titles = list('i-1' = 'Repeated', 'i-2' = 'Repeated'))
+html_s <- compose_report_html(b, same, registry = registry)
+stopifnot(count_of(html_s, '<h2 class="composed-heading">Repeated</h2>') == 2L)
+stopifnot(grepl('aria-label="Section 1 of 2: Repeated"', html_s, fixed = TRUE))
+stopifnot(grepl('aria-label="Section 2 of 2: Repeated"', html_s, fixed = TRUE))
+stopifnot(!grepl('i-1<', html_s, fixed = TRUE))
 
 cat('r-composition smoke passed\n')
 

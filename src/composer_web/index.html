@@ -49,7 +49,7 @@
     </details>
   </section>
 
-  <section class="card" aria-labelledby="edit-title">
+  <section class="card" aria-labelledby="edit-title" id="audience-card">
     <h2 id="edit-title">2. Sections
       <span id="custom-badge" class="badge" hidden>Customized</span></h2>
     <details id="editor" class="editor">
@@ -79,6 +79,48 @@
     <p id="edit-status" class="status" role="status"></p>
   </section>
 
+  <section class="card" aria-labelledby="custom-title" id="custom-card" hidden>
+    <h2 id="custom-title">2. Report sections, in order
+      <span class="badge">Custom composition</span></h2>
+    <p class="hint">The same editor as the audience presets. Use the Include checkbox to keep a
+    section or set it aside: an excluded section keeps its settings and can be restored. Checking
+    a section that is not in the report yet adds it, and required sections stay in every
+    report.</p>
+    <div id="custom-repair" class="confirm" role="alert" hidden>
+      <p id="custom-repair-text"></p>
+      <div class="buttons">
+        <button id="custom-repair-yes" type="button" class="secondary">Repair draft</button>
+      </div>
+    </div>
+    <ol id="custom-blocks" class="blocks blocks--custom" aria-label="Custom report sections"></ol>
+    <p id="custom-empty" class="hint" hidden></p>
+
+    <div id="custom-pending-wrap" hidden>
+      <h3 class="subhead">Waiting for a choice</h3>
+      <p class="hint">These sections are not part of the saved composition yet, so Generate stays
+      disabled until each one is complete or discarded.</p>
+      <ul id="custom-pending" class="blocks blocks--pending"></ul>
+    </div>
+
+    <div class="editor-bar">
+      <p id="custom-ready" class="chip" role="status"></p>
+      <button id="custom-reset-open" type="button" class="secondary">Reset custom composition</button>
+    </div>
+    <div id="custom-reset-confirm" class="confirm" role="alertdialog" aria-modal="false"
+         aria-labelledby="custom-reset-question" hidden>
+      <p id="custom-reset-question">Discard this context's custom composition and start again from
+      the initial sections? Other data contexts, audience drafts and generated reports are kept.</p>
+      <div class="buttons">
+        <button id="custom-reset-yes" type="button" class="danger">Reset custom composition</button>
+        <button id="custom-reset-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+    <p id="custom-blocking" class="status error" role="alert" hidden></p>
+    <p id="custom-status" class="status" role="status"></p>
+    <p class="digest">Saved composition <code id="custom-digest">—</code>
+      <span id="custom-pending-note" class="hint"></span></p>
+  </section>
+
   <section class="card report-region" id="report" tabindex="-1"
            aria-labelledby="report-title">
     <h2 id="report-title">3. Report</h2>
@@ -106,6 +148,7 @@
       <p id="data-paths" class="hint">Open this to read the locations.</p>
       <p class="hint">A managed copy is the per-audience working copy the editor writes; it is
       not a published report and contains no generated output.</p>
+      <div id="custom-drafts" class="custom-drafts"></div>
     </details>
   </section>
 </main>

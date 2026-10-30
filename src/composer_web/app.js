@@ -31,6 +31,9 @@ const STYLE_LABELS = { standard: "Standard", compact: "Compact" };
 const state = {
   presets: [],
   preset: null,
+  context: null,         // the saved data context the custom composition is bound to
+  audience: null,        // the last audience preset the reader looked at
+  mode: "preset",        // "preset" (audience) or "custom" (block library)
   doc: null,
   rendered: null,        // { digest, preset, label, classification, job_id }
   job: null,
@@ -124,6 +127,8 @@ function renderPresets() {
       detail.textContent = preset.reason || "Not available in this deployment.";
     } else if (preset.draft_error) {
       detail.textContent = "Saved copy needs attention: " + preset.draft_error;
+    } else if (isCustom) {
+      detail.textContent = preset.detail || "Compose from the block library.";
     } else if (preset.source) {
       detail.textContent = preset.source.included_topics + " diseases · "
         + (preset.source.years || []).join("–") + " · ref. " + preset.source.reference_year;
@@ -142,7 +147,7 @@ function onPresetKey(event, id) {
   const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"];
   if (!keys.includes(event.key)) return;
   event.preventDefault();
-  const usable = state.presets.filter((item) => item.available && item.id !== "custom");
+  const usable = state.presets.filter((item) => item.available);
   const index = usable.findIndex((item) => item.id === id);
   let next = index;
   if (event.key === "Home") next = 0;
@@ -158,9 +163,12 @@ function onPresetKey(event, id) {
 
 async function choosePreset(id) {
   const entry = presetEntry(id);
-  if (!entry || !entry.available || id === "custom") return;
+  if (!entry || !entry.available) return;
+  if (id === "custom") return chooseCustom();
   const seq = ++state.seq;
+  state.mode = "preset";
   state.preset = id;
+  state.audience = id;
   renderPresets();
   setStatus(el("edit-status"), "Loading this audience…", "");
   try {
@@ -179,7 +187,11 @@ async function choosePreset(id) {
 function applyDocument(doc, options) {
   const active = document.activeElement && document.activeElement.id;
   state.doc = doc;
+  state.mode = "preset";
   state.preset = doc.preset;
+  state.audience = doc.preset;
+  el("custom-card").hidden = true;
+  el("audience-card").hidden = false;
   const entry = presetEntry(doc.preset);
   if (entry) entry.customized = doc.customized;
   el("custom-badge").hidden = !doc.customized;
@@ -216,6 +228,7 @@ function describeDifferences(doc) {
   }
   if (diff.reordered) parts.push("section order changed");
   if ((diff.style || []).length) parts.push("chart height changed");
+  if ((diff.layout || []).length) parts.push("chart layout changed");
   if ((diff.selection || []).length) parts.push("disease selection changed");
   if (!doc.customized) parts.push("matches the default");
   return parts.join(" · ");
@@ -252,12 +265,67 @@ function renderReadiness(doc) {
   }
 }
 
+/* ------------------------------------------------------------ shared section editor
+   One implementation of the ordered section list. The audience editor and the Custom
+   editor render the same controls from the same document fields; the adapter is the only
+   mode-specific part and only maps a control onto that mode's server action. Disease
+   selection, ordering, exclusion and option rules live here once, not once per mode. */
+
+function sectionText(block) {
+  const fallback = BLOCK_LABELS[block.block] || {};
+  return { label: block.label || fallback.label || block.block,
+           description: block.description || fallback.description || "" };
+}
+
+function optionValue(block, key) {
+  const options = block.options || {};
+  if (Object.prototype.hasOwnProperty.call(options, key)) return options[key];
+  if (key === "topics") return block.selected_topics;
+  if (key === "style") return block.style;
+  if (key === "default_topic") return block.default_topic;
+  return undefined;
+}
+
+function presetAdapter(doc) {
+  return {
+    mode: "preset",
+    setIncluded: (id, include) => edit(include ? "include" : "exclude", id, null),
+    move: (id, direction) => edit(direction === "up" ? "move-up" : "move-down", id, null),
+    setTopics: (id, topics) => edit("set-topics", id, topics),
+    setDefaultOpen: (id, topic) => edit("set-default-open", id, topic),
+    setTitle: (id, value) => edit("set-title", id, value),
+    option: (id, name, value) => edit(name === "layout" ? "set-layout" : "set-style",
+                                      id, value),
+    canDuplicate: false,
+    duplicate: null,
+  };
+}
+
+function customAdapter(doc) {
+  return {
+    mode: "custom",
+    setIncluded: (id, include) => customAction(include ? "restore" : "remove", id),
+    move: (id, direction) => customAction(direction === "up" ? "move-up" : "move-down", id),
+    setTopics: (id, topics) => customAction("set-topics", id, topics),
+    setDefaultOpen: (id, topic) => customAction("set-default-open", id, topic),
+    setTitle: (id, value) => customAction("set-title", id, value),
+    // The website speaks "style"/"layout"; the block contract calls them "presentation.*".
+    option: (id, name, value) => setOption(
+      id, (name === "style" || name === "layout") ? "presentation." + name : name, value),
+    canDuplicate: true,
+    duplicate: (id) => customAction("duplicate", id),
+  };
+}
+
 function renderBlocks(doc) {
-  const list = el("blocks");
-  list.replaceChildren();
+  renderSections(doc, presetAdapter(doc), el("blocks"));
+}
+
+function renderSections(doc, adapter, list) {
   const included = doc.blocks.filter((block) => block.included);
+  list.replaceChildren();
   doc.blocks.forEach((block) => {
-    const info = blockInfo(block);
+    const info = sectionText(block);
     const item = document.createElement("li");
     item.className = "block" + (block.included ? "" : " block--off");
 
@@ -271,7 +339,7 @@ function renderBlocks(doc) {
     box.checked = block.included;
     box.disabled = block.required || (block.included && included.length <= 1);
     box.addEventListener("change", () =>
-      edit(box.checked ? "include" : "exclude", block.instance_id, null));
+      adapter.setIncluded(block.instance_id, box.checked));
     const text = document.createElement("span");
     text.className = "block-label";
     text.textContent = info.label;
@@ -284,11 +352,30 @@ function renderBlocks(doc) {
     head.append(id);
     item.append(head);
 
+    if (block.title) {
+      const title = document.createElement("p");
+      title.className = "block-title";
+      title.textContent = block.title;
+      item.append(title);
+    }
+    if (block.copy_label) {
+      const copy = document.createElement("span");
+      copy.className = "badge badge--soft block-copy";
+      copy.textContent = block.copy_label;
+      copy.title = "Editor-only disambiguation; not part of the report title.";
+      item.append(copy);
+    }
     if (info.description) {
       const description = document.createElement("p");
       description.className = "block-desc";
       description.textContent = info.description;
       item.append(description);
+    }
+    if (block.summary) {
+      const summary = document.createElement("p");
+      summary.className = "block-summary";
+      summary.textContent = block.summary;
+      item.append(summary);
     }
     if (block.required) {
       const note = document.createElement("p");
@@ -303,37 +390,154 @@ function renderBlocks(doc) {
       const position = included.findIndex((entry) => entry.instance_id === block.instance_id);
       const move = document.createElement("div");
       move.className = "move";
-      const up = document.createElement("button");
-      up.type = "button";
-      up.id = "up-" + block.instance_id;
-      up.textContent = "↑";
-      up.setAttribute("aria-label", "Move " + info.label + " up");
-      up.disabled = position <= 0;
-      up.addEventListener("click", () => edit("move-up", block.instance_id, null));
-      const down = document.createElement("button");
-      down.type = "button";
-      down.id = "down-" + block.instance_id;
-      down.textContent = "↓";
-      down.setAttribute("aria-label", "Move " + info.label + " down");
-      down.disabled = position === included.length - 1;
-      down.addEventListener("click", () => edit("move-down", block.instance_id, null));
-      move.append(up, down);
+      move.append(
+        controlButton("↑", "up-" + block.instance_id, "Move " + info.label + " up",
+                      position <= 0, () => adapter.move(block.instance_id, "up")),
+        controlButton("↓", "down-" + block.instance_id, "Move " + info.label + " down",
+                      position === included.length - 1,
+                      () => adapter.move(block.instance_id, "down")));
       controls.append(move);
+      if (adapter.canDuplicate && block.repeatable) {
+        controls.append(controlButton("Duplicate", "dup-" + block.instance_id,
+                                      "Duplicate " + info.label, false,
+                                      () => adapter.duplicate(block.instance_id)));
+      }
+      if (adapter.canDelete) {
+        const sameType = doc.blocks.filter((entry) => entry.block === block.block).length;
+        if (sameType > 1) {
+          controls.append(controlButton(
+            "Delete duplicate", "delete-" + block.instance_id,
+            "Delete this duplicate of " + info.label, false,
+            () => inlineConfirm(item,
+              "Delete this duplicate section? Only this instance and its own settings are "
+              + "removed; the other copies stay in the report.",
+              "Delete duplicate", () => adapter.deleteInstance(block.instance_id))));
+        }
+      }
     }
     item.append(controls);
 
-    if ((block.editable || []).includes("topics")) {
-      item.append(diseasePicker(block, info));
+    if (block.included) {
+      item.append(titleField(adapter, block));
+      if (block.block === "reference-comparison" || block.block === "monitoring-overview") {
+        const scope = document.createElement("p");
+        scope.className = "field-help";
+        scope.textContent = block.block === "reference-comparison"
+          ? "The reporting year and the reference year come from this report's saved analysis "
+            + "settings. To change them, generate an analysis with different settings."
+          : "The reporting window comes from this report's saved analysis settings; the value "
+            + "shown is the latest saved observation inside that window, not a fixed reporting "
+            + "year. To change the window, generate an analysis with different settings.";
+        item.append(scope);
+      }
+      if (block.block === "series-collection") {
+        const note = document.createElement("p");
+        note.className = "field-help";
+        note.textContent = "Display years only choose saved rows from the same series; they do "
+          + "not change the reporting window used by the analysis.";
+        item.append(note);
+      }
+      const editable = block.editable || [];
+      if (editable.includes("topic")) item.append(topicControl(adapter, block));
+      if (editable.includes("measure")) item.append(measureControl(adapter, block));
+      if (editable.includes("layout")) item.append(layoutControl(adapter, block));
+      if (editable.includes("topics")) item.append(diseasePicker(adapter, block));
+      if (editable.includes("style") || editable.includes("years")) {
+        item.append(advancedControls(adapter, block));
+      }
     }
-    if ((block.editable || []).includes("style")) {
-      item.append(advancedStyle(block));
-    }
-
+    const confirm = document.createElement("div");
+    confirm.className = "inline-confirm";
+    item.append(confirm);
     list.append(item);
   });
+
+  // Every registered type that this draft does not contain yet stays visible as an unchecked
+  // row after the saved sections. Checking one asks the service to create a real instance.
+  const absent = adapter.absentTypes ? adapter.absentTypes() : [];
+  for (const type of absent) {
+    const item = document.createElement("li");
+    item.className = "block block--absent";
+
+    const head = document.createElement("div");
+    head.className = "block-head";
+    const wrap = document.createElement("label");
+    wrap.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = "add-" + type.block;
+    box.checked = false;
+    box.disabled = !type.available;
+    box.addEventListener("change", () => {
+      if (box.checked) adapter.addType(type.block, box, item);
+    });
+    const text = document.createElement("span");
+    text.className = "block-label";
+    text.textContent = type.label;
+    wrap.append(box, text);
+    head.append(wrap);
+    const badge = document.createElement("span");
+    badge.className = "badge badge--soft";
+    badge.textContent = "Not in this report";
+    head.append(badge);
+    item.append(head);
+
+    const description = document.createElement("p");
+    description.className = "block-desc";
+    description.textContent = type.description;
+    item.append(description);
+
+    if (!type.available) {
+      const reason = document.createElement("p");
+      reason.className = "library-reason";
+      reason.textContent = "Not available for this data context: "
+        + (type.reason || "the saved records do not support this section.");
+      item.append(reason);
+    } else if (!type.repeatable && type.repeat_reason) {
+      const note = document.createElement("p");
+      note.className = "field-help";
+      note.textContent = type.repeat_reason;
+      item.append(note);
+    }
+
+    const confirm = document.createElement("div");
+    confirm.className = "inline-confirm";
+    item.append(confirm);
+    list.append(item);
+  }
 }
 
-function diseasePicker(block, info) {
+function fieldShell(text, control, helpText, wide) {
+  const field = document.createElement("div");
+  field.className = "field" + (wide ? " field--wide" : "");
+  const label = document.createElement("label");
+  label.textContent = text;
+  label.htmlFor = control.id;
+  field.append(label, control);
+  if (helpText) {
+    const help = document.createElement("p");
+    help.className = "field-help";
+    help.textContent = helpText;
+    field.append(help);
+  }
+  return field;
+}
+
+function selectField(id, choices, current, onChange) {
+  const select = document.createElement("select");
+  select.id = id;
+  for (const choice of choices) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    if (choice.value === current) option.selected = true;
+    select.append(option);
+  }
+  select.addEventListener("change", () => onChange(select.value));
+  return select;
+}
+
+function diseasePicker(adapter, block) {
   const wrap = document.createElement("fieldset");
   wrap.className = "diseases";
   wrap.id = "topics-" + block.instance_id;
@@ -341,7 +545,7 @@ function diseasePicker(block, info) {
   legend.textContent = "Diseases shown in this section";
   wrap.append(legend);
 
-  const chosen = block.selected_topics || [];
+  const chosen = optionValue(block, "topics") || [];
   const choices = block.topic_choices || [];
   const disabled = !block.included;
 
@@ -352,13 +556,13 @@ function diseasePicker(block, info) {
   all.id = "all-" + block.instance_id;
   all.textContent = "Select all";
   all.disabled = disabled;
-  all.addEventListener("click", () => edit("set-topics", block.instance_id, choices.slice()));
+  all.addEventListener("click", () => adapter.setTopics(block.instance_id, choices.slice()));
   const none = document.createElement("button");
   none.type = "button";
   none.id = "clear-" + block.instance_id;
   none.textContent = "Clear";
   none.disabled = disabled;
-  none.addEventListener("click", () => edit("set-topics", block.instance_id, []));
+  none.addEventListener("click", () => adapter.setTopics(block.instance_id, []));
   buttons.append(all, none);
   wrap.append(buttons);
 
@@ -374,15 +578,16 @@ function diseasePicker(block, info) {
     box.checked = chosen.includes(topic);
     box.disabled = disabled;
     box.addEventListener("change", () => {
-      const current = (state.doc && state.doc.blocks.find(
-        (entry) => entry.instance_id === block.instance_id) || {}).selected_topics || [];
-      const next = box.checked
-        ? current.concat([topic])
+      const current = optionValue(
+        (state.doc && state.doc.blocks.find(
+          (entry) => entry.instance_id === block.instance_id)) || { options: {} },
+        "topics") || [];
+      const next = box.checked ? current.concat([topic])
         : current.filter((entry) => entry !== topic);
-      edit("set-topics", block.instance_id, next);
+      adapter.setTopics(block.instance_id, next);
     });
     const name = document.createElement("span");
-    name.textContent = topic;
+    name.textContent = topicLabel(topic);
     label.append(box, name);
     grid.append(label);
   }
@@ -391,7 +596,7 @@ function diseasePicker(block, info) {
   if (!choices.length) {
     const note = document.createElement("p");
     note.className = "field-help";
-    note.textContent = "This saved bundle lists no diseases for the section.";
+    note.textContent = "This saved data context lists no diseases for this section.";
     wrap.append(note);
   }
   if (disabled) {
@@ -401,69 +606,165 @@ function diseasePicker(block, info) {
     wrap.append(note);
   }
 
-  const field = document.createElement("div");
-  field.className = "field field--wide";
-  const label = document.createElement("label");
-  label.textContent = "Disease expanded when the report opens";
-  label.htmlFor = "open-" + block.instance_id;
-  const select = document.createElement("select");
-  select.id = "open-" + block.instance_id;
+  const select = selectField("open-" + block.instance_id,
+                             chosen.map((topic) => ({ value: topic, label: topicLabel(topic) })),
+                             optionValue(block, "default_topic"),
+                             (value) => adapter.setDefaultOpen(block.instance_id, value));
   if (!chosen.length) {
     const placeholder = document.createElement("option");
     placeholder.textContent = "No diseases selected";
     placeholder.value = "";
-    select.append(placeholder);
+    select.prepend(placeholder);
     select.disabled = true;
   }
-  for (const topic of chosen) {
-    const option = document.createElement("option");
-    option.value = topic;
-    option.textContent = topic;
-    if (block.default_topic === topic) option.selected = true;
-    select.append(option);
-  }
-  select.addEventListener("change", () =>
-    edit("set-default-open", block.instance_id, select.value));
-  const help = document.createElement("p");
-  help.className = "field-help";
-  help.textContent = "Other checked diseases remain available in the report.";
-  field.append(label, select, help);
-  wrap.append(field);
+  select.disabled = select.disabled || disabled;
+  const combined = (optionValue(block, "layout") || "panels") === "combined";
+  wrap.append(fieldShell(
+    combined ? "Disease details expanded when the report opens"
+             : "Disease expanded when the report opens",
+    select,
+    combined
+      ? "All selected diseases are plotted in the chart; this only chooses which detail panel is "
+        + "open first."
+      : "Other checked diseases remain available in the report.", true));
   return wrap;
 }
 
-function advancedStyle(block) {
+function titleField(adapter, block) {
+  const wrap = document.createElement("div");
+  wrap.className = "field field--wide block-title-field";
+  const label = document.createElement("label");
+  label.textContent = "Report section title (optional)";
+  label.htmlFor = "title-" + block.instance_id;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.id = "title-" + block.instance_id;
+  input.maxLength = 80;
+  input.value = block.title || "";
+  input.placeholder = "Uses the block name when blank";
+  input.addEventListener("change", () => {
+    const value = input.value.trim();
+    if (value === (block.title || "")) return;
+    adapter.setTitle(block.instance_id, value);
+  });
+  const help = document.createElement("p");
+  help.className = "field-help";
+  help.textContent = "Plain text, up to 80 characters. It becomes the section heading; the block "
+    + "name and a summary of the saved content stay beside it.";
+  wrap.append(label, input, help);
+  return wrap;
+}
+
+function layoutControl(adapter, block) {
+  const current = optionValue(block, "layout") || "panels";
+  const select = selectField("layout-" + block.instance_id,
+                             [{ value: "panels", label: "Separate chart per disease" },
+                              { value: "combined", label: "One combined chart" }],
+                             current,
+                             (value) => {
+                               if (value === optionValue(block, "layout")) return;
+                               adapter.option(block.instance_id, "layout", value);
+                             });
+  const combined = current === "combined";
+  return fieldShell("Chart layout", select,
+                    combined
+                      ? "Every selected disease is plotted in one chart on a shared axis; each "
+                        + "disease keeps its own expandable detail table. Changing the layout "
+                        + "changes the presentation only, not the saved values."
+                      : "Each disease keeps its own chart and detail panel.", true);
+}
+
+function topicControl(adapter, block) {
+  const reference = block.block === "reference-comparison";
+  const choices = reference ? (block.reference_choices || []) : (block.topic_choices || []);
+  const select = selectField("topic-" + block.instance_id,
+                             choices.map((topic) => ({ value: topic, label: topic })),
+                             optionValue(block, "topic"),
+                             (value) => adapter.option(block.instance_id, "topic", value));
+  return fieldShell(reference ? "Saved comparison shown" : "Disease shown", select,
+                    reference
+                      ? "Chooses a different saved result. The displayed disease, its counts "
+                        + "and this section's checked instance identity change; no analysis is run."
+                      : "This section shows one disease. Choosing another saved series changes "
+                        + "what is displayed; the report scope does not change and no analysis "
+                        + "is run.", true);
+}
+
+function measureControl(adapter, block) {
+  const choices = block.measures && block.measures.length
+    ? block.measures : [optionValue(block, "measure")].filter(Boolean);
+  const select = selectField("measure-" + block.instance_id,
+                             choices.map((measure) => ({ value: measure, label: measure })),
+                             optionValue(block, "measure"),
+                             (value) => adapter.option(block.instance_id, "measure", value));
+  return fieldShell("Measure shown", select,
+                    "Chooses which saved measure is displayed. It does not change what was "
+                    + "analysed.", false);
+}
+
+function advancedControls(adapter, block) {
   const wrap = document.createElement("details");
   wrap.className = "advanced";
   const summary = document.createElement("summary");
   summary.textContent = "Advanced display options";
   wrap.append(summary);
+  const editable = block.editable || [];
+  if (editable.includes("style")) wrap.append(styleControl(adapter, block));
+  if (editable.includes("years")) wrap.append(yearsControl(adapter, block));
+  return wrap;
+}
 
-  const field = document.createElement("div");
-  field.className = "field";
+function styleControl(adapter, block) {
+  const current = optionValue(block, "style") || "standard";
+  const select = selectField("style-" + block.instance_id,
+                             [{ value: "standard", label: STYLE_LABELS.standard },
+                              { value: "compact", label: STYLE_LABELS.compact }],
+                             current,
+                             (value) => {
+                               // no-op must not change the recipe
+                               if (value === optionValue(block, "style")) return;
+                               adapter.option(block.instance_id, "style", value);
+                             });
+  return fieldShell("Chart height", select,
+                    "Changes the figure height only. Values, axes, wording and analytical "
+                    + "meaning are unchanged.", false);
+}
+
+function yearsControl(adapter, block) {
+  const window = block.years_window && block.years_window.length
+    ? block.years_window : [];
+  const current = optionValue(block, "years") || window;
+  const row = document.createElement("div");
+  row.className = "field field--wide";
+  const start = document.createElement("input");
+  start.type = "number";
+  start.id = "years-start-" + block.instance_id;
+  start.value = current[0] || "";
+  start.min = window[0] || "";
+  start.max = window[window.length - 1] || "";
+  const end = document.createElement("input");
+  end.type = "number";
+  end.id = "years-end-" + block.instance_id;
+  end.value = current[1] || "";
+  end.min = window[0] || "";
+  end.max = window[window.length - 1] || "";
   const label = document.createElement("label");
-  label.textContent = "Chart height";
-  label.htmlFor = "style-" + block.instance_id;
-  const select = document.createElement("select");
-  select.id = "style-" + block.instance_id;
-  for (const value of ["standard", "compact"]) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = STYLE_LABELS[value] || value;
-    if (block.style === value) option.selected = true;
-    select.append(option);
-  }
-  select.addEventListener("change", () => {
-    if (select.value === block.style) return;   // no-op must not change the recipe
-    edit("set-style", block.instance_id, select.value);
-  });
+  label.textContent = "Years shown (saved reporting window " + window.join("–") + ")";
+  label.htmlFor = start.id;
+  const buttons = document.createElement("div");
+  buttons.className = "buttons buttons--inline";
+  buttons.append(
+    controlButton("Apply years", "years-apply-" + block.instance_id, null, false,
+                  () => adapter.option(block.instance_id, "years",
+                                       [Number(start.value), Number(end.value)])),
+    controlButton("Use the whole window", "years-reset-" + block.instance_id, null, false,
+                  () => adapter.option(block.instance_id, "years", null)));
   const help = document.createElement("p");
   help.className = "field-help";
-  help.textContent = "Changes the figure height only. Values, axes, wording and analytical "
-    + "meaning are unchanged.";
-  field.append(label, select, help);
-  wrap.append(field);
-  return wrap;
+  help.textContent = "Display window only: it selects saved rows from the same series. It does "
+    + "not analyse a new period or change the report scope.";
+  row.append(label, start, end, buttons, help);
+  return row;
 }
 
 async function edit(action, instance, value) {
@@ -510,6 +811,314 @@ async function resetCopy() {
   }
 }
 
+async function resetCustom() {
+  if (state.mode !== "custom" || !state.context) return;
+  const seq = ++state.seq;
+  try {
+    const doc = await mutate("custom-reset", "/api/custom/reset", { context: state.context });
+    if (seq !== state.seq) return;
+    el("custom-reset-confirm").hidden = true;
+    applyCustom(doc, {});
+    setStatus(el("custom-status"), "Reset this context's custom composition. Generated reports, "
+      + "other data contexts and audience drafts are kept.", "ok");
+    announce("Custom composition reset.");
+    loadSaved(true);
+  } catch (error) {
+    if (seq !== state.seq) return;
+    setStatus(el("custom-status"), error.message, "error");
+  }
+}
+
+/* ------------------------------------------------------------------ custom mode */
+function contextLabel(id) {
+  const entry = state.presets.find((item) => item.id === id);
+  return entry ? entry.label : (id || "this");
+}
+
+function topicLabel(topic) {
+  const labels = (state.doc && state.doc.topic_labels) || {};
+  return labels[topic] || topic;
+}
+
+function summarizeSource(source) {
+  if (!source) return "";
+  const parts = [
+    (source.years || []).length ? "Reporting period " + (source.years || []).join("–") : null,
+    source.reference_year ? "reference " + source.reference_year : null,
+    source.geography || null,
+    source.included_topics ? source.included_topics + " diseases in the saved bundle" : null,
+    source.snapshot_short ? "saved data " + source.snapshot_short : null,
+  ].filter(Boolean);
+  const text = parts.join(" · ");
+  return source.title ? text + " — " + source.title : text;
+}
+
+function controlButton(text, id, label, disabled, handler, className) {
+  const node = document.createElement("button");
+  node.type = "button";
+  if (id) node.id = id;
+  node.textContent = text;
+  if (label) node.setAttribute("aria-label", label);
+  node.disabled = Boolean(disabled);
+  if (className) node.className = className;
+  node.addEventListener("click", handler);
+  return node;
+}
+
+async function chooseCustom(context) {
+  const query = context
+    ? "?context=" + encodeURIComponent(context)
+    : (state.audience ? "?audience=" + encodeURIComponent(state.audience) : "");
+  const seq = ++state.seq;
+  state.mode = "custom";
+  state.preset = "custom";
+  renderPresets();
+  setStatus(el("custom-status"), "Reading the saved context…", "");
+  try {
+    const doc = await request("/api/custom" + query);
+    if (seq !== state.seq) return;
+    applyCustom(doc, {});
+    setStatus(el("custom-status"), "", "");
+  } catch (error) {
+    if (seq !== state.seq) return;
+    setStatus(el("custom-status"), error.message, "error");
+  }
+}
+
+function applyCustom(doc, options) {
+  const active = document.activeElement && document.activeElement.id;
+  state.doc = doc;
+  state.mode = "custom";
+  state.preset = "custom";
+  state.context = doc.context;
+  const card = presetEntry("custom");
+  if (card) card.customized = doc.different_from_preset;
+  el("audience-card").hidden = true;
+  el("custom-card").hidden = false;
+  el("custom-badge").hidden = true;
+  renderCustomBlocks(doc);
+  renderPending(doc);
+  const repair = el("custom-repair");
+  const needs = doc.needs_repair || [];
+  repair.hidden = needs.length === 0;
+  if (needs.length) {
+    el("custom-repair-text").textContent = "This saved draft still refers to sections it no "
+      + "longer contains (" + needs.join(", ") + "). Repairing removes only those references; the "
+      + "composition, its ids and its settings stay as they are.";
+  }
+  renderCustomReadiness(doc);
+  el("custom-digest").textContent = shortDigest(doc.recipe_sha256);
+  el("custom-digest").title = doc.recipe_sha256 || "";
+  el("custom-pending-note").textContent = doc.ready ? ""
+    : "The saved composition is unchanged; your pending choice blocks generation.";
+  renderPresets();
+  renderReuse(doc.reuse);
+  updateGenerateEnabled();
+  markStale();
+  if (options && options.openReset === false) el("custom-reset-confirm").hidden = true;
+  if (active) {
+    const restored = document.getElementById(active);
+    if (restored && typeof restored.focus === "function") restored.focus();
+  }
+}
+
+function defaultsFor(doc, block) {
+  const options = {};
+  if (block === "reference-comparison") {
+    if ((doc.reference_topics || []).length) options.topic = doc.reference_topics[0];
+  } else if (block === "series-trend" || block === "series-collection") {
+    const measure = (doc.measures || [])[0];
+    if (measure) options.measure = measure;
+    if (block === "series-trend") {
+      const topics = ((doc.topics_by_measure || {})[measure] || []);
+      if (topics.length) options.topic = topics[0];
+    }
+  }
+  return options;
+}
+
+function conflictingInstance(doc, block) {
+  const same = doc.blocks.filter((item) => item.block === block);
+  if (same.length) return same[0];
+  if (block === "series-trend") {
+    return doc.blocks.find((item) => item.block === "series-collection") || null;
+  }
+  if (block === "series-collection") {
+    return doc.blocks.find((item) => item.block === "series-trend") || null;
+  }
+  return null;
+}
+
+/* Block types of the registered library that this draft does not contain yet (and that are not
+   already waiting for a choice). They are shown as unchecked rows after the saved sections, so
+   every supported type stays discoverable without a separate Add list. */
+function absentTypes(doc) {
+  const present = new Set(doc.blocks.map((block) => block.block));
+  for (const item of doc.pending || []) present.add(item.block);
+  return (doc.library || []).filter((item) => !present.has(item.block));
+}
+
+function customAdapter(doc) {
+  return {
+    mode: "custom",
+    setIncluded: (id, include) => customAction(include ? "restore" : "remove", id),
+    move: (id, direction) => customAction(direction === "up" ? "move-up" : "move-down", id),
+    setTopics: (id, topics) => customAction("set-topics", id, topics),
+    setDefaultOpen: (id, topic) => customAction("set-default-open", id, topic),
+    setTitle: (id, value) => customAction("set-title", id, value),
+    // The website speaks "style"/"layout"; the block contract calls them "presentation.*".
+    option: (id, name, value) => setOption(
+      id, (name === "style" || name === "layout") ? "presentation." + name : name, value),
+    canDuplicate: true,
+    duplicate: (id) => customAction("duplicate", id),
+    canDelete: true,
+    deleteInstance: (id) => customAction("delete-instance", id),
+    absentTypes: () => absentTypes(doc),
+    addType: (block, box, row) => addTypeRow(doc, block, box, row),
+  };
+}
+
+function renderCustomBlocks(doc) {
+  renderSections(doc, customAdapter(doc), el("custom-blocks"));
+}
+
+async function addTypeRow(doc, block, box, row) {
+  const options = defaultsFor(doc, block);
+  box.disabled = true;
+  await runCustomAction("add-block", null, { block: block, options: options }, (error) => {
+    const conflict = conflictingInstance(doc, block);
+    if (error.code === "combination_conflict" && conflict) {
+      inlineConfirm(row,
+        (error.message || "This section cannot join the report as it stands.")
+          + " Replace " + conflict.label + "?",
+        "Replace " + conflict.label,
+        () => runCustomAction("add-block", null,
+          { block: block, options: options, replace: [conflict.instance_id] }));
+      return true;
+    }
+    return false;
+  });
+  box.disabled = false;
+  box.checked = false;                 // the list re-renders on success; on failure, stay off
+}
+
+function inlineConfirm(container, message, confirmLabel, onConfirm) {
+  let box = container.querySelector(".inline-confirm");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "inline-confirm";
+    container.append(box);
+  }
+  box.replaceChildren();
+  const text = document.createElement("p");
+  text.className = "inline-confirm-text";
+  text.textContent = message;
+  const row = document.createElement("div");
+  row.className = "buttons buttons--inline";
+  const yes = controlButton(confirmLabel, null, null, false, onConfirm, "danger");
+  const no = controlButton("Cancel", null, null, false, () => box.replaceChildren());
+  row.append(yes, no);
+  box.append(text, row);
+  yes.focus();
+}
+
+function renderPending(doc) {
+  const wrap = el("custom-pending-wrap");
+  const list = el("custom-pending");
+  list.replaceChildren();
+  const pending = doc.pending || [];
+  wrap.hidden = pending.length === 0;
+  for (const item of pending) {
+    const li = document.createElement("li");
+    li.className = "block block--pending";
+    const head = document.createElement("div");
+    head.className = "block-head";
+    const title = document.createElement("span");
+    title.className = "block-label";
+    title.textContent = item.label;
+    head.append(title);
+    const id = document.createElement("span");
+    id.className = "block-id";
+    id.textContent = item.instance_id;
+    head.append(id);
+    li.append(head);
+    const problem = document.createElement("p");
+    problem.className = "blocking-text";
+    problem.textContent = item.problem;
+    li.append(problem);
+    const controls = document.createElement("div");
+    controls.className = "block-controls";
+    for (const existing of item.replace || []) {
+      const label = (doc.blocks.find((block) => block.instance_id === existing) || {}).label
+        || existing;
+      controls.append(controlButton("Replace " + label,
+                                    "replace-" + item.instance_id + "-" + existing, null, false,
+                                    () => customAction("replace-pending", item.instance_id,
+                                                       { pending: item.instance_id,
+                                                         existing: existing })));
+    }
+    controls.append(controlButton("Discard", "discard-" + item.instance_id, null, false,
+                                  () => customAction("discard-pending", item.instance_id)));
+    li.append(controls);
+    list.append(li);
+  }
+}
+
+function renderCustomReadiness(doc) {
+  const chip = el("custom-ready");
+  const blocking = el("custom-blocking");
+  if (doc.ready) {
+    chip.textContent = "Ready to generate";
+    chip.className = "chip chip--ok";
+    blocking.hidden = true;
+    blocking.textContent = "";
+  } else {
+    chip.textContent = "Not ready to generate";
+    chip.className = "chip chip--warn";
+    blocking.hidden = false;
+    blocking.textContent = doc.blocking_reason || "This composition cannot be generated yet.";
+  }
+}
+
+async function customAction(action, instance, value) {
+  return runCustomAction(action, instance, value);
+}
+
+async function runCustomAction(action, instance, value, onError) {
+  if (state.mode !== "custom" || !state.context) return;
+  const seq = ++state.seq;
+  setStatus(el("custom-status"), "Saving…", "");
+  try {
+    const doc = await mutate("custom-edit", "/api/custom/edit",
+      { context: state.context, action: action, instance: instance, value: value });
+    if (seq !== state.seq) return;
+    applyCustom(doc, {});
+    setStatus(el("custom-status"), "Saved. The composition is this context's own draft.", "ok");
+    for (const note of doc.notes || []) {
+      if (note.kind === "default-open-moved") {
+        announce("The expanded disease moved to " + note.to + " because " + note.from
+          + " is no longer checked.");
+      } else if (note.kind === "default-open-cleared") {
+        announce("No disease is checked, so the expanded disease was cleared.");
+      }
+    }
+  } catch (error) {
+    if (seq !== state.seq) return;
+    if (onError && onError(error)) {
+      setStatus(el("custom-status"), error.message, "error");
+      announce(error.message);
+      return;
+    }
+    setStatus(el("custom-status"), error.message, "error");
+    announce(error.message);
+    if (state.doc) applyCustom(state.doc, {});
+  }
+}
+
+function setOption(instance, option, value) {
+  return customAction("set-option", instance, { option: option, value: value });
+}
+
 /* ------------------------------------------------------------------ generation */
 
 function updateGenerateEnabled() {
@@ -542,8 +1151,7 @@ function renderReuse(reuse) {
   open.hidden = false;
   open.href = reuse.report_url;
   const when = reuse.finished_utc || reuse.created_utc || "unknown time";
-  meta.textContent = "Generated " + when + " · "
-    + (reuse.classification === "customized" ? "customized" : "default")
+  meta.textContent = "Generated " + when + " · " + compositionWord(reuse.classification)
     + " composition · recipe " + shortDigest(reuse.recipe_sha256)
     + " · " + (reuse.package_files || 0) + " published files";
   el("replay-command").textContent = reuse.replay_command
@@ -558,6 +1166,20 @@ function focusReport() {
   region.focus({ preventScroll: true });
 }
 
+function compositionWord(classification) {
+  if (classification === "custom") return "custom-library";
+  if (classification === "customized") return "customized";
+  return "default";
+}
+
+function reportLabel(job) {
+  if (job.origin === "custom" || job.preset === "custom") {
+    return "Custom report · " + contextLabel(job.context) + " data context";
+  }
+  const entry = presetEntry(job.preset) || { label: job.preset };
+  return entry.label + " " + compositionWord(job.classification) + " composition";
+}
+
 function displayReport(job) {
   const frame = el("report-frame");
   frame.hidden = false;
@@ -568,8 +1190,8 @@ function displayReport(job) {
   el("job-digest").textContent = shortDigest(job.recipe_sha256);
   el("job-digest").title = job.recipe_sha256 || "";
   el("replay-command").textContent = job.replay_command || "—";
-  const entry = presetEntry(job.preset) || { label: job.preset };
-  state.rendered = { digest: job.recipe_sha256, preset: job.preset, label: entry.label,
+  state.rendered = { digest: job.recipe_sha256, preset: job.preset,
+                     context: job.context || null, label: reportLabel(job),
                      classification: job.classification, job_id: job.job_id };
 }
 
@@ -577,13 +1199,17 @@ async function showHere() {
   const reuse = state.doc && state.doc.reuse;
   if (!reuse || !reuse.available) return;
   const seq = ++state.seq;
+  const mode = state.mode;
+  const context = state.context;
   setStatus(el("generate-status"), "Checking that report…", "");
   try {
-    const job = await mutate("reuse", "/api/reuse",
-      { preset: state.preset, job_id: reuse.job_id });
+    const body = mode === "custom"
+      ? { preset: "custom", context: context, job_id: reuse.job_id }
+      : { preset: state.preset, job_id: reuse.job_id };
+    const job = await mutate("reuse", "/api/reuse", body);
     if (seq !== state.seq) return;
     const already = state.rendered && state.rendered.job_id === job.job_id;
-    displayReport(Object.assign({ preset: state.preset }, job));
+    displayReport(Object.assign({ preset: state.preset, context: context }, job));
     renderReuse(state.doc && state.doc.reuse);
     markStale();
     setStatus(el("generate-status"), already
@@ -607,13 +1233,12 @@ function markStale() {
   const rendered = state.rendered;
   if (!rendered) { node.hidden = true; node.textContent = ""; return; }
   const current = state.doc ? state.doc.pending_sha256 : null;
-  const changed = rendered.digest !== current || rendered.preset !== state.preset;
+  const changed = rendered.digest !== current || rendered.preset !== state.preset
+    || (rendered.context || null) !== (state.context || null);
   node.hidden = !changed;
   node.textContent = changed
-    ? "The report on screen was generated from the " + rendered.label + " ("
-      + (rendered.classification === "customized" ? "customized" : "default")
-      + " composition, recipe " + shortDigest(rendered.digest)
-      + "). The choices now differ; generate again to refresh it."
+    ? "The report on screen was generated from the " + rendered.label + " (recipe "
+      + shortDigest(rendered.digest) + "). The choices now differ; generate again to refresh it."
     : "";
 }
 
@@ -628,7 +1253,10 @@ async function generate() {
   updateGenerateEnabled();
   setStatus(el("generate-status"), "Submitting…", "");
   try {
-    const job = await mutate("generate", "/api/generate", { preset: state.preset });
+    const body = state.mode === "custom"
+      ? { preset: "custom", context: state.context }
+      : { preset: state.preset };
+    const job = await mutate("generate", "/api/generate", body);
     state.job = job;
     setJobState(job.status);
     el("replay-command").textContent = job.replay_command || "—";
@@ -668,10 +1296,9 @@ function poll(jobId) {
     state.polling = null;
     state.busy = false;
     if (job.status === "succeeded") {
-      const entry = presetEntry(job.preset) || { label: job.preset };
       state.rendered = { digest: job.recipe_sha256, preset: job.preset,
-                         label: entry.label, classification: job.classification,
-                         job_id: job.job_id };
+                         context: job.context, label: reportLabel(job),
+                         classification: job.classification, job_id: job.job_id };
       const frame = el("report-frame");
       frame.hidden = false;
       frame.src = job.report_url + "?job=" + encodeURIComponent(job.job_id);
@@ -680,10 +1307,8 @@ function poll(jobId) {
       el("report-empty").textContent = "";
       el("job-digest").textContent = shortDigest(job.recipe_sha256);
       el("job-digest").title = job.recipe_sha256;
-      setStatus(el("generate-status"), "Generated the " + entry.label + " "
-        + (job.classification === "customized" ? "customized" : "default")
-        + " composition (recipe " + shortDigest(job.recipe_sha256) + ") at "
-        + job.finished_utc + ".", "ok");
+      setStatus(el("generate-status"), "Generated the " + reportLabel(job) + " (recipe "
+        + shortDigest(job.recipe_sha256) + ") at " + job.finished_utc + ".", "ok");
     } else {
       el("job-digest").textContent = shortDigest(job.recipe_sha256);
       el("job-digest").title = job.recipe_sha256;
@@ -699,11 +1324,17 @@ function poll(jobId) {
 
 async function refreshDocument() {
   if (!state.preset) return;
+  const mode = state.mode;
+  const context = state.context;
+  const preset = state.preset;
   const seq = ++state.seq;
   try {
-    const doc = await request("/api/editor?preset=" + encodeURIComponent(state.preset));
+    const doc = mode === "custom"
+      ? await request("/api/custom?context=" + encodeURIComponent(context))
+      : await request("/api/editor?preset=" + encodeURIComponent(preset));
     if (seq !== state.seq) return;
-    applyDocument(doc, {});
+    if (mode === "custom") applyCustom(doc, {});
+    else applyDocument(doc, {});
   } catch (error) {
     setStatus(el("edit-status"), error.message, "error");
   }
@@ -712,6 +1343,7 @@ async function refreshDocument() {
 /* ------------------------------------------------------------------ saved data */
 
 function classificationLabel(job) {
+  if (job.classification === "custom") return "Custom composition";
   if (job.classification === "default") return "Default";
   if (job.classification === "customized") return "Customized";
   if (job.mode === "standard") return "Default (standard composition)";
@@ -733,9 +1365,12 @@ function snapshotText(summary) {
 async function loadSaved(quiet) {
   try {
     const data = await request("/api/saved");
+    renderCustomDrafts(data.custom_drafts || []);
     el("data-paths").textContent = "Work root " + data.work_root
       + " · inputs " + data.inputs_root
-      + (data.drafts.length ? " · managed copies: " + data.drafts.join(", ") : "");
+      + (data.drafts.length ? " · managed copies: " + data.drafts.join(", ") : "")
+      + (data.custom_drafts && data.custom_drafts.length
+        ? " · custom drafts: " + data.custom_drafts.join(", ") : "");
     const list = el("saved-list");
     list.replaceChildren();
     for (const job of data.jobs) {
@@ -744,7 +1379,9 @@ async function loadSaved(quiet) {
       head.className = "saved-head";
       const entry = presetEntry(job.preset) || { label: job.preset || "unknown audience" };
       const title = document.createElement("strong");
-      title.textContent = entry.label + " · " + classificationLabel(job);
+      title.textContent = (job.origin === "custom" || job.preset === "custom")
+        ? "Custom report · " + contextLabel(job.context) + " data context"
+        : entry.label + " · " + classificationLabel(job);
       const when = document.createElement("span");
       when.className = "hint";
       when.textContent = job.created_utc + " · " + job.status
@@ -802,14 +1439,38 @@ async function loadSaved(quiet) {
   }
 }
 
+function renderCustomDrafts(contexts) {
+  const node = el("custom-drafts");
+  node.replaceChildren();
+  const line = document.createElement("p");
+  line.className = "hint";
+  if (state.mode === "custom" && state.doc) {
+    line.textContent = "This custom report is bound to the " + contextLabel(state.context)
+      + " data context. " + summarizeSource(state.doc.source);
+  } else {
+    line.textContent = "Custom reports keep one draft per data context.";
+  }
+  node.append(line);
+  if (!contexts.length) return;
+  const row = document.createElement("div");
+  row.className = "buttons buttons--inline";
+  for (const context of contexts) {
+    const current = state.mode === "custom" && state.context === context;
+    row.append(controlButton((current ? "Editing: " : "Open ") + contextLabel(context),
+                             "open-custom-" + context,
+                             "Open the " + contextLabel(context) + " custom draft",
+                             current, () => chooseCustom(context)));
+  }
+  node.append(row);
+}
+
 function displaySaved(job) {
   const already = state.rendered && state.rendered.job_id === job.job_id;
   displayReport(job);
   renderReuse(state.doc && state.doc.reuse);
   markStale();
-  const entry = presetEntry(job.preset) || { label: job.preset || "this audience" };
   setStatus(el("generate-status"), (already ? "That report is already on screen; moved back to it."
-    : "Showing the saved " + entry.label + " report " + job.job_id + " generated at "
+    : "Showing the saved " + reportLabel(job) + " report " + job.job_id + " generated at "
       + job.created_utc + ".") + " Your editor settings are unchanged.",
     "ok");
   focusReport();
@@ -848,6 +1509,17 @@ function wire() {
     el("reset-open").focus();
   });
   el("reset-confirm-yes").addEventListener("click", resetCopy);
+  el("custom-reset-open").addEventListener("click", () => {
+    el("custom-reset-confirm").hidden = false;
+    el("custom-reset-yes").focus();
+  });
+  el("custom-reset-cancel").addEventListener("click", () => {
+    el("custom-reset-confirm").hidden = true;
+    el("custom-reset-open").focus();
+  });
+  el("custom-reset-yes").addEventListener("click", resetCustom);
+  el("custom-repair-yes").addEventListener("click", () =>
+    customAction("repair-draft", null, null));
   el("data").addEventListener("toggle", () => { if (el("data").open) loadSaved(true); });
   load();
 }

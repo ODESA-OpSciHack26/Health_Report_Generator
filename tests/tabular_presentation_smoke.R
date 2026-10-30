@@ -2,6 +2,9 @@
 main <- function() {
   args <- commandArgs(trailingOnly=TRUE)
   root <- normalizePath(args[1])
+  # The shared block labels live in the project checkout; this smoke sources the templates from a
+  # temporary directory, so it must name the project explicitly.
+  Sys.setenv(HEALTH_REPORT_PROJECT = root)
   temp <- tempfile('tabular-presentation-'); dir.create(temp)
   previous <- getwd()
   on.exit({setwd(previous);unlink(temp,recursive=TRUE)},add=TRUE)
