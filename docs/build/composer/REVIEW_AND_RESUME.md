@@ -2470,6 +2470,40 @@ they describe; they are intentionally not rewritten.
   recorded with that snapshot; see the final handover for its identity and the independent-backup
   status.
 
+### Checkpoint follow-up — Node coverage, remote publication and backup status (2026-10-30, second update)
+
+Appended by the same preservation/source-checkpoint milestone; the entry above and everything
+earlier stays as written. Analysis settings is NOT the next implementation: it is an unauthorised
+design-only item. The next feature is the separately specified neutral CSV workflow, after
+preservation is complete and its implementation brief is supplied.
+
+- **Committed-tree Node coverage**: the two previously skipped tests ran green at
+  `0c30f031dddaf55695cf15655baf10def3201a3e` using Node v26.12.1 bound read-only into the pinned
+  image (no image rebuild, no lock change; the pinned Python env was used): the whole
+  `tests/test_composer_custom_ui.py` module **3 passed** (`test_frontend_does_not_chain_dom_mutators`,
+  `test_shared_editor_renders_and_drives_both_modes`, `test_rendering_harness_still_catches_the_chained_append_defect`),
+  no skips; the negative control ran explicitly **1 passed**. Harness and app sources in the
+  checkout hash exactly like the committed bytes (`2b830ffb…`, `1443dfad…`, `7ba76f94…`,
+  `7faa47cd…`). Evidence: `…/round-b1-20261030T215949Z/node-coverage-20261030T223750Z`
+  (`run-1.log`/`run-2.log`, `node-version.txt`, `harness-sources.sha256`, `sha256sums.txt`).
+  Failed harness attempts (PATH overrode the image's venv entry) are preserved in the two earlier
+  `node-coverage-*` directories and were harness defects, not code failures.
+- **Remote publication**: still pending. The host has no GitHub credential
+  (`credential.helper` empty, no SSH key registered); a further read-only probe on 2026-10-30
+  failed identically. Minimum owner-side action for a normal Git push: (a) run the approved
+  `git push origin refs/heads/design/contracts:refs/heads/design/contracts` from an
+  already-authenticated machine, or (b) register an SSH key for this host with GitHub, or
+  (c) provide a scoped credential helper on the owner side. Expected remote head after push:
+  `0c30f031dddaf55695cf15655baf10def3201a3e`; no force, no history reconstruction via
+  file-upload commits. Post-push verification must be remote-backed (fresh clone from the
+  remote, rerun comparators); local recovery is not remote recovery.
+- **Independent backup**: proposed destination and failure-boundary analysis are supplied in the
+  milestone handover. Nothing was copied, mounted, formatted or written anywhere off the current
+  disk; the whole snapshot set remains same-disk (single ext4 on /dev/sdd) until the owner
+  approves a destination.
+- **Cleanup**: the proposed allowlist remains a proposal; nothing was deleted, pruned, retired or
+  reorganised.
+
 ## Runner opening instruction
 
 Read this protocol, HANDOFF.md, requirements.json, five task briefs and governing product documents. Verify seed/frozen refs; establish preparation dispositions and current baseline; report unrun/failed checks. Assign the earliest unblocked minimal task before editing. Use its design branch from the current build tip. Preserve source/request contracts and workflow policy. Produce tested incremental commits and independently reviewed internal PRs to build/composer. At visual checkpoints supply actual rendered output and pause acceptance for human feedback. Continue only independent unblocked work. Do not merge the umbrella PR, modify frozen/main/releases or claim an unattended runner started merely by reading these instructions.
