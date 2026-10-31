@@ -1,6 +1,6 @@
 {
   "record_type": "composer-build-requirements/1",
-  "status": "candidate-accepted-locally-not-published",
+  "status": "candidate-accepted-merged-into-experimental-lane-not-promoted",
   "seed_commit": "0cb8dd095a29760ca7b0dc45167538b938b3a6c7",
   "isolated_lane": "build/composer",
   "promotion_target": "integration/steward-ready-v1",
@@ -375,7 +375,7 @@
     "candidate_manifest": "candidate-manifest-20261031T202637Z",
     "closure_record": "closed-20261031T2030Z",
     "what_it_is": "locally accepted neutral CSV composer; scoped owner visual acceptance of the exercised desktop and narrow layouts",
-    "what_it_is_not": "not remote publication, not merged into build/composer, not promoted to integration/steward-ready-v1, not accessibility/cross-browser acceptance",
+    "what_it_is_not": "not product promotion, not final combined acceptance, not release or deployment, not accessibility/cross-browser acceptance, not a fresh test run",
     "accepted_limitations": [
       "structural preview bounded to the first 100 rows and 20 columns; no paging",
       "long preview cells inspected only through title tooltips",
@@ -384,7 +384,19 @@
       "health source-card capture/release dates Not recorded where the bundle lacks them",
       "no broad accessibility or cross-browser acceptance"
     ],
-    "next_action": "publish build/composer and design/contracts and open the isolated draft PR design/contracts -> build/composer after explicit approval; no promotion"
+    "next_action": "remaining product work only: R14 decision, slices C-E, B4/B7, G6 on a new task branch after assignment; no promotion",
+    "publication": {
+      "state": "merged into the private experimental lane",
+      "pr": 1,
+      "pr_url": "https://github.com/LarsEBaumann/composer-sandbox/pull/1",
+      "merged_at": "2026-10-31T21:28:53Z",
+      "merge_commit": "a1aab9b64586ddcecd38a80df93349ea054f044b",
+      "lane_remote_tip": "a1aab9b64586ddcecd38a80df93349ea054f044b",
+      "tree_equals_accepted_candidate": true,
+      "verified_by": "authenticated read-only GitHub API plus a no-prune fetch and local ancestry and tree comparison",
+      "product_promotion": false,
+      "release_or_deployment": false
+    }
   },
   "initial_state_role": "the initial_state object above is preserved as the historical handoff record and is not rewritten; current_candidate supersedes it for present status only"
 }
