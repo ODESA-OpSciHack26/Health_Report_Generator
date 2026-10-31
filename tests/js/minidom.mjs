@@ -115,7 +115,8 @@ export class Element {
 
   fire(type, event = {}) {
     const handlers = this.listeners.get(type) || [];
-    for (const handler of handlers) handler(Object.assign({ type, target: this }, event));
+    const base = { type, target: this, preventDefault() {}, stopPropagation() {} };
+    for (const handler of handlers) handler(Object.assign(base, event));
   }
 
   focus() { if (this.ownerDocument) this.ownerDocument.activeElement = this; }
@@ -174,15 +175,34 @@ export class Document {
     return element;
   }
 
-  getElementById(id) { return this.byId.has(id) ? this.byId.get(id) : null; }
+  getElementById(id) {
+    // Browsers resolve ids anywhere in the tree, including elements created at runtime.
+    if (this.byId.has(id)) return this.byId.get(id);
+    const walk = (node) => {
+      for (const child of node.children || []) {
+        if (child.id === id) return child;
+        const hit = walk(child);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    return walk(this.body);
+  }
 
   /** Register every id found in index.html, so a missing id fails like it would in a browser. */
   registerIds(html) {
-    const pattern = /\bid="([^"]+)"/g;
+    // Parse the tag that carries each id so static classes and ARIA attributes are visible to
+    // checks, the way they are in a browser.
+    const pattern = /<[^>]*\bid="([^"]+)"[^>]*>/g;
     let match = pattern.exec(html);
     while (match) {
+      const tag = match[0];
       const element = this.createElement("div");
       element.id = match[1];
+      const classes = /\bclass="([^"]*)"/.exec(tag);
+      if (classes) element.className = classes[1];
+      const expanded = /\baria-expanded="([^"]*)"/.exec(tag);
+      if (expanded) element.setAttribute("aria-expanded", expanded[1]);
       this.byId.set(match[1], element);
       this.body.append(element);
       match = pattern.exec(html);

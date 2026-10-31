@@ -37,6 +37,26 @@
     "reproduction": {
       "name": "Reproduction and evidence",
       "description": "How to check the published files and rerun the render."
+    },
+    "data-overview": {
+      "name": "Dataset overview",
+      "description": "Record and field counts and the actual selected coverage of the captured dataset."
+    },
+    "values-by-group": {
+      "name": "Values by group",
+      "description": "Observed values per group, with the group's descriptive summary."
+    },
+    "values-over-time": {
+      "name": "Values over time",
+      "description": "Observed values per selected period; gaps and repeated observations stay visible."
+    },
+    "coverage-over-time": {
+      "name": "Observation coverage over time",
+      "description": "Which groups have a recorded observation in each period, with the values deliberately not shown."
+    },
+    "data-quality": {
+      "name": "Data quality and completeness",
+      "description": "Missingness, invalid handling, repeated group-period keys and diagnostic limits."
     }
   }
 }

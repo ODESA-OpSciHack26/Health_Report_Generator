@@ -2071,15 +2071,678 @@ compose_report_html <- function(b, recipe_path, evidence_file='', registry=compo
     pr_title$composition$effective_title else b$cfg$title
   report_subtitle <- if(!is.null(pr_title$composition) && !is.null(pr_title$composition$effective_subtitle))
     pr_title$composition$effective_subtitle else NULL
+  # The health header states the surveillance window and reference year. A neutral dataset has
+  # neither, so it states only what was actually confirmed: records, groups and periods.
+  intro_line <- if(isTRUE(b$is_neutral)) {
+    a <- b$analysis
+    parts <- c(report_title,
+               paste0(neutral_fmt(a$row_count), ' records'),
+               paste0(neutral_fmt(a$group_count), ' groups'),
+               if(isTRUE(a$time$has_time))
+                 paste0(neutral_fmt(a$time$period_count), ' periods') else NULL)
+    paste(parts, collapse = ' · ')
+  } else {
+    paste0(report_title, ' · ', paste(b$cfg$years, collapse = '–'),
+           ' · reference year ', b$cfg$reference_year)
+  }
   paste0('<div class="composed-report">', composition_style(),
     if(!is.null(preview_notice)) paste0('<p class="composed-preview" role="note"><strong>',
       esc(preview_notice), '</strong> This render exists to inspect the composition. It is not ',
       'an accepted publication and implies no review, acceptance or release.</p>') else '',
-    '<p class="composed-intro">', esc(report_title), ' · ', esc(paste(b$cfg$years, collapse='–')),
-    ' · reference year ', esc(b$cfg$reference_year), '</p>',
+    '<p class="composed-intro">', esc(intro_line), '</p>',
     if(!is.null(report_subtitle)) paste0('<p class="composed-intro composed-subtitle">',
                                         esc(report_subtitle), '</p>') else '', nav,
     paste(vapply(sections, function(s) s$html, character(1)), collapse='\n'),
     '<p class="caption">Composed from saved analysis outputs. The companion ',
     '<a href="methods.html">methods report</a> retains the full selection, lineage and verification detail.</p></div>')
+}
+
+# ---------------------------------------------------------------------------
+# Neutral "Your CSV" rendering. The neutral dataset is a self-contained directory with
+# neutral-analysis.json (never disease data); block renderers consume only that analysis
+# and the confirmed interpretation. No health vocabulary, no pooling, no inference.
+# ---------------------------------------------------------------------------
+
+nvl <- function(a, b) if(is.null(a)) b else a
+
+neutral_row <- function(k, v)
+  paste0('<div class="audit-row"><span>', esc(k), '</span><strong>', esc(v), '</strong></div>')
+
+neutral_row_code <- function(k, v)
+  paste0('<div class="audit-row"><span>', esc(k), '</span><strong><code>',
+         gsub('--', '&#45;&#45;', esc(v), fixed = TRUE), '</code></strong></div>')
+
+read_neutral_bundle <- function(path = '.') {
+  analysis_path <- file.path(path, 'neutral-analysis.json')
+  if(!file.exists(analysis_path))
+    stop('Neutral analysis is missing: ', analysis_path)
+  analysis <- jsonlite::fromJSON(analysis_path, simplifyVector = FALSE)
+  # The prepared rows travel with the render workspace only; they are never published unless
+  # the disclosure choice permits the contributing records.
+  prepared_path <- file.path(path, 'prepared.json')
+  prepared <- if(file.exists(prepared_path))
+    tryCatch(jsonlite::fromJSON(prepared_path, simplifyVector = FALSE),
+             error = function(e) list(rows = list())) else list(rows = list())
+  list(analysis = analysis,
+       prepared = prepared,
+       disclosure = NULL,
+       is_neutral = TRUE,
+       cfg = list(
+         title = 'Supplied dataset',
+         years = character(0),
+         reference_year = NA_character_,
+         geography = 'not specified',
+         outputs = character(0)))
+}
+
+neutral_fmt <- function(x) {
+  if(is.null(x) || is.nan(x) || is.na(x)) return('—')
+  format(as.numeric(x), big.mark = ',', scientific = FALSE, trim = TRUE)
+}
+
+neutral_disclosure_of <- function(recipe_path) {
+  if(is.null(recipe_path) || !nzchar(recipe_path) || !file.exists(recipe_path)) return(NULL)
+  recipe <- tryCatch(jsonlite::fromJSON(recipe_path, simplifyVector = FALSE),
+                     error = function(e) NULL)
+  if(is.null(recipe) || is.null(recipe$disclosure)) return(NULL)
+  d <- recipe$disclosure
+  policy <- as.character(d$policy)
+  list(policy = policy, permit_values = isTRUE(d$permit_values),
+       permit_records = isTRUE(d$permit_records),
+       label = if(identical(policy, 'local-audit')) 'Local audit and review output'
+               else 'Restricted shareable export')
+}
+
+neutral_attach_disclosure <- function(b, recipe_path) {
+  b$disclosure <- neutral_disclosure_of(recipe_path)
+  b
+}
+
+# Values are shown only for an explicit local-audit choice recorded in the frozen recipe.
+# A package whose recipe does not record one shows no values and says so; it never guesses.
+neutral_shows_values <- function(b) {
+  d <- b$disclosure
+  !is.null(d) && isTRUE(d$permit_values) && identical(d$policy, 'local-audit')
+}
+
+neutral_policy_note <- function(b) {
+  d <- b$disclosure
+  if(is.null(d)) return('No disclosure choice is recorded for this package; observed values are not shown.')
+  if(identical(d$policy, 'local-audit'))
+    return('Disclosure: local audit and review output. Observed values and statistics are included; this package is not automatically private once shared.')
+  'Disclosure: restricted shareable export. Observed values, descriptive statistics and contributing records are excluded; counts, labels, groups and metadata can still disclose information.'
+}
+
+neutral_pct <- function(value, digit = 1) {
+  if(is.null(value) || is.na(value)) return('—')
+  paste0(format(round(as.numeric(value), digit), nsmall = digit, trim = TRUE), '%')
+}
+
+neutral_inspect_note <- function(a, display, shown) {
+  total_groups <- length(a$groups)
+  total_periods <- if(isTRUE(a$time$has_time)) length(neutral_all_periods(a)) else 0
+  periods <- if(isTRUE(a$time$has_time)) neutral_display_periods(a, display) else character(0)
+  text <- paste0('Saved analytical selection: ', neutral_fmt(a$row_count), ' records, ',
+                 total_groups, ' groups',
+                 if(total_periods) paste0(', ', total_periods, ' periods') else '', '.')
+  if(length(shown) < total_groups || (total_periods && length(periods) < total_periods)) {
+    text <- paste0(text, ' This section displays ', length(shown), ' of ', total_groups, ' groups',
+                   if(total_periods) paste0(' and ', length(periods), ' of ', total_periods,
+                                            ' periods') else '', '.')
+  }
+  paste0(text, ' Records outside the displayed subset still contributed to the saved analysis',
+         ' and to every statistic in this report.')
+}
+
+neutral_inspect <- function(rows_list, permitted, note = '') {
+  # A bound, escaped records table. Shown only under an explicit permitted-values choice:
+  # outside it the contributing records are not rendered at all.
+  if(!isTRUE(permitted)) return('')
+  if(!is.list(rows_list) || !length(rows_list)) return('')
+  head_rows <- utils::head(rows_list, 8L)
+  cells <- vapply(head_rows, function(r) {
+    paste0('<td>', esc(nvl(r$ordinal, '—')),
+           '</td><td>', esc(if(is.null(r$category)) '—' else r$category),
+           '</td><td>', esc(if(is.null(r$period)) '—' else substr(as.character(r$period), 1, 10)),
+           '</td><td>', esc(if(is.null(r$value)) '—' else neutral_fmt(r$value)), '</td>')
+  }, character(1))
+  paste0('<details class="block-inspect" style="margin-top:1rem"><summary>Inspect the contributing records</summary>',
+         if(nzchar(note)) paste0('<p class="caption">', esc(note), '</p>') else '',
+         '<div class="table-wrap"><table><thead><tr><th>Record</th><th>Group</th>',
+         '<th>Selected period</th><th>Observed value</th></tr></thead><tbody><tr>',
+         paste(cells, collapse = '</tr><tr>'),
+         '</tr></tbody></table></div>',
+         if(length(rows_list) > 8L) paste0('<p class="caption">Showing 8 of ',
+                                           length(rows_list), ' contributing records; the saved analysis retains all of them.</p>') else '',
+         '</details>')
+}
+
+# ---- display settings (presentation only) -------------------------------------------------
+# A block may carry saved display settings; anything absent falls back to the compact default.
+# These helpers choose what is printed, never what is calculated.
+
+neutral_dv <- function(x, default = NULL) if(is.null(x) || (length(x) == 1 && is.na(x))) default else x
+
+neutral_display_of <- function(entry, block) {
+  d <- neutral_dv(entry$display, list())
+  list(
+    groups = if(is.null(d$groups)) NULL else vapply(d$groups, as.character, character(1)),
+    periods = neutral_dv(d$periods, list(mode = 'all')),
+    axis = neutral_dv(d$axis_labels, list(mode = 'auto')),
+    statistics = if(is.null(d$statistics)) c('n', 'median', 'middle50', 'range')
+                 else vapply(d$statistics, as.character, character(1)),
+    layout = as.character(neutral_dv(d$layout,
+      if(identical(block, 'coverage-over-time')) 'table' else 'chart-and-table')),
+    precision = neutral_dv(d$precision, list(mode = 'decimal', places = 1L)),
+    height = as.numeric(neutral_dv(d$height, 3.6)),
+    columns = as.integer(neutral_dv(d$columns, 2L)),
+    panel_scale = as.character(neutral_dv(d$panel_scale, 'shared')))
+}
+
+neutral_group_labels <- function(a) {
+  keys <- lapply(a$groups, function(g) g$group)
+  collision <- any(vapply(keys, function(k) !is.null(k) && identical(as.character(k), 'missing'),
+                          logical(1)))
+  vapply(keys, function(k) {
+    if(is.null(k)) (if(collision) 'missing (blank group)' else 'missing') else as.character(k)
+  }, character(1))
+}
+
+neutral_shown_groups <- function(a, display) {
+  labels <- neutral_group_labels(a)
+  if(is.null(display$groups)) return(a$groups)
+  keep <- labels %in% display$groups
+  a$groups[keep]
+}
+
+# Formatting policy: fixed decimal places, trailing zeros dropped, thousands separated; full
+# precision available; a nonzero value is never printed as an exact zero.
+# Display rounding is half away from zero, so 13.75 -> 13.8 and 131.25 -> 131.3 consistently
+# (R's round() is round-half-even and produces visibly inconsistent tables).
+neutral_round <- function(value, places) {
+  scale <- 10^places
+  sign(value) * floor(abs(value) * scale + 0.5 + 1e-9) / scale
+}
+
+neutral_disp_fmt <- function(value, precision) {
+  if(is.null(value) || length(value) == 0) return('—')
+  number <- suppressWarnings(as.numeric(value))
+  if(length(number) != 1 || is.na(number)) return('—')
+  if(identical(as.character(precision$mode), 'full'))
+    return(format(number, digits = 15, scientific = FALSE, trim = TRUE, drop0trailing = TRUE))
+  places <- as.integer(neutral_dv(precision$places, 1L))
+  if(is.na(places)) places <- 1L
+  rounded <- neutral_round(number, places)
+  txt <- function(x) format(x, scientific = FALSE, trim = TRUE, drop0trailing = TRUE,
+                            big.mark = ',')
+  if(rounded == 0 && number != 0) {
+    finer <- neutral_round(number, places + 2L)
+    if(finer != 0) return(txt(finer))
+    return(paste0(if(number < 0) '\u2212' else '', '<', txt(10^-(places + 2L))))
+  }
+  txt(rounded)
+}
+
+neutral_scope_line <- function(a, display, shown_groups) {
+  parts <- c()
+  if(!is.null(display$groups))
+    parts <- c(parts, paste0('Showing ', length(shown_groups), ' of ', length(a$groups),
+                             ' analysed groups.'))
+  mode <- as.character(neutral_dv(display$periods$mode, 'all'))
+  if(!identical(mode, 'all') && isTRUE(a$time$has_time)) {
+    total <- as.numeric(neutral_dv(a$time$period_count, 0))
+    count <- length(neutral_display_periods(a, display))
+    parts <- c(parts, paste0('Showing ', count, ' of ', total, ' analysed periods.'))
+  }
+  if(length(parts)) paste0('<p class="display-scope">', esc(paste(parts, collapse = ' ')),
+                           '</p>') else ''
+}
+
+neutral_all_periods <- function(a) {
+  sort(unique(unlist(lapply(a$groups, function(g)
+    vapply(g$periods, function(p) as.character(p$period), character(1))))))
+}
+
+neutral_display_periods <- function(a, display) {
+  all_periods <- neutral_all_periods(a)
+  periods <- display$periods
+  mode <- as.character(neutral_dv(periods$mode, 'all'))
+  if(identical(mode, 'all')) return(all_periods)
+  if(identical(mode, 'list')) {
+    wanted <- vapply(periods$values, as.character, character(1))
+    return(all_periods[all_periods %in% wanted])
+  }
+  if(identical(mode, 'range')) {
+    from <- as.character(periods$from); to <- as.character(periods$to)
+    return(all_periods[all_periods >= from & all_periods <= paste0(to, 'T23:59:59')])
+  }
+  all_periods
+}
+
+neutral_stats_table <- function(shown, display, measure_label, unit) {
+  statistics <- display$statistics
+  precision <- display$precision
+  fmt <- function(x) neutral_disp_fmt(x, precision)
+  columns <- list()
+  add <- function(key, label, render) columns[[length(columns) + 1L]] <<-
+    list(key = key, label = label, render = render)
+  if('n' %in% statistics)
+    add('n', 'Valid observations', function(s) fmt(s$n))
+  if('median' %in% statistics)
+    add('median', 'Median', function(s) fmt(s$median))
+  if('middle50' %in% statistics)
+    add('middle50', 'Middle 50%', function(s) paste0(fmt(s$q1), '\u2013', fmt(s$q3)))
+  if('range' %in% statistics)
+    add('range', 'Observed range', function(s) paste0(fmt(s$min), '\u2013', fmt(s$max)))
+  if('missing' %in% statistics)
+    add('missing', 'Missing measure', function(s) fmt(s$missing))
+  if('q1q3' %in% statistics) {
+    add('q1', 'Q1', function(s) fmt(s$q1))
+    add('q3', 'Q3', function(s) fmt(s$q3))
+  }
+  if('minmax' %in% statistics) {
+    add('min', 'Minimum', function(s) fmt(s$min))
+    add('max', 'Maximum', function(s) fmt(s$max))
+  }
+  if('mean' %in% statistics)
+    add('mean', 'Mean', function(s) fmt(s$mean))
+  if('sd' %in% statistics)
+    add('sd', 'Sample SD', function(s) fmt(s$sd))
+  if(!length(columns))
+    return('<p class="caption">No statistics columns are selected for this section.</p>')
+  header <- paste0('<th scope="col">Group</th>',
+                   paste(vapply(columns, function(column)
+                     paste0('<th scope="col" class="num">', esc(column$label), '</th>'),
+                     character(1)), collapse = ''))
+  body <- paste(vapply(shown, function(group) {
+    summary <- group$summary
+    summary$missing <- as.numeric(group$n) - as.numeric(neutral_dv(summary$n, 0))
+    cells <- paste(vapply(columns, function(column)
+      paste0('<td class="num">', esc(column$render(summary)), '</td>'), character(1)),
+      collapse = '')
+    paste0('<tr><th scope="row" class="row-label">',
+           esc(as.character(neutral_dv(group$group, 'missing'))), '</th>', cells, '</tr>')
+  }, character(1)), collapse = '')
+  unit_line <- if(!is.null(unit) && nzchar(unit) && !identical(unit, 'not specified'))
+    paste0(' \u00b7 ', esc(unit)) else ''
+  paste0('<div class="table-wrap stats-wrap"><table class="report-table stats-table">',
+         '<caption class="table-caption">', esc(measure_label), unit_line,
+         ' \u00b7 summaries use non-missing observed values in the analysed selection.</caption>',
+         '<thead><tr>', header, '</tr></thead><tbody>', body, '</tbody></table></div>',
+         '<p class="caption">Display only: these columns reuse the saved median, inclusive '
+         , 'quartiles (Q1, Q3), observed minimum and maximum, mean and sample standard '
+         , 'deviation. Hiding a group or a period changes nothing in the calculation; repeated '
+         , 'period records and undated records still contribute to their group statistics. '
+         , 'Small groups can reveal individual observations. The sample SD describes spread; '
+         , 'it is not a confidence interval, an uncertainty estimate or evidence of '
+         , 'significance.</p>')
+}
+
+neutral_chart_values_by_group <- function(a, shown, display) {
+  rows <- Filter(function(g) !is.null(g$summary) && !is.null(g$summary$median), shown)
+  if(!length(rows)) return(NULL)
+  labels <- vapply(rows, function(g) as.character(neutral_dv(g$group, 'missing')), character(1))
+  d <- data.frame(group = factor(labels, levels = labels),
+                  median = vapply(rows, function(g) as.numeric(g$summary$median), numeric(1)),
+                  stringsAsFactors = FALSE)
+  unit <- if(identical(a$measure$unit, 'not specified')) '' else paste0(' (', a$measure$unit, ')')
+  ggplot2::ggplot(d, ggplot2::aes(group, median)) +
+    ggplot2::geom_col(fill = '#247c85', width = .62) +
+    ggplot2::labs(x = NULL, y = paste0('Median ', a$measure$label, unit)) +
+    report_theme()
+}
+
+neutral_chart_values_over_time <- function(a, shown, display) {
+  periods <- neutral_display_periods(a, display)
+  d <- do.call(rbind, lapply(shown, function(g) {
+    recs <- Filter(function(r) as.character(r$period) %in% periods, g$periods)
+    if(!length(recs)) return(NULL)
+    data.frame(group = as.character(neutral_dv(g$group, 'missing')),
+               period = vapply(recs, function(r) substr(as.character(r$period), 1, 10),
+                               character(1)),
+               value = vapply(recs, function(r) if(is.null(r$value)) NA_real_
+                              else as.numeric(r$value), numeric(1)),
+               stringsAsFactors = FALSE)
+  }))
+  if(is.null(d) || !nrow(d)) return(NULL)
+  d <- d[!is.na(d$value), , drop = FALSE]
+  if(!nrow(d)) return(NULL)
+  unit <- if(identical(a$measure$unit, 'not specified')) '' else paste0(' (', a$measure$unit, ')')
+  mode <- as.character(neutral_dv(display$axis$mode, 'auto'))
+  breaks <- if(identical(mode, 'every')) sort(unique(d$period))
+            else if(identical(mode, 'every_n')) {
+              ordered <- sort(unique(d$period))
+              ordered[seq(1, length(ordered), by = as.integer(neutral_dv(display$axis$n, 2L)))]
+            } else NULL
+  plot <- ggplot2::ggplot(d, ggplot2::aes(period, value, colour = group, group = group)) +
+    ggplot2::geom_line(linewidth = .9) + ggplot2::geom_point(size = 2) +
+    ggplot2::labs(x = NULL, y = paste0(a$measure$label, unit), colour = NULL) +
+    report_theme()
+  if(identical(display$layout, 'panels')) {
+    plot <- plot + ggplot2::facet_wrap(~group, ncol = max(1L, display$columns),
+                                       scales = if(identical(display$panel_scale, 'independent'))
+                                         'free_y' else 'fixed')
+  }
+  if(!is.null(breaks)) plot <- plot + ggplot2::scale_x_discrete(breaks = breaks)
+  plot
+}
+
+neutral_axis_note <- function(display) {
+  # Precise scope: this describes the displayed selection only. Hidden groups/periods are not
+  # plotted, so claiming "all observations" would be wrong.
+  mode <- as.character(neutral_dv(display$axis$mode, 'auto'))
+  if(identical(mode, 'every'))
+    return(paste0('<p class="caption">All eligible observations in this displayed selection are ',
+                  'plotted; every displayed period is labelled on the axis.</p>'))
+  if(identical(mode, 'every_n'))
+    return(paste0('<p class="caption">All eligible observations in this displayed selection are ',
+                  'plotted; axis labels are shown every ',
+                  neutral_dv(display$axis$n, 2), ' displayed periods.</p>'))
+  ''
+}
+
+neutral_scale_note <- function(display) {
+  if(identical(display$layout, 'panels') && identical(display$panel_scale, 'independent'))
+    return('<p class="caption">Each panel has its own vertical scale (independent scales). Panel heights are therefore not comparable.</p>')
+  if(identical(display$layout, 'panels'))
+    return('<p class="caption">Panels share one vertical scale, so their heights are comparable.</p>')
+  ''
+}
+
+neutral_overview_block <- function(b) {
+  a <- b$analysis; m <- a$measure
+  rows <- c(
+    neutral_row('Logical records', neutral_fmt(a$row_count)),
+    neutral_row('Group column', esc(nvl(a$interpretation$category, 'none confirmed'))),
+    neutral_row('Measure', esc(m$label)),
+    neutral_row('Unit', esc(m$unit)),
+    neutral_row('Row meaning', esc(m$meaning)),
+    neutral_row('Distinct groups', neutral_fmt(a$group_count)),
+    if(isTRUE(a$time$has_time))
+      neutral_row('Observation periods recorded', neutral_fmt(nvl(a$time$period_count, 0))))
+  if(neutral_shows_values(b)) {
+    s <- a$summary
+    rows <- c(rows,
+      neutral_row('Observed values recorded', neutral_fmt(s$n)),
+      neutral_row('Observed median', paste0(neutral_fmt(s$median),
+                                            if(!identical(m$unit, 'not specified'))
+                                              paste0(' ', esc(m$unit)) else '')),
+      neutral_row('Observed range', paste0(neutral_fmt(s$min), ' – ', neutral_fmt(s$max))))
+  }
+  paste0('<p class="finding-meta">', esc(m$label), ' · ', esc(m$unit),
+         ' · coverage of the captured dataset</p>',
+         '<div class="audit-panel full">', paste(rows, collapse = ''), '</div>',
+         '<p class="caption">', esc(neutral_policy_note(b)), '</p>')
+}
+
+neutral_values_by_group_block <- function(b, entry) {
+  a <- b$analysis
+  display <- neutral_display_of(entry, 'values-by-group')
+  if(!length(a$groups))
+    return('<p class="caption">No group values are recorded for the confirmed measure.</p>')
+  if(!neutral_shows_values(b))
+    return(paste0('<p class="caption">Observed values are not included in this package. ',
+                  esc(neutral_policy_note(b)),
+                  ' Choose the local audit policy to publish the numerical findings.</p>'))
+  shown <- neutral_shown_groups(a, display)
+  scope <- neutral_scope_line(a, display, shown)
+  if(!length(shown))
+    return(paste0(scope, '<p class="caption">No analysed group is selected for this section.</p>'))
+  chart <- if(display$layout %in% c('chart', 'chart-and-table'))
+    neutral_chart_values_by_group(a, shown, display) else NULL
+  figure <- if(!is.null(chart)) paste0(
+    '<figure class="series-figure">',
+    chart_image(chart, paste0('Median ', a$measure$label, ' by group'), 7.2,
+                max(2.6, min(5.2, 0.42 * length(shown) + 2))),
+    '<figcaption>Median observed value per group, in the units stated above. Exact values and ',
+    'spread are in the table. Charts and tables show the same selected groups.</figcaption></figure>') else ''
+  table <- if(display$layout %in% c('table', 'chart-and-table'))
+    neutral_stats_table(shown, display, a$measure$label, a$measure$unit) else ''
+  paste0('<p class="finding-meta">Values by group \u00b7 measure ', esc(a$measure$label),
+         if(!identical(a$measure$unit, 'not specified'))
+           paste0(' \u00b7 ', esc(a$measure$unit)) else '',
+         '</p>', scope, figure, table,
+         if(display$layout %in% c('table', 'chart-and-table'))
+           '<p class="caption">Descriptive only: no pooling across groups, no inference and no ',
+         if(display$layout %in% c('table', 'chart-and-table'))
+           'significance claim.</p>' else '',
+         neutral_inspect(b$prepared$rows, isTRUE(b$disclosure$permit_records),
+                         neutral_inspect_note(a, display, shown)))
+}
+
+neutral_values_over_time_block <- function(b, entry) {
+  a <- b$analysis
+  display <- neutral_display_of(entry, 'values-over-time')
+  if(!isTRUE(a$time$has_time))
+    return('<p class="caption">No time column is confirmed; this view is not available.</p>')
+  if(!neutral_shows_values(b))
+    return(paste0('<p class="caption">Observed values are not included in this package. ',
+                  esc(neutral_policy_note(b)),
+                  ' This is not an availability view: choose the local audit policy for the ',
+                  'numerical series, or add the explicitly named coverage view.</p>'))
+  shown <- neutral_shown_groups(a, display)
+  scope <- neutral_scope_line(a, display, shown)
+  periods <- neutral_display_periods(a, display)
+  if(!length(shown))
+    return(paste0(scope, '<p class="caption">No analysed group is selected for this section.</p>'))
+  if(!length(periods))
+    return(paste0(scope, '<p class="caption">No analysed period is selected for this section.</p>'))
+  fmt <- function(x) neutral_disp_fmt(x, display$precision)
+  period_rows <- vapply(shown, function(g) {
+    cells <- vapply(periods, function(p) {
+      hit <- Filter(function(r) identical(as.character(r$period), p), g$periods)
+      if(!length(hit)) return('<td class="gap">missing</td>')
+      values <- vapply(hit, function(r) if(is.null(r$value)) NA_real_ else as.numeric(r$value),
+                       numeric(1))
+      text <- paste(vapply(values, fmt, character(1)), collapse = ' / ')
+      paste0('<td class="num', if(length(hit) > 1L) ' repeated' else '', '"',
+             if(length(hit) > 1L) ' title="repeated group-period values"' else '', '>',
+             esc(text), '</td>')
+    }, character(1))
+    paste0('<tr><th scope="row" class="row-label">',
+           esc(as.character(neutral_dv(g$group, 'missing'))), '</th>',
+           paste(cells, collapse = ''), '</tr>')
+  }, character(1))
+  header_cells <- paste(vapply(periods, function(p)
+    paste0('<th scope="col" class="num">', esc(substr(p, 1, 10)), '</th>'), character(1)),
+    collapse = '')
+  chart <- if(display$layout %in% c('chart', 'chart-and-table', 'panels', 'combined'))
+    neutral_chart_values_over_time(a, shown, display) else NULL
+  figure <- if(!is.null(chart)) paste0(
+    '<figure class="series-figure', if(identical(display$layout, 'panels')) ' panels' else '', '">',
+    chart_image(chart, paste0(a$measure$label, ' by group and period'), 7.6,
+                max(2.8, min(7.5, display$height))),
+    '<figcaption>Observed value per group and period. A gap means no recorded observation, ',
+    'not zero; repeated values for the same group and period stay separate.</figcaption></figure>') else ''
+  table <- if(display$layout %in% c('table', 'chart-and-table')) paste0(
+    '<div class="table-wrap"><table class="report-table"><caption class="table-caption">',
+    esc(a$measure$label),
+    if(!identical(a$measure$unit, 'not specified')) paste0(' \u00b7 ', esc(a$measure$unit)) else '',
+    ' \u00b7 observed values per selected period</caption><thead><tr>',
+    '<th scope="col">Group</th>', header_cells, '</tr></thead><tbody>',
+    paste(period_rows, collapse = ''), '</tbody></table></div>',
+    '<p class="caption">Exact observed values as recorded in the saved analysis. A cell ',
+    'showing two values separated by \u201c/\u201d is a repeated group-period observation; those ',
+    'values are never summed, averaged or thinned. A missing cell is a gap, not zero.</p>') else ''
+  paste0('<p class="finding-meta">Observed values per selected period \u00b7 gaps stay missing, ',
+         'duplicates stay visible</p>', scope, figure, neutral_axis_note(display),
+         neutral_scale_note(display), table,
+         neutral_inspect(b$prepared$rows, isTRUE(b$disclosure$permit_records),
+                         neutral_inspect_note(a, display, shown)))
+}
+
+neutral_coverage_block <- function(b, entry) {
+  a <- b$analysis
+  display <- neutral_display_of(entry, 'coverage-over-time')
+  if(!isTRUE(a$time$has_time))
+    return('<p class="caption">No time column is confirmed; this view is not available.</p>')
+  shown <- neutral_shown_groups(a, display)
+  scope <- neutral_scope_line(a, display, shown)
+  periods <- neutral_display_periods(a, display)
+  if(!length(shown) || !length(periods))
+    return(paste0(scope, '<p class="caption">No analysed group or period is selected for this section.</p>'))
+  period_rows <- vapply(shown, function(g) {
+    cells <- vapply(periods, function(p) {
+      present <- vapply(g$periods, function(r) identical(as.character(r$period), p), logical(1))
+      if(!any(present)) return('<td class="gap">missing</td>')
+      '<td class="observed">observed</td>'
+    }, character(1))
+    paste0('<tr><th scope="row" class="row-label">',
+           esc(as.character(neutral_dv(g$group, 'missing'))), '</th>',
+           paste(cells, collapse = ''), '</tr>')
+  }, character(1))
+  header_cells <- paste(vapply(periods, function(p)
+    paste0('<th scope="col">', esc(substr(p, 1, 10)), '</th>'), character(1)), collapse = '')
+  paste0('<p class="finding-meta">Observation coverage per group and period \u00b7 values ',
+         'deliberately not shown</p>', scope,
+         '<div class="table-wrap"><table class="report-table"><thead><tr><th scope="col">Group</th>',
+         header_cells, '</tr></thead><tbody>', paste(period_rows, collapse = ''),
+         '</tbody></table></div>',
+         '<p class="caption">This is the explicitly named availability view, not the numerical ',
+         'series. \u201cobserved\u201d means the group has a recorded observation in that period; the ',
+         'value is withheld by design and is not implied by this table. \u201cmissing\u201d is a gap, ',
+         'not zero.</p>')
+}
+
+neutral_quality_block <- function(a, entry) {
+  rows <- c(
+    neutral_row('Total records', neutral_fmt(a$row_count)),
+    neutral_row('Missing measure values', neutral_fmt(a$missing$measure)),
+    neutral_row('Missing group values', neutral_fmt(a$missing$group)),
+    if(isTRUE(a$time$has_time))
+      neutral_row('Missing period values', neutral_fmt(a$missing$periods)),
+    if(isTRUE(a$time$has_time)) c(
+      neutral_row('Repeated group-period keys',
+                  neutral_fmt(nvl(a$quality$repeated_group_period_keys, 0))),
+      neutral_row('Records sharing a repeated key',
+                  neutral_fmt(nvl(a$quality$records_in_repeated_keys, 0)))))
+  paste0('<p class="finding-meta">Completeness and diagnostic limits</p>',
+         '<div class="audit-panel full">', paste(rows, collapse = ''), '</div>',
+         '<p class="caption">A repeated key is one group-and-period pair carrying more than one ',
+         'record; the second count is how many records share such a key. Repeated records stay ',
+         'separate observations and are never summed or averaged. A missing period is a gap, ',
+         'not a repeat. Missingness policy: blank cells (and any explicitly confirmed tokens) ',
+         'are treated as missing; literal "NA"/"null"/zeros are data unless declared. Missing ',
+         'is never read as zero.</p>')
+}
+
+neutral_limits_block <- function(a) {
+  paste0('<p class="finding-meta">What this report cannot support</p>',
+         '<div class="audit-panel full">',
+         '<div class="audit-row"><span>Scope</span><strong>Descriptive summary of one captured, confirmed table.</strong></div>',
+         '<div class="audit-row"><span>No claims</span><strong>No statistical significance, causes, inference, prediction or population/denominator claims.</strong></div>',
+         '<div class="audit-row"><span>Row meaning</span><strong>', esc(nvl(a$measure$meaning, 'not specified')), '. Units and meaning are the user\'s confirmed description; they are not independently authenticated.</strong></div>',
+         '<div class="audit-row"><span>Aggregation</span><strong>No automatic sum/mean of names; pooling requires an explicit declared method.</strong></div>',
+         '</div>')
+}
+
+neutral_reproduction_block <- function(a) {
+  paste0('<h3>Reproduction and evidence</h3>',
+         '<p>This report was rendered from the saved neutral analysis (', esc(a$schema),
+         ') with a frozen composition recipe. The companion methods report and the published ',
+         'evidence files list the captured dataset digest, the confirmed interpretation, the ',
+         'descriptive methods and the render command with labelled placeholders.</p>',
+         '<p class="table-note">The published package does not contain the original file or raw rows ',
+         'unless an explicit disclosure choice was made. Replay requires the retained captured dataset ',
+         'and the pinned environment recorded in provenance.</p>')
+}
+
+neutral_registry <- list(
+  intro = list(label = nvl(composition_labels[['intro']], 'Report context'), primary = FALSE,
+    render = function(b, entry, evidence_file = '') {
+      a <- b$analysis
+      m <- a$measure
+      paste0('<p class="finding-meta">Dataset passport</p>',
+             '<div class="audit-panel full">',
+             neutral_row('Dataset', esc(nvl(a$source$filename, 'captured file'))),
+             neutral_row('Content digest', esc(substr(nvl(a$source$input_sha256, ''), 1, 16))),
+             neutral_row('Captured records', neutral_fmt(a$row_count)),
+             neutral_row('Measure', esc(m$label)), neutral_row('Unit', esc(m$unit)),
+             neutral_row('Row meaning', esc(m$meaning)),
+             '</div>',
+             '<p class="caption">Attribution and version statements are user-supplied and not independently authenticated.</p>')
+    }),
+  'data-overview' = list(label = nvl(composition_labels[['data-overview']], 'Dataset overview'),
+    primary = TRUE,
+    render = function(b, entry, evidence_file = '') neutral_overview_block(b)),
+  'values-by-group' = list(label = nvl(composition_labels[['values-by-group']], 'Values by group'), primary = FALSE,
+    render = function(b, entry, evidence_file = '') neutral_values_by_group_block(b, entry)),
+  'values-over-time' = list(label = nvl(composition_labels[['values-over-time']], 'Values over time'), primary = FALSE,
+    render = function(b, entry, evidence_file = '') neutral_values_over_time_block(b, entry)),
+  'coverage-over-time' = list(label = nvl(composition_labels[['coverage-over-time']], 'Observation coverage over time'), primary = FALSE,
+    render = function(b, entry, evidence_file = '') neutral_coverage_block(b, entry)),
+  'data-quality' = list(label = nvl(composition_labels[['data-quality']], 'Data quality and completeness'),
+    primary = FALSE,
+    render = function(b, entry, evidence_file = '') neutral_quality_block(b$analysis, entry)),
+  limitations = list(label = nvl(composition_labels[['limitations']], 'Limitations and cautions'), primary = FALSE,
+    render = function(b, entry, evidence_file = '') neutral_limits_block(b$analysis)),
+  reproduction = list(label = nvl(composition_labels[['reproduction']], 'Reproduction and evidence'), primary = FALSE,
+    render = function(b, entry, evidence_file = '') neutral_reproduction_block(b$analysis)))
+
+neutral_summary_for <- function(entry, analysis) {
+  block <- entry$block
+  if(block == 'data-overview')
+    return(paste0(neutral_fmt(analysis$row_count), ' records · ', esc(analysis$measure$label)))
+  if(block == 'values-by-group')
+    return(paste0(neutral_fmt(analysis$group_count), ' groups · median ', esc(analysis$measure$label)))
+  if(block == 'values-over-time')
+    return(paste0(neutral_fmt(analysis$time$period_count), ' periods'))
+  if(block == 'coverage-over-time')
+    return(paste0(neutral_fmt(analysis$time$period_count), ' periods · availability only'))
+  if(block == 'data-quality')
+    return(paste0(neutral_fmt(analysis$missing$measure), ' missing measure values'))
+  NULL
+}
+
+neutral_methods_html <- function(b, prefix = '') {
+  a <- b$analysis
+  d <- b$disclosure
+  policy <- if(is.null(d)) 'not recorded in this package' else d$label
+  values <- if(neutral_shows_values(b)) 'included in this report and its evidence files'
+            else 'excluded from this report and its evidence files'
+  records <- if(!is.null(d) && isTRUE(d$permit_records))
+    'included: data/selected-records.csv lists the contributing prepared records'
+  else 'excluded: the contributing records are not published'
+  plotted <- if(neutral_shows_values(b))
+    'the chart images and tables render the observed values of the selected records'
+  else 'no chart or table of observed values exists in this package'
+  rows <- c(
+    neutral_row('Analysis schema', a$schema),
+    neutral_row('Captured file',nvl(a$source$filename, '-')),
+    neutral_row('Content digest', esc(substr(nvl(a$source$input_sha256, ''), 1, 16))),
+    neutral_row('Confirmed group column', esc(nvl(a$interpretation$category, 'none'))),
+    neutral_row('Confirmed measure', esc(a$measure$label)),
+    neutral_row('Unit', esc(a$measure$unit)),
+    neutral_row('Row meaning', esc(a$measure$meaning)),
+    neutral_row('Time column', esc(nvl(a$time$column, 'none'))),
+    neutral_row('Missing tokens', paste(esc(unlist(a$interpretation$missing_tokens)), collapse = ', ')),
+    neutral_row('Descriptive methods', 'inclusive quartiles and sample standard deviation, as recorded in the saved analysis'),
+    neutral_row('Repeated group-period keys', neutral_fmt(nvl(a$quality$repeated_group_period_keys, 0))),
+    neutral_row('Records sharing a repeated key', neutral_fmt(nvl(a$quality$records_in_repeated_keys, 0))))
+  evidence <- c(
+    neutral_row('Disclosure policy', esc(policy)),
+    neutral_row('Observed values', values),
+    neutral_row('Original source file', 'retained in the private capture store; never republished'),
+    neutral_row('Prepared records', paste0(neutral_fmt(nvl(a$row_count, 0)),
+                                           '; used to build the saved analysis')),
+    neutral_row('Selected records', records),
+    neutral_row('Plotted data', plotted),
+    neutral_row('Permitted export data', records))
+  paste0('<section class="audit-panel full"><h2>Neutral analysis methods</h2>',
+         paste(rows, collapse = ''),
+         '<p class="caption">All values and statistics are read from the saved analysis; this page performs no calculation.</p>',
+         '</section>',
+         '<section class="audit-panel full"><h2>Disclosure and evidence scope</h2>',
+         paste(evidence, collapse = ''),
+         if(!is.null(d)) paste0('<p class="caption">', esc(d$label), ': ',
+                                esc(if(identical(d$policy, 'local-audit'))
+                                  'local review output, not automatically private once shared; uploaded data stays generic and is not automatically safe to disclose.'
+                                  else 'withheld values do not make this package anonymous or universally safe: counts, labels, groups and metadata can still disclose information.'), '</p>')
+         else '<p class="caption">This package does not record a disclosure choice, so no observed values are published.</p>',
+         '</section>')
+}
+
+compose_neutral_html <- function(b, recipe_path, evidence_file = '') {
+  b <- neutral_attach_disclosure(b, recipe_path)
+  compose_report_html(b, recipe_path, evidence_file = evidence_file, registry = neutral_registry)
 }

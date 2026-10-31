@@ -37,6 +37,7 @@ import composer_library as library
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+PACKAGE_ROOT = HERE.parents[1]
 MAINTAINED_RECIPES = tuple(
     HERE / "config/composer/compositions" / f"{audience}.json"
     for audience in ("researcher", "health_institution", "public")
@@ -344,6 +345,13 @@ def _bundle_audience(bundle):
     return json.loads(stakeholder.read_text(encoding="utf-8")).get("id")
 
 
+def _bundle_kind(bundle):
+    """'neutral' when the bundle is a captured CSV dataset, else 'health'."""
+    if (Path(bundle) / "neutral-analysis.json").is_file():
+        return "neutral"
+    return "health"
+
+
 def render_preview(recipe_path, bundle, directory, *, quarto="quarto", data_root=None,
                    workflow_config=None, render=None, audience=None, origin=None):
     """Render a saved recipe into a new directory as a preview package.
@@ -357,11 +365,17 @@ def render_preview(recipe_path, bundle, directory, *, quarto="quarto", data_root
     if not recipe_path.is_file():
         raise WorkspaceError(f"Recipe to preview does not exist: {recipe_path}")
     recipe = open_recipe(recipe_path)
-    audience = audience or _bundle_audience(bundle)
-    if recipe["audience"] != audience:
+    is_neutral = _bundle_kind(bundle) == "neutral"
+    audience = audience or (_bundle_audience(bundle) if not is_neutral else
+                            recipe.get("audience"))
+    if not is_neutral and recipe["audience"] != audience:
         raise WorkspaceError(
             f"Recipe audience {recipe['audience']!r} does not match the bundle audience "
             f"{audience!r}; a same-audience composition is required.")
+    if is_neutral and recipe.get("audience") != "neutral-overview":
+        raise WorkspaceError(
+            f"Neutral recipes must bind audience 'neutral-overview'; "
+            f"this recipe names {recipe.get('audience')!r}.")
     source_bytes = recipe_path.read_bytes()
     digest = hashlib.sha256(source_bytes).hexdigest()
 
@@ -385,10 +399,20 @@ def render_preview(recipe_path, bundle, directory, *, quarto="quarto", data_root
     workflow_record = (publish._workflow_record(workflow_config)
                        if isinstance(workflow_config, (str, Path)) else workflow_config)
     try:
-        provenance = publish.build_provenance(bundle, "html", quarto, data_root,
-                                              workflow_record, preview=True)
-        render_fn(bundle, directory / "report.html", "html", quarto, provenance,
-                  directory / "provenance.json", snapshot)
+        if is_neutral:
+            import neutral_publish as _neutral
+            provenance = _neutral.build_neutral_provenance(
+                Path(bundle), recipe, snapshot, PACKAGE_ROOT, input_kind="neutral")
+            provenance["preview"] = {"status": "preview",
+                                     "notice": PREVIEW_NOTICE,
+                                     "accepted_output": False}
+            render_fn(bundle, directory / "report.html", "html", quarto, provenance,
+                      directory / "provenance.json", snapshot)
+        else:
+            provenance = publish.build_provenance(bundle, "html", quarto, data_root,
+                                                  workflow_record, preview=True)
+            render_fn(bundle, directory / "report.html", "html", quarto, provenance,
+                      directory / "provenance.json", snapshot)
     except Exception as error:                      # noqa: BLE001 - recorded, then re-raised
         metadata.update({"status": "failed", "finished_utc": _now(),
                          "error": f"{type(error).__name__}: {error}"})

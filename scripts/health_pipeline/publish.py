@@ -14,6 +14,28 @@ import importlib.metadata
 from datetime import datetime, timezone
 from pathlib import Path
 from common import digest, write_json
+try:
+    from neutral_publish import (
+        load_neutral_bundle as neutral_load_neutral_bundle,
+        build_data_overview_record as neutral_build_overview_record,
+        build_values_record as neutral_build_values_record,
+        composition_provenance as neutral_composition_provenance,
+        build_neutral_provenance as neutral_build_provenance,
+        restricted_analysis as neutral_restricted_analysis,
+        disclosure_record as neutral_disclosure_record,
+    )
+    import neutral_library as neutral_library
+    import neutral_describe as neutral_describe
+except ImportError:   # pragma: no cover - the neutral modules are co-located
+    neutral_load_neutral_bundle = None
+    neutral_build_overview_record = None
+    neutral_build_values_record = None
+    neutral_composition_provenance = None
+    neutral_build_provenance = None
+    neutral_restricted_analysis = None
+    neutral_disclosure_record = None
+    neutral_library = None
+    neutral_describe = None
 HERE=Path(__file__).resolve().parent
 PROJECT=HERE.parents[1]
 TEMPLATE='report_shared.qmd'
@@ -1110,7 +1132,9 @@ def _effective_titles(bundle, scope):
 
 COMPOSITE_BLOCKS = ('coverage-selection', 'monitoring-overview', 'sensitivity-comparison')
 KNOWN_BLOCKS = ('intro','series-trend','series-collection','reference-comparison','limitations',
-                'reproduction',*COMPOSITE_BLOCKS)
+                'reproduction',*COMPOSITE_BLOCKS,
+                'data-overview','values-by-group','values-over-time','coverage-over-time',
+                'data-quality')
 COMPOSITE_BINDING = 'saved-records/1'
 COMPOSITION_CONTRACT = 'health-report/composition-recipe/1'
 COMPOSITION_CONTRACT_V2 = 'health-report/composition-recipe/2'
@@ -1155,7 +1179,12 @@ def validate_composition(recipe):
     use this function rather than re-implementing any of these rules.
     """
     if not isinstance(recipe, dict): raise ValueError('Composition recipe must be an object')
-    unknown = set(recipe) - {'contract','audience','titles','blocks'}
+    allowed = {'contract','audience','titles','blocks'}
+    # The disclosure choice belongs to the neutral profile only; a health recipe carrying one
+    # is a mistake, not an extension.
+    if recipe.get('audience') == 'neutral-overview':
+        allowed.add('disclosure')
+    unknown = set(recipe) - allowed
     if unknown: raise ValueError(f'Unsupported composition fields: {sorted(unknown)}')
     contract = recipe.get('contract')
     if contract not in (COMPOSITION_CONTRACT, COMPOSITION_CONTRACT_V2):
@@ -1171,6 +1200,7 @@ def validate_composition(recipe):
         if block not in KNOWN_BLOCKS:
             raise ValueError(f'Unknown block type: {block!r}')
         expected = {'block','instance_id'}
+        optional = set()
         if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
             expected = {'block','instance_id','topic'}
         if block == 'series-trend':
@@ -1191,8 +1221,28 @@ def validate_composition(recipe):
                 expected.add('years')
             if 'presentation' in entry:
                 expected.add('presentation')
-        if set(entry) != expected:
+        if block in ('data-overview', 'values-by-group', 'data-quality'):
+            if contract != COMPOSITION_CONTRACT_V2:
+                raise ValueError(f'Block {block} requires composition contract '
+                                 f'{COMPOSITION_CONTRACT_V2}')
+            expected = {'block', 'instance_id'}
+            if block == 'values-by-group' and recipe.get('audience') == 'neutral-overview':
+                # Presentation settings are optional: an old recipe keeps its documented output.
+                optional.add('display')
+        if block in ('values-over-time', 'coverage-over-time'):
+            if contract != COMPOSITION_CONTRACT_V2:
+                raise ValueError(f'Block {block} requires composition contract '
+                                 f'{COMPOSITION_CONTRACT_V2}')
+            expected = {'block', 'instance_id', 'time_period'}
+            if recipe.get('audience') == 'neutral-overview':
+                optional.add('display')
+        if not expected <= set(entry) <= (expected | optional):
             raise ValueError(f'Invalid fields for block {block!r}: expected {sorted(expected)}')
+        if block in ('values-over-time', 'coverage-over-time'):
+            period = entry['time_period']
+            if period not in ('year', 'month', 'week', 'day'):
+                raise ValueError(f'Invalid time_period for block instance {instance!r}: '
+                                 f'{period!r}; supported year/month/week/day')
         if contract == COMPOSITION_CONTRACT_V2 and block == 'reference-comparison':
             topic = entry['topic']
             if not isinstance(topic, str) or not TOPIC_ID.fullmatch(topic):
@@ -1354,7 +1404,79 @@ def composition_provenance(recipe, path, blocks):
             'section_titles': dict(recipe.get('titles') or {}),
             'instances': instances, 'mode': 'composed'}
 
-def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None,composition=None):
+def _is_neutral_bundle(bundle):
+    return (Path(bundle) / "neutral-analysis.json").is_file()
+
+
+def _neutral_package(bundle, dest):
+    """Copy the neutral dataset's retained analysis files into the render workspace.
+
+    The original captured bytes stay in the private store; the package carries the
+    analysis, interpretation digest record and prepared rows only with an explicit
+    disclosure flag. No health bundle.json is fabricated.
+    """
+    bundle, dest = Path(bundle), Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in ("neutral-analysis.json", "dataset.json", "interpretation.json", "prepared.json"):
+        source = bundle / name
+        if source.is_file():
+            shutil.copyfile(source, dest / name)
+    shutil.copyfile(HERE / TEMPLATE, dest / "report.qmd")
+    for name in ("report_helpers.R", "audience_reports.R", "tabular_report.R",
+                 "tabular_charts.R", "app.R", "dashboard.css", "methods.qmd"):
+        shutil.copyfile(HERE / "templates" / name, dest / name)
+    write_json(dest / "package.json", {
+        "schema_version": "3.0-neutral",
+        "notice": "Retained neutral analysis package; the original file is not included.",
+        "files": {path.name: digest(path) for path in sorted(dest.iterdir())
+                  if path.is_file() and path.name != "package.json"}})
+
+
+def _write_selected_records(bundle, prepared, destination):
+    """Write the contributing records as CSV — only for an explicitly permitted export.
+
+    These are the same prepared rows the analysis read (stable 1-based ordinals, raw source
+    strings untouched); the original captured file itself is still not republished.
+    """
+    with open(destination, 'w', encoding='utf-8', newline='') as handle:
+        writer = csv.writer(handle)
+        writer.writerow(['ordinal', 'group', 'period', 'value'])
+        for row in prepared['rows']:
+            writer.writerow([row['ordinal'], row.get('category') or '',
+                             row.get('period') or '',
+                             '' if row.get('value') is None else row['value']])
+    return destination
+
+
+def _neutral_quarto_command(document, fmt, tmp, provenance, composition):
+    """The quarto invocation shared by report and methods for a neutral render."""
+    command = ["quarto", "render", f"{document}.qmd", "--to", fmt]
+    if document == "methods":
+        command += ["-P", "download_prefix:data/"]
+        command += ["-P", "html_only:true", "-M", "format-links:false"]
+    if document == "report" and provenance is not None:
+        command += ["-P", f"evidence_file:{Path(tmp) / 'provenance.json'}"]
+    if document == "report" and composition is not None:
+        command += ["-P", f"block_recipe:{Path(composition).resolve()}"]
+    if document == "methods" and composition is not None:
+        # Methods states the disclosure policy and evidence scope, so it reads the same
+        # frozen recipe the report was rendered from.
+        command += ["-P", f"block_recipe:{Path(composition).resolve()}"]
+    command += ["-P", "input_kind:neutral",
+                "-P", ("doc_title:Supplied dataset | Methods & sources"
+                       if document == "methods" else
+                       "doc_title:Supplied dataset | Findings"),
+                "-P", f"data_dir:{tmp}"]
+    if fmt == "html":
+        command += ["-M", "format-links:false"]
+    return command
+
+
+def render(bundle, output, fmt, quarto="quarto", provenance=None, provenance_out=None,
+           composition=None):
+    if _is_neutral_bundle(bundle):
+        return _render_neutral(bundle, output, fmt, quarto, provenance, provenance_out,
+                               composition)
     if composition is not None and fmt != 'html':
         raise ValueError('PDF export of a composed report is not supported; '
                          'omit --composition for the legacy PDF')
@@ -1513,6 +1635,102 @@ def render(bundle,output,fmt,quarto='quarto',provenance=None,provenance_out=None
 
 BATCH_AUDIENCES=('researcher','health_institution','public')
 
+# --------------------------------------------------------------------------- neutral render
+
+def _render_neutral(bundle, output, fmt, quarto='quarto', provenance=None,
+                    provenance_out=None, composition=None):
+    """Render a neutral dataset bundle to a composed HTML package.
+
+    Uses the shared qmd/report_helpers pipeline in ``input_kind=neutral`` mode; the
+    provenance (if supplied) is built by a caller that already resolved block records
+    (neutral_publish). No health bundle.json, no FOPH labels, no PDF route.
+    """
+    if composition is not None and fmt != 'html':
+        raise ValueError('Neutral reports are HTML-only; omit --composition for other routes')
+    bundle = Path(bundle)
+    recipe = load_composition(composition) if composition is not None else None
+    if recipe is not None and recipe.get('audience') != 'neutral-overview':
+        raise ValueError(f"Recipe audience {recipe.get('audience')!r} does not match "
+                         "the neutral dataset")
+    if recipe is not None:
+        # The saved request is replayed through this path, so an unresolved disclosure choice
+        # must fail here too rather than render a package with a different meaning.
+        neutral_library.validate_recipe(recipe)
+        conflicts = neutral_library.disclosure_conflicts(recipe)
+        if conflicts:
+            raise ValueError('; '.join(item['message'] for item in conflicts))
+    disclosure = (recipe or {}).get('disclosure')
+    if recipe is not None:
+        # The CLI and the replay must refuse numbers computed under older definitions, exactly
+        # as the site does, instead of re-rendering them under new presentation.
+        _dataset, _interp, prepared_rows, stored_analysis = neutral_load_neutral_bundle(bundle)
+        ok, stale_reason = neutral_describe.analysis_compatible(
+            prepared_rows, stored_analysis, _interp)
+        if not ok:
+            raise ValueError(stale_reason)
+    output = Path(output).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='health-report-neutral-') as tmp:
+        _neutral_package(bundle, tmp)
+        if provenance is not None:
+            provenance = dict(provenance)
+            if recipe is not None:
+                # Build per-block records for the recipe the caller handed us.
+                dataset, interpretation, prepared, analysis = (
+                    neutral_load_neutral_bundle(bundle))
+                records = []
+                for entry in recipe['blocks']:
+                    if entry['block'] == 'data-overview':
+                        records.append(neutral_build_overview_record(
+                            bundle, PROJECT, entry['instance_id'], analysis, prepared,
+                            dataset))
+                    elif entry['block'] in ('values-by-group', 'values-over-time'):
+                        records.append(neutral_build_values_record(
+                            bundle, PROJECT, entry['instance_id'], entry['block'], analysis,
+                            disclosure))
+                provenance['blocks'] = records
+                provenance['composition'] = neutral_composition_provenance(
+                    recipe, composition, analysis)
+                provenance['disclosure'] = neutral_disclosure_record(
+                    disclosure, analysis, prepared, recipe)
+            write_json(Path(tmp) / 'provenance.json', provenance)
+        env = os.environ.copy()
+        project = HERE.parents[1]
+        env['HEALTH_REPORT_PROJECT'] = str(project)
+        env['R_PROFILE_USER'] = str(project / '.Rprofile')
+        for document in ('report', 'methods'):
+            command = _neutral_quarto_command(document, fmt, tmp, provenance, composition)
+            subprocess.run(command, cwd=tmp, check=True, env=env)
+        shutil.copyfile(Path(tmp) / f'report.{fmt}', output)
+        shutil.copyfile(Path(tmp) / f'methods.{fmt}', output.parent / f'methods.{fmt}')
+        if provenance is not None and provenance_out is not None:
+            write_json(provenance_out, provenance)
+        if fmt == 'html':
+            # Evidence package. The policy decides what leaves the private store: the local
+            # audit path publishes the full saved analysis and, when permitted, the
+            # contributing records; the restricted export publishes a redacted summary that
+            # carries counts, keys and availability only. The original captured bytes are
+            # never republished.
+            data = output.parent / 'data'
+            data.mkdir(exist_ok=True)
+            for name in ('interpretation.json', 'dataset.json'):
+                shutil.copyfile(bundle / name, data / name)
+            if disclosure and disclosure['policy'] == 'restricted-share':
+                _, _, _, analysis = neutral_load_neutral_bundle(bundle)
+                write_json(data / 'neutral-summary.json',
+                           neutral_restricted_analysis(analysis))
+            else:
+                shutil.copyfile(bundle / 'neutral-analysis.json',
+                                data / 'neutral-analysis.json')
+            if disclosure and disclosure.get('permit_records'):
+                _, _, prepared, _ = neutral_load_neutral_bundle(bundle)
+                _write_selected_records(bundle, prepared, data / 'selected-records.csv')
+            if composition is not None:
+                reproduction = output.parent / 'reproduction'
+                reproduction.mkdir(exist_ok=True)
+                shutil.copyfile(Path(composition), reproduction / 'composition.json')
+    return output
+
 def audience_bundle(bundle_root,audience):
     """Resolve one audience's retained bundle. Never fall back to another audience."""
     bundle=Path(bundle_root)/audience/'data'
@@ -1592,7 +1810,14 @@ def main(argv=None):
     else:
         record=None
         if a.provenance:
-            record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,_workflow_record(a.workflow_config))
+            if _is_neutral_bundle(a.bundle):
+                # A neutral dataset has no health bundle.json: its provenance comes from the
+                # saved neutral analysis and the frozen recipe, exactly as the site builds it.
+                # Without this branch the documented replay command fails on its first read.
+                recipe=load_composition(a.composition) if a.composition else {}
+                record=neutral_build_provenance(a.bundle,recipe,a.composition,PROJECT)
+            else:
+                record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,_workflow_record(a.workflow_config))
         render(a.bundle,a.output,a.action,a.quarto,record,a.provenance,a.composition)
 
 if __name__=='__main__':

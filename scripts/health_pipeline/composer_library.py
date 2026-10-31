@@ -22,7 +22,9 @@ import publish
 
 BLOCK_ORDER = ("intro", "series-trend", "series-collection", "reference-comparison",
                "coverage-selection", "monitoring-overview", "sensitivity-comparison",
-               "limitations", "reproduction")
+               "limitations", "reproduction",
+               "data-overview", "values-by-group", "values-over-time", "coverage-over-time",
+               "data-quality")
 
 # Reader-facing library. ``options`` is the closed set of recipe fields this block accepts in
 # addition to block/instance_id; ``requires`` lists the options a valid entry must carry.
@@ -116,6 +118,58 @@ LIBRARY = {
         "repeatable": False,
         "repeat_reason": "Required and single: a second copy would repeat the same record.",
     },
+    # Neutral CSV block types: registered for the shared validator and label source, but never
+    # offered by the health library (composable=False); the neutral library owns them.
+    "data-overview": {
+        "composable": False,
+        "label": "Dataset overview",
+        "description": "Record and field counts and the actual selected coverage.",
+        "purpose": "What the captured dataset contains and covers.",
+        "options": (),
+        "requires": (),
+        "repeatable": False,
+        "repeat_reason": "One overview per dataset; a second copy would repeat the same counts.",
+    },
+    "values-by-group": {
+        "composable": False,
+        "label": "Values by group",
+        "description": "Observed values per group, with the group's descriptive summary.",
+        "purpose": "Descriptive values per confirmed group; no pooling.",
+        "options": (),
+        "requires": (),
+        "repeatable": True,
+        "repeat_reason": None,
+    },
+    "values-over-time": {
+        "composable": False,
+        "label": "Values over time",
+        "description": "Observed values per selected period; gaps and duplicates stay visible.",
+        "purpose": "Time course from the confirmed time column.",
+        "options": ("time_period",),
+        "requires": (),
+        "repeatable": True,
+        "repeat_reason": None,
+    },
+    "coverage-over-time": {
+        "composable": False,
+        "label": "Observation coverage over time",
+        "description": "Which groups have a recorded observation in each period; values not shown.",
+        "purpose": "Explicitly named availability view; never a substitute for the numerical series.",
+        "options": ("time_period",),
+        "requires": (),
+        "repeatable": True,
+        "repeat_reason": None,
+    },
+    "data-quality": {
+        "composable": False,
+        "label": "Data quality and completeness",
+        "description": "Missingness, invalid handling, repeated keys and diagnostic limits.",
+        "purpose": "Completeness context for every displayed value.",
+        "options": (),
+        "requires": (),
+        "repeatable": False,
+        "repeat_reason": "One quality statement per dataset.",
+    },
 }
 
 # Instance ids stay short, readable and unique. The numeric suffix is allocated from the draft's
@@ -123,7 +177,10 @@ LIBRARY = {
 SLUGS = {"intro": "intro", "series-trend": "trend", "series-collection": "collection",
          "reference-comparison": "reference", "coverage-selection": "coverage",
          "monitoring-overview": "monitoring", "sensitivity-comparison": "sensitivity",
-         "limitations": "limitations", "reproduction": "reproduction"}
+         "limitations": "limitations", "reproduction": "reproduction",
+         "data-overview": "overview", "values-by-group": "values-by-group",
+         "values-over-time": "values-over-time", "coverage-over-time": "coverage-over-time",
+         "data-quality": "quality"}
 
 # Sections the product requires in every report. Mirrors composer_workspace.REQUIRED_BLOCKS;
 # kept here so the library can describe the floor without importing the draft service.

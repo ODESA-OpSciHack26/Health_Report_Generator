@@ -1,5 +1,5 @@
 ---
-title: "Disease notifications | Findings"
+title: "`r params$doc_title`"
 format:
   html:
     embed-resources: true
@@ -23,15 +23,20 @@ params:
   tabular_document: "report"
   evidence_file: ""
   block_recipe: ""
+  doc_title: "Disease notifications | Findings"
 ---
 
 ```{r}
 source('report_helpers.R')
-if(!params$input_kind %in% c('canonical', 'tabular')) stop('Unsupported input kind')
+if(!params$input_kind %in% c('canonical', 'tabular', 'neutral')) stop('Unsupported input kind')
 is_tabular <- identical(params$input_kind, 'tabular')
+is_neutral <- identical(params$input_kind, 'neutral')
 if(is_tabular) {
   if(!knitr::is_html_output()) stop('Tabular reports currently support HTML only')
   source('tabular_report.R')
+} else if(is_neutral) {
+  if(!knitr::is_html_output()) stop('Neutral reports currently support HTML only')
+  b <- read_neutral_bundle(params$data_dir)
 } else {
   b <- read_bundle(params$data_dir)
 }
@@ -48,12 +53,17 @@ if(is_tabular) {
 
 ```{r}
 #| results: asis
-if(!is_tabular && knitr::is_html_output()) {
+if(is_neutral && knitr::is_html_output()) {
+  if(nzchar(params$block_recipe)) cat(compose_neutral_html(b,params$block_recipe,params$evidence_file))
+  else stop('A neutral report requires a composition recipe')
+  cat(provenance_script(), interactive_tables_script())
+}
+if(!is_tabular && !is_neutral && knitr::is_html_output()) {
   if(nzchar(params$block_recipe)) cat(compose_report_html(b,params$block_recipe,params$evidence_file))
   else cat(findings_html(b,evidence_file=params$evidence_file))
 }
-if(!is_tabular && knitr::is_html_output()) cat(provenance_script(), interactive_tables_script())
-if(!is_tabular && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial') {
+if(!is_tabular && !is_neutral && knitr::is_html_output()) cat(provenance_script(), interactive_tables_script())
+if(!is_tabular && !is_neutral && knitr::is_latex_output() && presentation_profile(b)$layout == 'editorial') {
   p <- presentation_profile(b)
   cat('Audience: **',p$display_name,'**. Presentation: ',p$layout,'.\n\n',sep='')
   cat('Selected diseases: ',paste(label_topic(b,group_topics(b)),collapse=', '),'.\n\n',sep='')

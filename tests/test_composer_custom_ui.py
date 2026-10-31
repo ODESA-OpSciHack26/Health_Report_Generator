@@ -171,9 +171,11 @@ def test_rendering_harness_still_catches_the_chained_append_defect(tmp_path):
     assert node is not None
     fixture = build_fixture(make_site(tmp_path))
     source = (ROOT / "src" / "composer_web" / "app.js").read_text(encoding="utf-8")
+    # The same three lines now live inside the section card body; the invariant is unchanged:
+    # chaining append() loses the render for every section.
     fixed = ('    const confirm = document.createElement("div");\n'
              '    confirm.className = "inline-confirm";\n'
-             '    item.append(confirm);')
+             '    body.append(confirm);')
     assert fixed in source
     broken = tmp_path / "pre-fix-app.js"
     broken.write_text(source.replace(fixed,

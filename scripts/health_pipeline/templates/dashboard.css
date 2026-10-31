@@ -64,3 +64,20 @@ body {background:var(--paper);color:var(--ink);font-family:Arial,sans-serif;font
 .plain-language ul{padding-left:20px}
 .plain-language li{margin:8px 0;color:var(--subtle)}
 @media(max-width:700px){.monitoring-grid{grid-template-columns:1fr}}
+
+/* Neutral statistics and display controls — scoped to neutral report classes only. */
+.stats-wrap { overflow-x: auto; margin: 0.6rem 0 0.4rem; }
+.stats-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.stats-table caption.table-caption { caption-side: top; text-align: left; font-size: 0.86rem;
+  color: #52656b; padding: 0 0 0.5rem; }
+.stats-table th, .stats-table td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #e2e7ec;
+  vertical-align: baseline; }
+.stats-table thead th { font-size: 0.78rem; letter-spacing: 0.02em; text-transform: uppercase;
+  color: #52656b; border-bottom: 2px solid #cfd6dc; white-space: nowrap; }
+.stats-table th.row-label { text-align: left; font-weight: 600; }
+.stats-table td.num, .stats-table th.num { text-align: right; white-space: nowrap; }
+.stats-table tbody tr:nth-child(even) { background: #fafbfc; }
+.stats-table tbody tr:hover { background: #f2f6f7; }
+.display-scope { font-size: 0.82rem; color: #52656b; margin: 0.2rem 0 0.5rem; }
+.series-figure { margin: 0.8rem 0; }
+.series-figure figcaption { font-size: 0.82rem; color: #52656b; margin-top: 0.35rem; }

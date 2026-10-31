@@ -42,6 +42,10 @@ sys.path.insert(0, str(ROOT / "scripts" / "health_pipeline"))
 
 import composer_workspace as workbench  # noqa: E402
 import composer_library as library  # noqa: E402
+import neutral_describe as neutral
+import neutral_library as neutral_lib
+import neutral_identity as neutral_identity
+import neutral_display as neutral_display
 
 WEB_DIR = HERE / "composer_web"
 CUSTOM = "custom"
@@ -51,8 +55,10 @@ AUDIENCES = (("researcher", "Researcher"),
              ("health_institution", "Health institution"),
              ("public", "Public"))
 PRESET_IDS = tuple(preset for preset, _ in AUDIENCES) + (CUSTOM,)
+NEUTRAL_AUDIENCE = neutral_lib.NEUTRAL_AUDIENCE
 JOB_ID = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{10}$")
 MAX_BODY = 64 * 1024
+NEUTRAL_MAX_BODY = neutral.LIMITS["max_upload_bytes"] + 64 * 1024
 COLLECTION_EMPTY_MESSAGE = ("Select at least one disease, or turn off "
                             "‘Annual trends by disease’.")
 # Identity of the renderer for reuse matching. Bump only when the inputs of this identity
@@ -188,6 +194,8 @@ class Site:
         self.drafts_root.mkdir(parents=True, exist_ok=True)
         self.jobs_root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self._analysis_cache: dict = {}
+        self._csv_environment_cache = None
         self._environment = None
         self._environment_lock = threading.Lock()
         self._active: str | None = None
@@ -1269,6 +1277,860 @@ class Site:
             raise SiteError(HTTPStatus.CONFLICT, str(error), code="reset_refused") from None
         return self.custom_document(context)
 
+    # ---------------------------------------------------------- neutral CSV mode
+    def _csv_root(self):
+        root = self.work_root / "csv-datasets"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def _csv_dataset_dir(self, digest):
+        target = Path(os.path.realpath(self._csv_root() / digest))
+        if self._csv_root() not in target.parents:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Unsafe dataset path.", code="unsafe")
+        return target
+
+    def csv_datasets(self):
+        """Immutable captured datasets, newest capture first, with confirmation state."""
+        items = []
+        for directory in self._csv_root().glob("*"):
+            dataset_file = directory / "dataset.json"
+            if not dataset_file.is_file():
+                continue
+            dataset = _read_json(dataset_file)
+            items.append({
+                "digest": directory.name,
+                "source_filename": dataset.get("source_filename"),
+                "captured_at_utc": dataset.get("captured_at_utc"),
+                "confirmed": (directory / "interpretation.json").is_file(),
+                # dataset.json records row_count; the API contract calls it record_count. Both
+                # spellings are accepted so an older dataset file still lists its count.
+                "record_count": dataset.get("record_count", dataset.get("row_count")),
+            })
+        # Directory names are content digests, so ordering them is not chronological.
+        items.sort(key=lambda item: (item.get("captured_at_utc") or "", item["digest"]),
+                   reverse=True)
+        return items
+
+    def csv_capture(self, payload: bytes, source_filename: str):
+        """Bound and inspect one upload; promote to immutable storage on success.
+
+        Unsuccessful captures never become accepted datasets; a later identical upload is a
+        new capture event, and changed bytes always create a new content version.
+        """
+        try:
+            capture = neutral.capture_payload(payload, source_filename=source_filename)
+        except neutral.NeutralError as error:
+            raise SiteError(HTTPStatus.BAD_REQUEST, str(error), code="csv_rejected") from None
+        directory = self._csv_dataset_dir(capture.input_sha256)
+        dataset_file = directory / "dataset.json"
+        if not dataset_file.is_file():
+            directory.mkdir(parents=True, exist_ok=False)
+            try:
+                _write_json_atomic(dataset_file, {
+                    "schema": neutral.NEUTRAL_INTERPRETATION_SCHEMA.replace(
+                        "neutral-interpretation", "neutral-dataset"),
+                    "source_filename": capture.source_filename,
+                    "input_sha256": capture.input_sha256,
+                    "byte_count": capture.byte_count,
+                    "captured_at_utc": _now(),
+                    "columns": list(capture.columns),
+                    "row_count": capture.logical_records,
+                    "limits_family": "csv-slice-b",
+                })
+                (directory / "original.bin").write_bytes(payload)
+            except OSError:
+                raise SiteError(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                "The capture could not be stored.", code="capture_failed")
+        return capture
+
+    def csv_confirmation(self, digest):
+        """The dataset passport, section interpretation suggestion and current draft."""
+        directory = self._csv_dataset_dir(digest)
+        dataset_file = directory / "dataset.json"
+        if not dataset_file.is_file():
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown dataset.", code="no_dataset")
+        dataset = _read_json(dataset_file)
+        payload = (directory / "original.bin").read_bytes()
+        capture = neutral.capture_payload(payload, source_filename=dataset["source_filename"])
+        suggestion = neutral.suggest_interpretation(capture)
+        confirmation = None
+        if (directory / "interpretation.json").is_file():
+            confirmation = _read_json(directory / "interpretation.json")
+        return {
+            "dataset": {**dataset, "record_count":
+                        dataset.get("record_count", dataset.get("row_count"))},
+            "preview": capture.as_public(),
+            "suggestion": suggestion,
+            "confirmation": confirmation,
+            "limits": {key: neutral.LIMITS[key]
+                       for key in ("max_upload_bytes", "max_records", "max_columns",
+                                   "max_cells", "max_field_bytes")},
+        }
+
+    def csv_confirm(self, digest, interpretation):
+        """Confirm the interpretation; preparation and description happen once and stay
+        immutable. A failed confirmation blocks and changes nothing."""
+        directory = self._csv_dataset_dir(digest)
+        dataset_file = directory / "dataset.json"
+        if not dataset_file.is_file():
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown dataset.", code="no_dataset")
+        dataset = _read_json(dataset_file)
+        try:
+            confirmed = neutral.validate_interpretation(interpretation)
+            payload = (directory / "original.bin").read_bytes()
+            capture = neutral.capture_payload(payload,
+                                              source_filename=dataset["source_filename"])
+            prepared = neutral.prepare_payload_under(capture, payload, confirmed)
+            analysis = neutral.describe(
+                prepared["rows"], confirmed,
+                dataset={"source_filename": dataset["source_filename"],
+                         "input_sha256": capture.input_sha256})
+            issues = neutral.verify_repeatable(prepared, analysis)
+            if issues:
+                raise SiteError(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                "The analysis could not be verified: " + "; ".join(issues),
+                                code="csv_verify")
+        except neutral.NeutralError as error:
+            raise SiteError(HTTPStatus.BAD_REQUEST, str(error), code="csv_conflict") from None
+        try:
+            _write_json_atomic(directory / "interpretation.json", confirmed)
+            _write_json_atomic(directory / "prepared.json", prepared)
+            _write_json_atomic(directory / "neutral-analysis.json", analysis)
+        except OSError:
+            raise SiteError(HTTPStatus.INTERNAL_SERVER_ERROR,
+                            "The confirmation could not be stored.", code="capture_failed")
+        analysis_public = dict(analysis)
+        analysis_public.pop("interpretation", None)
+        return {"digest": digest, "confirmed": confirmed, "analysis": analysis_public}
+
+    def csv_bundle_path(self, digest):
+        directory = self._csv_dataset_dir(digest)
+        if not (directory / "neutral-analysis.json").is_file():
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "Confirm the interpretation before generating the report.",
+                            code="csv_not_confirmed")
+        _analysis, _prepared, stale = self._csv_analysis_state(digest)
+        if stale:
+            # Numbers computed under older definitions are never relabelled as current.
+            raise SiteError(HTTPStatus.CONFLICT, stale, code="csv_analysis_stale")
+        return directory
+
+    def _csv_analysis_state(self, digest):
+        """(analysis, prepared, stale_reason) for a confirmed dataset.
+
+        The compatibility verdict is cached under a CONTENT key: sha256 over the captured
+        dataset record, the confirmed interpretation, the prepared rows, the saved analysis and
+        the calculation version. A timestamp is not an identity — rewriting a file and restoring
+        its mtime still produces a different key, so the result is re-verified.
+        """
+        directory = self._csv_dataset_dir(digest)
+        paths = {"dataset": directory / "dataset.json",
+                 "interpretation": directory / "interpretation.json",
+                 "prepared": directory / "prepared.json",
+                 "analysis": directory / "neutral-analysis.json"}
+        if not (paths["analysis"].is_file() and paths["prepared"].is_file()):
+            return None, None, "The dataset has not been confirmed yet."
+        payloads = {}
+        signature = hashlib.sha256()
+        signature.update(b"calc=" + str(neutral.CALC_VERSION).encode() + b"\0")
+        for name in sorted(paths):
+            path = paths[name]
+            if not path.is_file():
+                return None, None, "The dataset has not been confirmed yet."
+            data = path.read_bytes()
+            payloads[name] = data
+            signature.update(name.encode() + b"\0")
+            signature.update(hashlib.sha256(data).digest())
+        key = signature.hexdigest()
+        cached = self._analysis_cache.get(digest)
+        if cached and cached.get("key") == key:
+            return cached["analysis"], cached["prepared"], cached["stale"]
+        try:
+            analysis = json.loads(payloads["analysis"])
+            prepared = json.loads(payloads["prepared"])
+            confirmed = json.loads(payloads["interpretation"])
+        except (UnicodeDecodeError, ValueError):
+            return None, None, ("The saved analysis is not readable. Update the analysis to "
+                                "recompute it from the captured records.")
+        ok, reason = neutral.analysis_compatible(prepared, analysis, confirmed)
+        if ok and (analysis.get("source") or {}).get("input_sha256") != digest:
+            ok, reason = False, ("The saved analysis belongs to a different capture. "
+                                 "Update the analysis for this dataset.")
+        stale = None if ok else reason
+        self._analysis_cache[digest] = {"key": key, "analysis": analysis,
+                                       "prepared": prepared, "stale": stale}
+        return analysis, prepared, stale
+
+    # ------------------------------------------------------------------ neutral reuse identity
+    def _csv_environment(self):
+        """Renderer identity for neutral packages: content hashes plus the process's toolchain.
+
+        Computed once per process, like the stakeholder identity: it must describe the code that
+        is actually running, not whatever happens to be on disk later.
+        """
+        with self._environment_lock:
+            if self._csv_environment_cache is not None:
+                return self._csv_environment_cache
+            software = {"python": platform.python_version(),
+                        "quarto": self._tool_version([self.quarto, "--version"]),
+                        "R": self._tool_version(["Rscript", "--version"])}
+            workflow = (workbench.file_digest(self.workflow_config)
+                        if self.workflow_config and Path(self.workflow_config).is_file()
+                        else None)
+            self._csv_environment_cache = neutral_identity.environment(
+                ROOT, software=software, workflow_config_sha256=workflow)
+            return self._csv_environment_cache
+
+    def _csv_identity(self, digest, recipe, analysis):
+        """(record, key) for one effective neutral request."""
+        directory = self._csv_dataset_dir(digest)
+        dataset = _read_json(directory / "dataset.json")
+        interpretation = _read_json(directory / "interpretation.json")
+        record = neutral_identity.request_identity(
+            recipe=recipe, analysis=analysis, interpretation=interpretation,
+            dataset=dataset, environment_record=self._csv_environment())
+        return record, neutral_identity.reuse_key(record)
+
+    def _csv_current_identity(self, digest):
+        """(record, key) for the saved draft, or (None, None) when it is not ready."""
+        try:
+            analysis, _prepared, stale = self._csv_analysis_state(digest)
+        except SiteError:
+            return None, None
+        if analysis is None or stale:
+            return None, None
+        recipe = self.csv_recipe_for(digest)
+        if self._draft_reuse_problem(recipe, analysis) is not None:
+            return None, None
+        try:
+            return self._csv_identity(digest, recipe, analysis)
+        except (SiteError, OSError, ValueError):
+            return None, None
+
+    @staticmethod
+    def _draft_reuse_problem(recipe, analysis):
+        """Why the saved draft cannot be advertised as reusable, if it cannot."""
+        try:
+            neutral_lib.validate_recipe(recipe)
+        except neutral_lib.NeutralLibraryError as error:
+            return str(error)
+        conflicts = neutral_lib.disclosure_conflicts(recipe)
+        if conflicts:
+            return " ".join(item["message"] for item in conflicts)
+        for entry in recipe.get("blocks") or []:
+            if "display" in entry:
+                problem = neutral_display.selection_problem(
+                    neutral_display.resolve(entry["block"], entry["display"]), analysis)
+                if problem:
+                    return problem
+        return None
+
+    def _neutral_reuse_candidate(self, digest, identity, key):
+        """The newest successful job whose recorded identity matches, after validation."""
+        candidates = []
+        for directory in self.jobs_root.glob("*"):
+            record_file = directory / "job.json"
+            if not record_file.is_file():
+                continue
+            try:
+                record = _read_json(record_file)
+            except (OSError, ValueError):
+                continue
+            if (record.get("mode") != "csv" or record.get("context") != digest
+                    or record.get("status") != "succeeded"
+                    or record.get("reuse_key") != key):
+                continue
+            candidates.append(record)
+        candidates.sort(key=lambda item: (item.get("created_utc") or "", item.get("job_id") or ""),
+                        reverse=True)
+        reasons = []
+        for record in candidates:
+            ok, reason = self._neutral_reuse_eligible(record, digest, identity, key)
+            if ok:
+                return record, reasons
+            reasons.append({"job_id": record.get("job_id"), "reason": reason})
+        return None, reasons
+
+    def _neutral_reuse_eligible(self, record, digest, identity, key):
+        """A matching key is a candidate, not a hit: verify the recorded artifacts too."""
+        if not record.get("package_sha256") or not record.get("preview_dir"):
+            return False, "the recorded package digest is missing"
+        snapshot_relative = record.get("snapshot")
+        if not snapshot_relative:
+            return False, "the frozen request is missing"
+        snapshot = Path(os.path.realpath(self.work_root / snapshot_relative))
+        if self.work_root not in snapshot.parents or not snapshot.is_file():
+            return False, "the frozen request is missing"
+        if workbench.file_digest(snapshot) != record.get("recipe_sha256"):
+            return False, "the frozen request does not match its recorded digest"
+        try:
+            recorded_recipe = json.loads(snapshot.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False, "the frozen request is not readable"
+        if neutral_identity.normalised_recipe(recorded_recipe) != identity["composition"]:
+            return False, "the frozen request differs from this identity"
+        package = Path(os.path.realpath(self.work_root / record["preview_dir"]))
+        if self.work_root not in package.parents or not package.is_dir():
+            return False, "the published package is missing"
+        if not (package / "report.html").is_file():
+            return False, "the report file is missing"
+        package_digest, package_files = self._package_digest(package)
+        if package_digest is None:
+            return False, "the package contains a symlink"
+        if package_digest != record["package_sha256"]:
+            return False, "the published files have changed"
+        provenance, status = self._package_json(package, "provenance.json")
+        if status != "recorded":
+            return False, "the package has no readable provenance"
+        if (provenance.get("dataset") or {}).get("input_sha256") != digest:
+            return False, "the package belongs to a different capture"
+        recorded_analysis = self._recorded_analysis_digest(provenance)
+        if recorded_analysis != identity["analysis"]["digest"]:
+            return False, "the package used a different analysis"
+        recorded_disclosure = provenance.get("disclosure") or {}
+        if (recorded_disclosure.get("policy") != identity["disclosure"]["policy"]
+                or bool(recorded_disclosure.get("permit_values")) != identity["disclosure"]["permit_values"]
+                or bool(recorded_disclosure.get("permit_records")) != identity["disclosure"]["permit_records"]):
+            return False, "the package was published under a different disclosure policy"
+        return True, None
+
+    def csv_history(self, digest):
+        """Bounded, dataset-scoped history of retained neutral reports."""
+        try:
+            _analysis, _prepared, _stale = self._csv_analysis_state(digest)
+        except SiteError:
+            _analysis = None
+        _identity, current_key = self._csv_current_identity(digest)
+        directory_name = (self._csv_dataset_dir(digest) / "dataset.json")
+        filename = _read_json(directory_name).get("source_filename") if directory_name.is_file() else None
+        records = []
+        for directory in self.jobs_root.glob("*"):
+            record_file = directory / "job.json"
+            if not record_file.is_file():
+                continue
+            try:
+                record = _read_json(record_file)
+            except (OSError, ValueError):
+                continue
+            if record.get("mode") != "csv" or record.get("context") != digest:
+                continue
+            records.append(record)
+        records.sort(key=lambda item: (item.get("created_utc") or "", item.get("job_id") or ""),
+                     reverse=True)
+        total = len(records)
+        items = []
+        for record in records[:20]:
+            package = self._package_dir(record)
+            provenance, _status = self._package_json(package, "provenance.json")
+            composition, _cstatus = self._package_json(package, "composition.json")
+            disclosure = (provenance or {}).get("disclosure") or {}
+            titles = ((composition or {}).get("titles")
+                      or ((provenance or {}).get("composition") or {}).get("section_titles") or {})
+            blocks = ((composition or {}).get("blocks")
+                      or ((provenance or {}).get("composition") or {}).get("effective_recipe") or [])
+            reuse = {"state": "unknown", "reason": "Older report: no reuse identity was recorded."}
+            if record.get("status") != "succeeded":
+                reuse = {"state": "unavailable", "reason": "This report did not complete."}
+            elif record.get("reuse_key") and current_key:
+                if record["reuse_key"] != current_key:
+                    reuse = {"state": "different",
+                             "reason": "Different settings, input, analysis or renderer."}
+                else:
+                    ok, reason = self._neutral_reuse_eligible(
+                        record, digest, _identity, current_key)
+                    reuse = ({"state": "match", "reason": "Matches the current settings."}
+                             if ok else {"state": "unavailable",
+                                         "reason": f"Not reusable: {reason}."})
+            elif not record.get("reuse_key"):
+                reuse = {"state": "unknown",
+                         "reason": "Older report: reuse identity was not recorded; it can still be "
+                                   "opened."}
+            items.append({
+                "job_id": record.get("job_id"),
+                "created_utc": record.get("created_utc"),
+                "finished_utc": record.get("finished_utc"),
+                "status": record.get("status"),
+                "dataset": {"filename": filename, "digest": digest},
+                "titles": list(titles.values())[:4],
+                "blocks": [entry.get("block") for entry in blocks][:8],
+                "policy": {"policy": disclosure.get("policy"),
+                           "label": disclosure.get("label"),
+                           "permit_values": disclosure.get("permit_values"),
+                           "permit_records": disclosure.get("permit_records")},
+                "preview": bool((provenance or {}).get("preview")),
+                "reuse": reuse,
+                "links": ({"report": f"/reports/{record['job_id']}/report.html"}
+                          if record.get("status") == "succeeded" else {}),
+            })
+        return {"items": items, "total": total, "truncated": total > len(items),
+                "limit": 20}
+
+    def csv_document(self, digest=None):
+        """The CSV mode document: datasets, selected confirmation and the neutral composition."""
+        datasets = self.csv_datasets()
+        selected = None
+        if digest:
+            for item in datasets:
+                if item["digest"] == digest:
+                    selected = item
+                    break
+            if selected is None:
+                raise SiteError(HTTPStatus.NOT_FOUND, "Unknown dataset.", code="no_dataset")
+        payload = {
+            "mode": "csv",
+            "audience": NEUTRAL_AUDIENCE,
+            "datasets": datasets,
+            "selected_digest": digest or None,
+            "blocks": neutral_lib.inventory(),
+            "disclosure_options": [
+                {"policy": key, **{field: spec[field] for field in
+                                   ("label", "summary", "detail", "permits_values",
+                                    "permits_records")}}
+                for key, spec in neutral_lib.DISCLOSURE_POLICIES.items()],
+        }
+        if selected is not None:
+            payload["confirmation"] = self.csv_confirmation(digest)
+            analysis, _prepared, stale = self._csv_analysis_state(digest)
+            if analysis is not None:
+                payload["analysis"] = {
+                    "row_count": analysis["row_count"],
+                    "group_count": analysis["group_count"],
+                    "measure": analysis["measure"],
+                    "time": analysis["time"],
+                    "summary": analysis["summary"],
+                    "quality": analysis["quality"],
+                    "missing": analysis["missing"],
+                    "method": analysis.get("method"),
+                }
+                # What the display controls may choose from: the analysed selection, never more.
+                payload["available"] = {
+                    "groups": [label for _key, label in
+                               neutral_display.group_labels(analysis)],
+                    "periods": [item for item in analysis["time"].get("periods") or []],
+                    "statistics": [{"key": key, "label": neutral_display.STATISTIC_LABELS[key]}
+                                   for key in neutral_display.STATISTIC_ORDER],
+                    "resolution": (analysis["time"].get("column") or None),
+                }
+                payload["analysis_stale"] = stale
+                payload["history"] = self.csv_history(digest)
+                recipe = self.csv_recipe_for(digest)
+                payload["recipe"] = recipe
+                payload["disclosure"] = recipe.get("disclosure")
+                payload["disclosure_conflicts"] = neutral_lib.disclosure_conflicts(recipe)
+                payload["composer"] = self._csv_composer_blocks(recipe, digest)
+        return payload
+
+    def _csv_composer_blocks(self, recipe, digest):
+        """Editor rows for the saved CSV composition (same shape the health editor uses)."""
+        analysis = _read_json(self._csv_dataset_dir(digest) / "neutral-analysis.json")
+        capabilities = {"has_time": bool(analysis["time"]["column"]),
+                        "has_group": bool(analysis["interpretation"].get("category"))}
+        titles = recipe.get("titles") or {}
+        rows = []
+        for entry in recipe["blocks"]:
+            spec = neutral_lib.NEUTRAL_BLOCKS[entry["block"]]
+            label = neutral_lib.NEUTRAL_BLOCKS[entry["block"]]["label"]
+            rows.append({
+                "instance_id": entry["instance_id"],
+                "block": entry["block"],
+                "label": label,
+                "description": neutral_lib._DESCRIPTIONS[entry["block"]],
+                "included": True,
+                "required": entry["block"] in neutral_lib.REQUIRED,
+                "required_reason": ("Required: every report states its limitations and cautions."
+                                    if entry["block"] == "limitations" else None),
+                "repeatable": spec["repeatable"],
+                "repeat_reason": spec["repeat_reason"],
+                "editable": [],
+                "options": {},
+                "display": neutral_display.resolve(entry["block"], entry.get("display")),
+                "display_supported": entry["block"] in neutral_display.CAPABILITIES,
+                "display_ui": (self._csv_display_ui(entry["block"], analysis)
+                               if entry["block"] in neutral_display.CAPABILITIES else None),
+                "display_summary": (neutral_display.summary(
+                    neutral_display.resolve(entry["block"], entry.get("display")), analysis)
+                    if entry["block"] in neutral_display.CAPABILITIES else None),
+                "title": titles.get(entry["instance_id"]),
+                "summary": neutral_lib.entry_problem(entry, capabilities),
+            })
+        return rows
+
+    @staticmethod
+    def _csv_display_ui(block, analysis):
+        """What the editor may offer for one block, derived from the saved analysis."""
+        return {
+            "capabilities": sorted(neutral_display.CAPABILITIES.get(block, ())),
+            "layouts": list(neutral_display.LAYOUTS_FOR.get(block, ("table",))),
+            "statistics": [{"key": key, "label": neutral_display.STATISTIC_LABELS[key]}
+                           for key in neutral_display.STATISTIC_ORDER],
+            "groups": [label for _key, label in neutral_display.group_labels(analysis)],
+            "periods": list(analysis["time"].get("periods") or []),
+            "has_time": bool(analysis["time"].get("has_time")),
+        }
+
+    def _csv_draft(self, digest):
+        """(recipe, excluded) for this dataset's saved draft; the editable starter if none.
+
+        ``excluded`` keeps the settings of removed sections so restoring one brings back its
+        title and display choices. The effective composition is ``recipe`` alone.
+        """
+        draft_path = self.work_root / "drafts" / "csv" / digest / "editor.json"
+        try:
+            if draft_path.is_file():
+                saved = _read_json(draft_path)
+                recipe = saved.get("recipe")
+                if recipe and neutral_lib.validate_recipe(recipe):
+                    excluded = [entry for entry in (saved.get("excluded") or [])
+                                if isinstance(entry, dict) and "instance_id" in entry
+                                and entry.get("block") in neutral_lib.NEUTRAL_BLOCKS]
+                    return recipe, excluded
+        except (OSError, ValueError, neutral_lib.NeutralLibraryError):
+            pass
+        analysis = _read_json(self._csv_dataset_dir(digest) / "neutral-analysis.json")
+        return neutral_lib.default_recipe(bool(analysis["time"]["column"])), []
+
+    def csv_recipe_for(self, digest):
+        """The saved CSV draft composition for this dataset, or the default starter."""
+        return self._csv_draft(digest)[0]
+
+    def csv_draft_edit(self, digest, action, instance, value):
+        """Apply one neutral composition edit to the saved CSV draft (creates on demand)."""
+        directory = self._csv_dataset_dir(digest)
+        if not (directory / "neutral-analysis.json").is_file():
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "Confirm the interpretation before composing a report.",
+                            code="csv_not_confirmed")
+        recipe, excluded = self._csv_draft(digest)
+        if action == "restore-composition":
+            payload = value if isinstance(value, dict) else {}
+            unknown = set(payload) - {"job_id", "confirm"}
+            if unknown:
+                raise SiteError(HTTPStatus.BAD_REQUEST,
+                                "Unknown fields: " + ", ".join(sorted(unknown)),
+                                code="edit_rejected")
+            try:
+                recipe = self.csv_restore_composition(
+                    digest, str(payload.get("job_id") or ""), bool(payload.get("confirm")))
+            except neutral_lib.NeutralLibraryError as error:
+                raise SiteError(HTTPStatus.BAD_REQUEST, str(error),
+                                code="csv_recipe") from None
+            excluded = []
+        elif action in ("move-up", "move-down", "include", "exclude", "set-title",
+                        "duplicate", "delete-instance", "set-disclosure", "set-display"):
+            try:
+                if action == "include":
+                    restored = next((entry for entry in excluded
+                                     if entry["instance_id"] == instance), None)
+                    if restored is not None:
+                        recipe = dict(recipe)
+                        recipe["blocks"] = list(recipe["blocks"]) + [restored]
+                        recipe = neutral_lib.validate_recipe(recipe)
+                        excluded = [entry for entry in excluded
+                                    if entry["instance_id"] != instance]
+                    else:
+                        recipe = self._csv_apply(digest, recipe, action, instance, value)
+                elif action in ("exclude", "delete-instance"):
+                    removed = next((entry for entry in recipe["blocks"]
+                                    if entry["instance_id"] == instance), None)
+                    recipe = self._csv_apply(digest, recipe, action, instance, value)
+                    excluded = [entry for entry in excluded
+                                if entry["instance_id"] != instance]
+                    if action == "exclude" and removed is not None:
+                        excluded = excluded + [removed]
+                else:
+                    recipe = self._csv_apply(digest, recipe, action, instance, value)
+            except neutral_lib.NeutralLibraryError as error:
+                raise SiteError(HTTPStatus.BAD_REQUEST, str(error),
+                                code="csv_recipe") from None
+        else:
+            raise SiteError(HTTPStatus.BAD_REQUEST, f"Unknown csv edit action {action!r}.",
+                            code="edit_rejected")
+        draft_dir = self.work_root / "drafts" / "csv" / digest
+        draft_dir.mkdir(parents=True, exist_ok=True)
+        _write_json_atomic(draft_dir / "editor.json",
+                           {"schema": "health-report/csv-draft/1", "digest": digest,
+                            "recipe": recipe, "excluded": excluded,
+                            "updated_utc": _now()})
+        return recipe
+
+    def _csv_apply(self, digest, recipe, action, instance, value):
+        blocks = [dict(entry) for entry in recipe["blocks"]]
+        if action == "move-up":
+            i = next((k for k, e in enumerate(blocks) if e["instance_id"] == instance), None)
+            if i is None:
+                raise neutral_lib.NeutralLibraryError(f"Unknown section {instance!r}.")
+            if i > 0:
+                blocks[i], blocks[i - 1] = blocks[i - 1], blocks[i]
+        elif action == "move-down":
+            i = next((k for k, e in enumerate(blocks) if e["instance_id"] == instance), None)
+            if i is None:
+                raise neutral_lib.NeutralLibraryError(f"Unknown section {instance!r}.")
+            if i < len(blocks) - 1:
+                blocks[i], blocks[i + 1] = blocks[i + 1], blocks[i]
+        elif action == "exclude":
+            blocks = [e for e in blocks if e["instance_id"] != instance]
+        elif action == "include":
+            block = instance
+            if block not in neutral_lib.NEUTRAL_BLOCKS:
+                raise neutral_lib.NeutralLibraryError(f"Unknown section type {instance!r}.")
+            if any(e["block"] == block and e["instance_id"] == instance
+                   for e in blocks):
+                return recipe
+            entry = {"block": block, "instance_id": instance}
+            if block in ("values-over-time", "coverage-over-time"):
+                entry["time_period"] = "year"
+            blocks.append(entry)
+        elif action == "set-title":
+            titles = dict(recipe.get("titles") or {})
+            if value is None:
+                titles.pop(instance, None)
+            else:
+                value = str(value).strip()
+                if not value:
+                    titles.pop(instance, None)
+                elif len(value) > 80:
+                    raise neutral_lib.NeutralLibraryError(
+                        "Section titles are limited to 80 characters.")
+                else:
+                    titles[instance] = value
+            recipe["titles"] = titles
+            return neutral_lib.validate_recipe(recipe)
+        elif action == "duplicate":
+            entry = next((e for e in blocks if e["instance_id"] == instance), None)
+            if entry is None:
+                raise neutral_lib.NeutralLibraryError(f"Unknown section {instance!r}.")
+            taken = {e["instance_id"] for e in blocks}
+            seq = 0
+            for e in blocks:
+                m = re.search(r"-(\d{4})$", e["instance_id"])
+                if m:
+                    seq = max(seq, int(m.group(1)))
+            new_id, seq = neutral_lib.allocate(entry["block"], taken, seq)
+            dup = dict(entry)
+            dup["instance_id"] = new_id
+            blocks.append(dup)
+        elif action == "delete-instance":
+            blocks = [e for e in blocks if e["instance_id"] != instance]
+        elif action == "set-display":
+            entry = next((e for e in blocks if e["instance_id"] == instance), None)
+            if entry is None:
+                raise neutral_lib.NeutralLibraryError(f"Unknown section {instance!r}.")
+            if entry["block"] not in neutral_display.CAPABILITIES:
+                raise neutral_lib.NeutralLibraryError(
+                    f"Section {entry['block']!r} has no display settings.")
+            try:
+                display = neutral_display.resolve(entry["block"], value or {})
+            except neutral_display.DisplayError as error:
+                raise neutral_lib.NeutralLibraryError(str(error)) from None
+            analysis = _read_json(self._csv_dataset_dir(digest) / "neutral-analysis.json")
+            problem = neutral_display.selection_problem(display, analysis)
+            if problem:
+                raise neutral_lib.NeutralLibraryError(problem)
+            entry["display"] = display
+            recipe["blocks"] = blocks
+            return neutral_lib.validate_recipe(recipe)
+        elif action == "set-disclosure":
+            payload = value if isinstance(value, dict) else {}
+            unknown = set(payload) - {"policy", "permit_records"}
+            if unknown:
+                raise neutral_lib.NeutralLibraryError(
+                    "Unknown disclosure fields: " + ", ".join(sorted(unknown)))
+            policy = payload.get("policy")
+            if policy not in neutral_lib.DISCLOSURE_POLICIES:
+                raise neutral_lib.NeutralLibraryError(
+                    "Choose one of: " + ", ".join(sorted(neutral_lib.DISCLOSURE_POLICIES))
+                    + ".")
+            recipe["disclosure"] = neutral_lib.disclosure_record(
+                policy, bool(payload.get("permit_records")))
+            recipe["blocks"] = blocks
+            return neutral_lib.validate_recipe(recipe)
+        recipe["blocks"] = blocks
+        return neutral_lib.validate_recipe(recipe)
+
+    def csv_restore_composition(self, digest, job_id, confirm=False):
+        """Load a retained report's frozen composition into the current draft.
+
+        An explicit action: it never touches the historical package, it refuses to bind a
+        composition to a different confirmed interpretation without confirmation, and it refuses
+        to overwrite an edited draft without confirmation.
+        """
+        record = self._job_record(job_id)
+        if record.get("mode") != "csv" or record.get("status") != "succeeded":
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "That report is not a completed CSV report.",
+                            code="reuse_unavailable")
+        if record.get("context") != digest:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "That report belongs to a different captured dataset.",
+                            code="dataset_mismatch")
+        relative = record.get("snapshot")
+        snapshot = Path(os.path.realpath(self.work_root / relative)) if relative else None
+        if snapshot is None or self.work_root not in snapshot.parents or not snapshot.is_file():
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "This report's frozen request is missing.",
+                            code="reuse_unavailable")
+        try:
+            recipe = json.loads(snapshot.read_text(encoding="utf-8"))
+            neutral_lib.validate_recipe(recipe)
+        except (OSError, ValueError, neutral_lib.NeutralLibraryError) as error:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            f"This report's frozen request cannot be used: {error}",
+                            code="reuse_unavailable") from None
+        if recipe.get("audience") != NEUTRAL_AUDIENCE:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "This report's frozen request is not a neutral composition.",
+                            code="reuse_unavailable")
+        analysis, _prepared, stale = self._csv_analysis_state(digest)
+        if analysis is None:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "Confirm the interpretation before copying a report's settings.",
+                            code="csv_not_confirmed")
+        if stale:
+            raise SiteError(HTTPStatus.CONFLICT, stale, code="csv_analysis_stale")
+
+        package = self._package_dir(record)
+        provenance, _status = self._package_json(package, "provenance.json")
+        historical = (provenance or {}).get("interpretation") or {}
+        current = _read_json(self._csv_dataset_dir(digest) / "interpretation.json")
+        roles = ("category", "measure", "time")
+        changed = [key for key in roles
+                   if (historical.get(key) or None) != (current.get(key) or None)]
+        if changed:
+            message = (
+                "This report was built with a different confirmed interpretation "
+                f"(group {historical.get('category')!r}, measure {historical.get('measure')!r}, "
+                f"time {historical.get('time')!r}) than the current one "
+                f"(group {current.get('category')!r}, measure {current.get('measure')!r}, "
+                f"time {current.get('time')!r}). Its composition can still be copied, but the "
+                "result would be analysed under the current interpretation. Update the analysis "
+                "first if that is not what you intend, or confirm to copy anyway.")
+            if not confirm:
+                raise SiteError(HTTPStatus.CONFLICT, message, code="context_changed")
+
+        for entry in recipe.get("blocks") or []:
+            if "display" in entry:
+                problem = neutral_display.selection_problem(
+                    neutral_display.resolve(entry["block"], entry["display"]), analysis)
+                if problem:
+                    raise SiteError(HTTPStatus.CONFLICT, problem, code="display_mismatch")
+
+        draft_path = self.work_root / "drafts" / "csv" / digest / "editor.json"
+        if draft_path.is_file() and not confirm:
+            try:
+                existing = _read_json(draft_path).get("recipe")
+            except (OSError, ValueError):
+                existing = None
+            if existing != recipe:
+                raise SiteError(HTTPStatus.CONFLICT,
+                                "There is one editable draft per dataset. This action replaces "
+                                "the current draft with this report's saved configuration; the "
+                                "historical report is not changed. Confirm to replace it.",
+                                code="draft_has_edits")
+        return recipe
+
+    def csv_submit(self, digest, recipe):
+        """Render the confirmed dataset with the supplied neutral composition recipe."""
+        bundle = self.csv_bundle_path(digest)
+        try:
+            recipe = neutral_lib.validate_recipe(recipe)
+        except neutral_lib.NeutralLibraryError as error:
+            raise SiteError(HTTPStatus.BAD_REQUEST, str(error), code="csv_recipe") from None
+        # Disclosure compatibility is decided before any job exists: a recipe whose sections
+        # cannot be published under the chosen policy is refused, never downgraded.
+        conflicts = neutral_lib.disclosure_conflicts(recipe)
+        if conflicts:
+            raise SiteError(HTTPStatus.BAD_REQUEST,
+                            " ".join(item["message"] for item in conflicts),
+                            code="csv_disclosure")
+        analysis, _prepared, stale = self._csv_analysis_state(digest)
+        if stale:
+            raise SiteError(HTTPStatus.CONFLICT, stale, code="csv_analysis_stale")
+        capabilities = {"has_time": bool(analysis["time"]["column"]),
+                        "has_group": bool(analysis["interpretation"].get("category"))}
+        for entry in recipe["blocks"]:
+            problem = neutral_lib.entry_problem(entry, capabilities)
+            if problem:
+                raise SiteError(HTTPStatus.BAD_REQUEST, problem, code="csv_capability")
+            if entry["block"] in neutral_display.CAPABILITIES:
+                # Resolve the effective settings now and freeze them into the request, so a later
+                # change to the code defaults cannot silently reinterpret this saved report.
+                display = neutral_display.resolve(entry["block"], entry.get("display"))
+                problem = neutral_display.selection_problem(display, analysis)
+                if problem:
+                    raise SiteError(HTTPStatus.BAD_REQUEST, problem, code="csv_display")
+                entry["display"] = display
+        identity, key = self._csv_identity(digest, recipe, analysis)
+        candidate, skipped = self._neutral_reuse_candidate(digest, identity, key)
+        if candidate is not None:
+            payload = self.public_job(candidate)
+            payload["reused"] = True
+            payload["reuse_message"] = (
+                "Opened an existing report matching these settings. Originally generated "
+                f"{candidate.get('created_utc')}. No new render was performed.")
+            payload["reuse_skipped"] = skipped
+            return payload
+        return self._launch_csv(bundle, recipe, digest, identity=identity, key=key)
+
+    def _launch_csv(self, bundle, recipe, digest, identity=None, key=None):
+        job_id = (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-"
+                  + uuid.uuid4().hex[:10])
+        with self._lock:
+            if self._active is not None:
+                raise SiteError(HTTPStatus.CONFLICT,
+                                "A render is already running; wait for it to finish.",
+                                code="render_busy")
+            self._active = job_id
+        job_directory = self.jobs_root / job_id
+        job = None
+        try:
+            job_directory.mkdir(parents=True)
+            snapshot = job_directory / "composition.json"
+            with open(snapshot, "xb") as handle:
+                handle.write(workbench.recipe_bytes(recipe))
+                handle.flush()
+                os.fsync(handle.fileno())
+            recorded = workbench.open_recipe(snapshot)
+            if recorded.get("audience") != NEUTRAL_AUDIENCE:
+                raise SiteError(HTTPStatus.BAD_REQUEST,
+                                "The csv composition binds the wrong audience.",
+                                code="csv_recipe")
+            package = job_directory / "package"
+            job = Job(job_id=job_id, preset="csv", mode="csv",
+                      recipe_sha256=workbench.file_digest(snapshot),
+                      classification="custom", classification_basis=None,
+                      context=digest, origin="csv",
+                      reuse_key=key, reuse_components=identity or {},
+                      snapshot=str(snapshot.relative_to(self.work_root)),
+                      preview_dir=str(package.relative_to(self.work_root)))
+            _, command = workbench.replay_command(
+                recipe_path=snapshot, bundle=bundle, output_dir=job_directory / "replay",
+                data_root=self.data_root, workflow_config=self.workflow_config)
+            job.replay_command = command
+            _write_json_atomic(job_directory / "job.json", job.as_dict())
+            thread = threading.Thread(target=self._run, args=(job, snapshot, bundle, package),
+                                      name=f"render-{job_id}", daemon=True)
+            with self._lock:
+                self._threads[job_id] = thread
+            thread.start()
+            return self.public_job(job.as_dict())
+        except Exception as error:                      # noqa: BLE001 - always release the slot
+            if job is not None:
+                job.status = "failed"
+                job.finished_utc = _now()
+                job.error = f"{type(error).__name__}: {error}"
+                try:
+                    _write_json_atomic(job_directory / "job.json", job.as_dict())
+                except OSError:
+                    pass
+            with self._lock:
+                self._active = None
+                self._threads.pop(job_id, None)
+            if isinstance(error, SiteError):
+                raise
+            raise SiteError(HTTPStatus.INTERNAL_SERVER_ERROR,
+                            "The render could not be started; nothing was replaced.",
+                            code="submit_failed") from None
+
     # ------------------------------------------------------------------ jobs
     def _job_dir(self, job_id):
         if not JOB_ID.fullmatch(str(job_id or "")):
@@ -1608,6 +2470,549 @@ class Site:
                 "jobs": entries[:20]}
 
     # ------------------------------------------------------------------ artifacts
+    # ------------------------------------------------------------------ report-bound sources
+    # Everything below is resolved from the saved job and its frozen package. Nothing reads the
+    # editor, the current interpretation, a live analysis or the working branch.
+
+    _SOURCES_NOTE = ("This information describes this saved report. The current editable draft "
+                     "may differ.")
+
+    def _package_dir(self, record):
+        """The report package directory, or None when it is missing or escapes the work root."""
+        relative = record.get("preview_dir")
+        if not relative:
+            return None
+        base = Path(os.path.realpath(self.work_root / relative))
+        if self.work_root not in base.parents or not base.is_dir():
+            return None
+        return base
+
+    @staticmethod
+    def _package_json(package, name):
+        """(value, status) for a package-side JSON file; never raises."""
+        if package is None:
+            return None, "unavailable"
+        path = package / name
+        if not path.is_file() or path.is_symlink():
+            return None, "unavailable"
+        try:
+            return json.loads(path.read_text(encoding="utf-8")), "recorded"
+        except (OSError, ValueError):
+            return None, "unreadable"
+
+    def _package_artifact(self, job_id, package, relative, detail=None):
+        """One manifest-backed package artifact, offered only when it really exists."""
+        if package is None:
+            return None
+        target = Path(os.path.realpath(package / relative))
+        if package not in target.parents or target.is_symlink():
+            return None
+        if not target.is_file():
+            return None
+        return {"id": relative, "href": f"/reports/{job_id}/{relative}",
+                "label": detail or relative, "bytes": target.stat().st_size}
+
+    @staticmethod
+    def _canonical_digest(payload):
+        """The digest form the neutral provenance records as analysis_digest."""
+        return hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                         separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _recorded_analysis_digest(provenance):
+        for block in (provenance or {}).get("blocks") or []:
+            digest = (block or {}).get("analysis_digest")
+            if digest:
+                return digest
+        return None
+
+    def _retained_material(self, record, job_id, provenance, disclosure):
+        """Steward-only retained material, bound to what THIS report recorded.
+
+        The capture is offered only when its bytes still hash to the reported digest. Prepared
+        rows and the saved analysis are offered only when they reproduce the analysis digest the
+        report recorded; newer workspace revisions are shown separately and are never presented
+        as the report's inputs. The raw captured file is not offered at all: the saved contract
+        records permission for findings and (optionally) contributing records, not for the file,
+        which may also contain columns this report never analysed.
+        """
+        policy = (disclosure or {}).get("policy")
+        permit_values = bool((disclosure or {}).get("permit_values"))
+        permit_records = bool((disclosure or {}).get("permit_records"))
+        dataset = (provenance or {}).get("dataset") or {}
+        digest = dataset.get("input_sha256")
+        original_withheld = {
+            "id": "original.bin", "label": "Original captured file", "status": "withheld",
+            "detail": ("Not offered: the saved disclosure contract records permission for "
+                       "numerical findings and, separately, contributing records — not for the "
+                       "raw captured file. The file can also contain columns this report never "
+                       "analysed.")}
+        if record.get("mode") != "csv" or not digest:
+            return {"available": False, "reason": "not_applicable",
+                    "detail": "No retained neutral capture is associated with this report."}
+        if policy != "local-audit":
+            return {"available": False, "reason": "withheld",
+                    "detail": ("Withheld by this report's disclosure policy. The retained "
+                               "capture, prepared rows and saved analysis are not offered for a "
+                               "restricted export.")}
+        directory = Path(os.path.realpath(self._csv_root() / digest))
+        if self._csv_root() not in directory.parents or not directory.is_dir():
+            return {"available": False, "reason": "missing",
+                    "detail": "The retained capture is no longer on disk."}
+
+        recorded_digest = self._recorded_analysis_digest(provenance)
+        items, current, withheld = [], [], [original_withheld]
+        original = directory / "original.bin"
+        if original.is_file() and not original.is_symlink():
+            actual = hashlib.sha256(original.read_bytes()).hexdigest()
+            if actual != digest:
+                withheld.append({
+                    "id": "original.bin", "label": "Original captured file",
+                    "status": "integrity_failed",
+                    "detail": ("The retained file no longer matches the digest recorded in this "
+                               "report; it is not offered as the original input.")})
+
+        analysis_path = directory / "neutral-analysis.json"
+        analysis = None
+        analysis_matches = False
+        if analysis_path.is_file() and not analysis_path.is_symlink():
+            try:
+                analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+                analysis_matches = bool(recorded_digest) and \
+                    self._canonical_digest(analysis) == recorded_digest
+            except (OSError, ValueError):
+                analysis = None
+        if not permit_values:
+            withheld.append({"id": "neutral-analysis.json",
+                             "label": "Saved analysis (full precision)",
+                             "status": "withheld",
+                             "detail": ("Not permitted: this report's disclosure choice does "
+                                        "not permit publishing numerical results.")})
+        elif analysis_matches:
+            items.append({"id": "neutral-analysis.json",
+                          "label": "Saved analysis used by this report",
+                          "href": f"/api/jobs/{job_id}/retained/neutral-analysis.json",
+                          "status": "verified_now",
+                          "detail": ("Identical to the analysis digest recorded in this report "
+                                     "(checked now).")})
+        elif analysis is not None:
+            current.append({"id": "neutral-analysis.json",
+                            "label": "Saved analysis",
+                            "detail": ("Current retained workspace material; differs from this "
+                                       "report.")})
+
+        prepared_path = directory / "prepared.json"
+        if prepared_path.is_file() and not prepared_path.is_symlink():
+            if not permit_records:
+                withheld.append({"id": "prepared.json", "label": "Prepared records",
+                                 "status": "withheld",
+                                 "detail": ("Not permitted: this report's disclosure choice does "
+                                            "not include contributing records.")})
+            elif analysis is None or not recorded_digest:
+                current.append({"id": "prepared.json", "label": "Prepared records",
+                                "detail": ("The report did not record an analysis identity to "
+                                           "bind these rows to; they are current workspace "
+                                           "material.")})
+            else:
+                try:
+                    prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
+                    # The recorded digest covers the whole descriptor, including its source
+                    # identity, so the re-derivation must carry the same context.
+                    reproduced = neutral.describe(
+                        list(prepared["rows"]), analysis["interpretation"],
+                        dataset={"source_filename": dataset.get("source_filename"),
+                                 "input_sha256": dataset.get("input_sha256")})
+                    if self._canonical_digest(reproduced) == recorded_digest:
+                        items.append({"id": "prepared.json",
+                                      "label": "Prepared records used by this report",
+                                      "href": f"/api/jobs/{job_id}/retained/prepared.json",
+                                      "status": "verified_now",
+                                      "detail": ("These rows reproduce the analysis digest "
+                                                 "recorded in this report (checked now).")})
+                    else:
+                        current.append({"id": "prepared.json", "label": "Prepared records",
+                                        "detail": ("Current retained workspace material; differs "
+                                                   "from this report.")})
+                except (OSError, ValueError, KeyError, TypeError):
+                    withheld.append({"id": "prepared.json", "label": "Prepared records",
+                                     "status": "unreadable",
+                                     "detail": "The retained prepared rows are not readable."})
+
+        return {"available": True, "reason": "permitted",
+                "detail": ("Retained locally; not included in this report package. Only material "
+                           "that still matches this report's recorded identities is offered."),
+                "items": items, "current": current, "withheld": withheld}
+
+    def retained_artifact(self, job_id, name):
+        """One steward-only retained file, resolved from the job's recorded capture digest."""
+        # The raw captured file is deliberately not downloadable: the saved contract records
+        # permission for findings and contributing records, not for the file itself.
+        allowed = {"prepared.json", "neutral-analysis.json"}
+        if name not in allowed:
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown artifact.")
+        record = self._job_record(job_id)
+        if record.get("status") != "succeeded" or record.get("mode") != "csv":
+            raise SiteError(HTTPStatus.NOT_FOUND, "No retained capture for this job.")
+        package = self._package_dir(record)
+        provenance, status = self._package_json(package, "provenance.json")
+        if status != "recorded":
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown artifact.")
+        disclosure = (provenance or {}).get("disclosure") or {}
+        if disclosure.get("policy") != "local-audit":
+            # Policy is enforced here, not in the browser.
+            raise SiteError(HTTPStatus.FORBIDDEN,
+                            "This report's disclosure policy does not permit retained files.",
+                            code="withheld")
+        if name == "neutral-analysis.json" and not disclosure.get("permit_values"):
+            raise SiteError(HTTPStatus.FORBIDDEN,
+                            "This report does not permit publishing numerical results.",
+                            code="withheld")
+        if name == "prepared.json" and not disclosure.get("permit_records"):
+            raise SiteError(HTTPStatus.FORBIDDEN,
+                            "This report does not include contributing records.",
+                            code="withheld")
+        digest = ((provenance or {}).get("dataset") or {}).get("input_sha256")
+        if not digest:
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown artifact.")
+        directory = Path(os.path.realpath(self._csv_root() / digest))
+        if self._csv_root() not in directory.parents or not directory.is_dir():
+            raise SiteError(HTTPStatus.NOT_FOUND, "The retained capture is no longer on disk.")
+        target = Path(os.path.realpath(directory / name))
+        if target != directory and directory not in target.parents:
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown artifact.")
+        if target.is_symlink() or directory.is_symlink() or not target.is_file():
+            raise SiteError(HTTPStatus.NOT_FOUND, "Unknown artifact.")
+        recorded = self._recorded_analysis_digest(provenance)
+        if not recorded:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "This report did not record an analysis identity to serve against.",
+                            code="integrity_failed")
+        try:
+            current = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise SiteError(HTTPStatus.CONFLICT, "The retained file is not readable.",
+                            code="integrity_failed") from None
+        if name == "neutral-analysis.json":
+            matches = self._canonical_digest(current) == recorded
+        else:
+            try:
+                stored = json.loads((directory / "neutral-analysis.json")
+                                    .read_text(encoding="utf-8"))
+                dataset = (provenance or {}).get("dataset") or {}
+                matches = self._canonical_digest(
+                    neutral.describe(list(current["rows"]), stored["interpretation"],
+                                     dataset={"source_filename": dataset.get("source_filename"),
+                                              "input_sha256": dataset.get("input_sha256")})
+                ) == recorded
+            except (OSError, ValueError, KeyError, TypeError):
+                matches = False
+        if not matches:
+            raise SiteError(HTTPStatus.CONFLICT,
+                            "The retained file differs from this report's recorded analysis; "
+                            "it is current workspace material, not this report's result.",
+                            code="integrity_failed")
+        return target, "application/json"
+
+    def report_sources(self, job_id):
+        """Read-only, report-bound metadata for one saved report."""
+        record = self._job_record(job_id)
+        job = self.public_job(record)
+        package = self._package_dir(record)
+        provenance, provenance_status = self._package_json(package, "provenance.json")
+        composition, composition_status = self._package_json(package, "composition.json")
+        if composition is None and package is not None:
+            composition, composition_status = self._package_json(
+                package, "reproduction/composition.json")
+
+        neutral = bool((provenance or {}).get("neutral")) or \
+            record.get("mode") == "csv" or (provenance or {}).get("input_kind") == "neutral"
+        disclosure = (provenance or {}).get("disclosure") or {}
+        dataset_record = (provenance or {}).get("dataset") or {}
+
+        report = {
+            "job_id": job.get("job_id"),
+            "created_utc": job.get("created_utc"),
+            "finished_utc": job.get("finished_utc"),
+            "status": job.get("status"),
+            "mode": job.get("mode") or ("neutral" if neutral else None),
+            "profile": ((composition or {}).get("audience")
+                        or ((provenance or {}).get("composition") or {}).get("audience")
+                        or job.get("preset")),
+            "origin": job.get("origin"),
+            "package_sha256": record.get("package_sha256"),
+            "package_files": record.get("package_files"),
+            "recipe_sha256": job.get("recipe_sha256"),
+            "preview": bool((provenance or {}).get("preview")),
+            "preview_notice": ((provenance or {}).get("preview") or {}).get("notice"),
+            "note": self._SOURCES_NOTE,
+            "links": {},
+            "provenance_status": provenance_status,
+            "composition_status": composition_status,
+        }
+        if job.get("status") == "succeeded":
+            for key, relative, label in (
+                    ("report", "report.html", "Open report"),
+                    ("methods", "methods.html", "Methods"),
+                    ("provenance", "provenance.json", "Provenance JSON"),
+                    ("composition", "reproduction/composition.json", "Frozen request")):
+                artifact = self._package_artifact(job_id, package, relative, label)
+                if artifact:
+                    report["links"][key] = artifact["href"]
+
+        # ---- Data ---------------------------------------------------------------------------
+        analysis, analysis_status = (None, "unavailable")
+        if package is not None:
+            analysis, analysis_status = self._package_json(package, "data/neutral-analysis.json")
+            if analysis is None:
+                analysis, analysis_status = self._package_json(
+                    package, "data/neutral-summary.json")
+        interpretation, interpretation_status = self._package_json(
+            package, "data/interpretation.json")
+
+        data = {"kind": "neutral" if neutral else "health"}
+        if neutral:
+            data.update({
+                "filename": dataset_record.get("source_filename"),
+                "digest": dataset_record.get("input_sha256"),
+                "captured_at_utc": dataset_record.get("captured_at_utc"),
+                "measured_at": None,
+                "user_version": None,
+                "roles": ({key: (interpretation or {}).get(key) for key in
+                           ("category", "measure", "time", "missing_tokens")}
+                          if interpretation_status == "recorded" else None),
+                "measure": {"label": dataset_record.get("measure_label"),
+                            "unit": dataset_record.get("unit"),
+                            "meaning": dataset_record.get("row_meaning")},
+                "filters": "None recorded: the report analyses the confirmed selection.",
+                "counts": None,
+                "coverage": None,
+                "status": analysis_status if analysis_status == "recorded" else "unavailable",
+            })
+            if isinstance(analysis, dict):
+                data["counts"] = {"analysed_records": analysis.get("row_count"),
+                                  "analysed_groups": analysis.get("group_count"),
+                                  "analysed_periods": (analysis.get("time") or {}).get(
+                                      "period_count")}
+                data["coverage"] = {
+                    "from": ((analysis.get("time") or {}).get("periods") or [None])[0],
+                    "to": ((analysis.get("time") or {}).get("periods") or [None])[-1],
+                    "missing": analysis.get("missing"),
+                    "repeated_group_period_keys": (analysis.get("quality") or {}).get(
+                        "repeated_group_period_keys"),
+                }
+                method = analysis.get("method") or {}
+                data["method"] = {"calc_version": method.get("calc_version"),
+                                  "definitions": method.get("definitions")}
+        else:
+            source = (provenance or {}).get("data") or {}
+            data.update({
+                "filename": ((composition or {}).get("audience") or "health") + " analysis bundle",
+                "digest": source.get("snapshot_id"),
+                "captured_at_utc": (source.get("retrieved_at_utc_range") or [None])[-1],
+                "measured_at": {"publishing_date_range": source.get("publishing_date_range")},
+                "user_version": None,
+                "roles": None,      # health bundles are not a user interpretation; omitted
+                "measure": None,    # never print synthetic measure labels
+                "filters": (provenance or {}).get("filters"),
+                "counts": {"datasets_in_snapshot": source.get("datasets_in_snapshot"),
+                           "datasets_used": source.get("datasets_used")},
+                "coverage": None,
+                "status": "recorded" if source else "unavailable",
+            })
+
+        # ---- sections: per-section display scope, never one report-wide number ---------------
+        sections = []
+        if neutral and isinstance(composition, dict) and isinstance(analysis, dict):
+            total_groups = analysis.get("group_count")
+            periods = (analysis.get("time") or {}).get("periods") or []
+            titles = composition.get("titles") or {}
+            for entry in composition.get("blocks") or []:
+                display = entry.get("display")
+                if not isinstance(display, dict):
+                    continue
+                groups = display.get("groups")
+                shown_groups = len(groups) if isinstance(groups, list) else total_groups
+                settings = display.get("periods") or {"mode": "all"}
+                if settings.get("mode") == "all":
+                    shown_periods = len(periods)
+                elif settings.get("mode") == "list":
+                    shown_periods = len([item for item in settings.get("values") or []
+                                         if item in periods])
+                else:
+                    shown_periods = len([item for item in periods
+                                         if settings.get("from", "") <= item <=
+                                         str(settings.get("to", "")) + "T23:59:59"])
+                sections.append({
+                    "instance_id": entry.get("instance_id"),
+                    "block": entry.get("block"),
+                    "title": titles.get(entry.get("instance_id")),
+                    "layout": display.get("layout"),
+                    "groups": {"shown": shown_groups, "analysed": total_groups},
+                    "periods": ({"shown": shown_periods, "analysed": len(periods)}
+                                if periods else None),
+                    "statistics": display.get("statistics"),
+                    "precision": display.get("precision"),
+                })
+        elif not neutral:
+            # Health packages may carry only the frozen provenance; its composition record is
+            # the same render-time snapshot, so it is the documented fallback.
+            recorded = composition if isinstance(composition, dict) else {}
+            if not recorded:
+                recorded = (provenance or {}).get("composition") or {}
+            scope = recorded.get("display_scope") or {}
+            sections = [{"block": "display_scope",
+                         "displayed_topics": len(scope.get("displayed_topics") or []),
+                         "group_summaries": len(scope.get("group_summaries") or []),
+                         "monitoring_topics": len(scope.get("monitoring_topics") or [])}]
+
+        # ---- Attribution ----------------------------------------------------------------------
+        attribution = {"recorded": False, "kind": "user-supplied" if neutral else "health"}
+        if neutral:
+            attribution.update({
+                "detail": ("No publisher, source URL, licence or dataset version is recorded for "
+                           "this report. Uploaded files are user-supplied and not independently "
+                           "authenticated; a filename or column name does not establish a source."),
+            })
+        else:
+            source = (provenance or {}).get("data") or {}
+            attribution.update({
+                "recorded": bool(source.get("publisher") or source.get("api")),
+                "publisher": source.get("publisher"),
+                "url": source.get("api"),
+                "version": {"snapshot_id": source.get("snapshot_id"),
+                            "publishing_date_range": source.get("publishing_date_range")},
+                "licence": "Not recorded for this report.",
+                "detail": ("Recorded at render time from the saved source manifest. Source "
+                           "eligibility is not re-derived here."),
+            })
+
+        # ---- Methods and reproduction ---------------------------------------------------------
+        methods = {
+            "methods_href": report["links"].get("methods"),
+            "provenance_href": report["links"].get("provenance"),
+            "composition_href": report["links"].get("composition"),
+            "method": data.get("method"),
+            "code": None,
+            "environment": None,
+            "replay": None,
+        }
+        if neutral:
+            implementations = {}
+            for block in (provenance or {}).get("blocks") or []:
+                for item in ((block or {}).get("implementation") or {}).values():
+                    if isinstance(item, dict) and item.get("file"):
+                        implementations[item["file"]] = item.get("sha256")
+            methods["code"] = ({"kind": "retained implementation at render time",
+                                "files": implementations}
+                               if implementations else {"kind": "not recorded"})
+            methods["environment"] = {"kind": "not recorded in this package"}
+        else:
+            code = (provenance or {}).get("code") or {}
+            methods["code"] = {"kind": "recorded revision",
+                               "git_commit": code.get("git_commit"),
+                               "worktree": code.get("git_worktree_clean"),
+                               "source_state": (code.get("source_state") or {}).get("label"),
+                               "workflow_config_sha256": ((code.get("workflow_config") or {})
+                                                          .get("sha256"))}
+            helpers = ((provenance or {}).get("output") or {}).get("presentation_helpers_sha256")
+            methods["environment"] = {"kind": "recorded render helpers",
+                                      "files": helpers} if helpers else {"kind": "not recorded"}
+
+        replay = {"command": job.get("replay_command"), "state": "unavailable", "detail": None}
+        if job.get("status") != "succeeded":
+            replay["detail"] = "This job did not produce a report; there is nothing to replay."
+        elif not job.get("replay_command"):
+            replay["detail"] = "No replay command was recorded for this report."
+        elif neutral:
+            if data.get("digest"):
+                directory = Path(os.path.realpath(self._csv_root() / data["digest"]))
+                if (self._csv_root() in directory.parents and directory.is_dir()
+                        and (directory / "neutral-analysis.json").is_file()):
+                    replay.update({"state": "complete_local",
+                                   "detail": ("Complete local replay is possible: the captured "
+                                              "dataset and frozen request are retained here. "
+                                              "The command is recorded, not proof it was run.")})
+                else:
+                    replay.update({"state": "requires_private_inputs",
+                                   "detail": ("Replay requires the retained private capture, "
+                                              "which is not present in this workspace.")})
+        else:
+            replay.update({"state": "requires_private_inputs",
+                           "detail": ("Health replay needs the retained analysis bundle and the "
+                                      "pinned environment; this package does not contain them.")})
+        methods["replay"] = replay
+
+        # ---- Artifacts -------------------------------------------------------------------------
+        notices = []
+        artifacts = []
+        package_ok = True
+        if package is not None and record.get("package_sha256"):
+            digest_now, count_now = self._package_digest(package)
+            package_ok = (digest_now == record.get("package_sha256")
+                          and record.get("package_files") in (None, count_now))
+        if not package_ok:
+            notices.append("The report package no longer matches the digest recorded at "
+                           "generation; its file links are withheld.")
+        else:
+            # A file is offered only when the recorded policy permits that class of content,
+            # not merely because it happens to exist in the package directory.
+            permitted = {
+                "data/neutral-analysis.json": bool(disclosure.get("permit_values")),
+                "data/neutral-summary.json": True,
+                "data/selected-records.csv": bool(disclosure.get("permit_records")),
+            }
+            for relative, label, kind in (
+                    ("report.html", "Report (HTML)", "report"),
+                    ("methods.html", "Methods and sources (HTML)", "report"),
+                    ("provenance.json", "Machine-readable provenance", "metadata"),
+                    ("composition.json", "Frozen effective request", "metadata"),
+                    ("reproduction/composition.json", "Frozen request (reproduction copy)",
+                     "metadata"),
+                    ("data/dataset.json", "Dataset passport", "data"),
+                    ("data/interpretation.json", "Confirmed interpretation", "data"),
+                    ("data/neutral-analysis.json", "Saved analysis (full precision)", "data"),
+                    ("data/neutral-summary.json", "Restricted analysis summary", "data"),
+                    ("data/selected-records.csv", "Contributing records (permitted)", "data")):
+                if not permitted.get(relative, True):
+                    continue
+                artifact = self._package_artifact(job_id, package, relative, label)
+                if artifact:
+                    artifact["kind"] = kind
+                    artifacts.append(artifact)
+
+        retained = self._retained_material(record, job_id, provenance, disclosure)
+
+        if package is None:
+            notices.append("The report package is no longer on disk; only the job record is "
+                           "available.")
+        if provenance_status != "recorded":
+            notices.append("This report has no readable provenance; its metadata is limited to "
+                           "the job record.")
+        if composition_status != "recorded":
+            notices.append("The frozen request is missing or unreadable for this report.")
+        if neutral and not disclosure:
+            notices.append("No disclosure policy is recorded for this report; the package is "
+                           "shown as published.")
+
+        return {
+            "report": report,
+            "disclosure": {
+                "recorded": bool(disclosure),
+                "policy": disclosure.get("policy"),
+                "label": disclosure.get("label"),
+                "summary": disclosure.get("summary"),
+                "consequence": disclosure.get("consequence"),
+                "evidence": disclosure.get("evidence"),
+            },
+            "data": data,
+            "sections": sections,
+            "attribution": attribution,
+            "methods": methods,
+            "artifacts": artifacts,
+            "retained": retained,
+            "notices": notices,
+        }
+
     def artifact(self, job_id, relative):
         record = self._job_record(job_id)
         if record.get("status") != "succeeded" or not record.get("preview_dir"):
@@ -1757,10 +3162,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(HTTPStatus.OK, self.site.custom_document(
                     self._query().get("context") or None,
                     selected=self._query().get("audience") or None))
+            if path == "/api/csv":
+                return self._json(HTTPStatus.OK, self.site.csv_document(
+                    self._query().get("digest") or None))
             if path == "/api/saved":
                 return self._json(HTTPStatus.OK, self.site.saved())
             if path == "/api/jobs":
                 return self._json(HTTPStatus.OK, {"jobs": self.site.jobs()})
+            match = re.fullmatch(r"/api/jobs/([^/]+)/sources", path)
+            if match:
+                return self._json(HTTPStatus.OK, self.site.report_sources(match.group(1)))
+            match = re.fullmatch(r"/api/jobs/([^/]+)/retained/([a-z0-9._-]+)", path)
+            if match:
+                target, content_type = self.site.retained_artifact(match.group(1),
+                                                                   match.group(2))
+                body = target.read_bytes()
+                filename = target.name
+                headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+                return self._send(HTTPStatus.OK, body, content_type, headers)
             match = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if match:
                 return self._json(HTTPStatus.OK, self.site.job(match.group(1)))
@@ -1787,6 +3206,10 @@ class Handler(BaseHTTPRequestHandler):
                 raise SiteError(HTTPStatus.UNAUTHORIZED, "Access token required.",
                                 code="unauthorised")
             path = urlparse(self.path).path
+            if path == "/api/csv/upload":
+                body, filename = self._multipart_file()
+                capture = self.site.csv_capture(body, filename)
+                return self._json(HTTPStatus.OK, {"capture": capture.as_public()})
             payload = self._body()
             if path == "/api/reuse":
                 self._check_mutation("reuse", payload, {"preset", "job_id", "context"})
@@ -1822,11 +3245,77 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(HTTPStatus.ACCEPTED,
                                       self.site.submit_custom(payload.get("context", "")))
                 return self._json(HTTPStatus.ACCEPTED, self.site.submit(preset))
+            if path == "/api/csv/confirm":
+                self._check_mutation("csv-confirm", payload,
+                                     {"digest", "interpretation"})
+                return self._json(HTTPStatus.OK, self.site.csv_confirm(
+                    payload.get("digest", ""), payload.get("interpretation") or {}))
+            if path == "/api/csv/generate":
+                self._check_mutation("csv-generate", payload,
+                                     {"digest", "recipe"})
+                result = self.site.csv_submit(payload.get("digest", ""),
+                                              payload.get("recipe") or {})
+                return self._json(HTTPStatus.OK if result.get("reused")
+                                  else HTTPStatus.ACCEPTED, result)
+            if path == "/api/csv/edit":
+                self._check_mutation("csv-edit", payload,
+                                     {"digest", "action", "instance", "value"})
+                recipe = self.site.csv_draft_edit(
+                    payload.get("digest", ""), payload.get("action", ""),
+                    payload.get("instance", ""), payload.get("value"))
+                return self._json(HTTPStatus.OK,
+                                  {"recipe": recipe,
+                                   "document": self.site.csv_document(
+                                       payload.get("digest", ""))})
             raise SiteError(HTTPStatus.NOT_FOUND, "Not found.")
         except SiteError as error:
             return self._error(error)
         except Exception:                                # noqa: BLE001 - no tracebacks to client
             return self._error(None)
+
+    def _multipart_file(self):
+        """Bound multipart/form-data file capture: one file part, streamed and hashed.
+
+        The whole request body is size-limited before parsing; the file payload itself is
+        bounded again by the neutral limits. Overlong or malformed requests are rejected
+        before any partial capture is promoted.
+        """
+        content_type = self.headers.get("Content-Type") or ""
+        match = re.fullmatch(r"multipart/form-data; boundary=(.+)", content_type,
+                             re.IGNORECASE)
+        if not match:
+            raise SiteError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                            "CSV uploads use multipart/form-data.")
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Invalid Content-Length.")
+        if length <= 0:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "An upload body is required.")
+        if length > NEUTRAL_MAX_BODY:
+            raise SiteError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                            "The upload is too large.")
+        boundary = ("--" + match.group(1)).encode("utf-8")
+        closing = ("\r\n--" + match.group(1)).encode("utf-8")
+        raw = self.rfile.read(length)
+        if len(raw) != length or not raw.startswith(boundary):
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Malformed multipart body.")
+        header_end = raw.find(b"\r\n\r\n")
+        if header_end == -1:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Malformed multipart body.")
+        head = raw[len(boundary) + 2:header_end].decode("utf-8", "replace")
+        disposition = re.search(r'name="([^"]+)"', head)
+        filename = re.search(r'filename="([^"]*)"', head)
+        if not disposition or not filename:
+            raise SiteError(HTTPStatus.BAD_REQUEST,
+                            "The upload needs a file field with a file name.")
+        body_end = raw.find(closing, header_end + 4)
+        if body_end == -1:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "Malformed multipart body.")
+        body = raw[header_end + 4:body_end]
+        if not body:
+            raise SiteError(HTTPStatus.BAD_REQUEST, "The upload contains no data.")
+        return body, filename.group(1)
 
     def _static(self, name):
         path = (WEB_DIR / name).resolve()

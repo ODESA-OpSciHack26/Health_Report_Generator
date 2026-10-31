@@ -117,10 +117,17 @@ stopifnot(grepl('Primary finding', html_p, fixed = TRUE))
 stopifnot(grepl('Supporting block', html_p, fixed = TRUE))
 stopifnot(identical(nav_targets(html_p), c('i-ref', 'i-b')))
 stopifnot(!any(grepl('-', composition_labels, fixed = TRUE)))
+# The shared label file registers the neutral CSV blocks too: one reader-facing name per
+# registered block type across the health and neutral libraries (both must stay in lockstep,
+# and a wording change invalidates reuse). No health block name changed. `coverage-over-time`
+# is the explicitly named availability view added with the disclosure policy work; it is a
+# neutral-only block and is never offered by the health library.
 stopifnot(setequal(names(composition_labels),
                    c('intro', 'series-trend', 'series-collection', 'reference-comparison',
                      'coverage-selection', 'monitoring-overview', 'sensitivity-comparison',
-                     'limitations', 'reproduction')))
+                     'limitations', 'reproduction',
+                     'data-overview', 'values-by-group', 'values-over-time',
+                     'coverage-over-time', 'data-quality')))
 stopifnot(identical(unname(composition_labels[c('intro', 'series-collection',
                                                  'reference-comparison', 'monitoring-overview',
                                                  'limitations')]),
