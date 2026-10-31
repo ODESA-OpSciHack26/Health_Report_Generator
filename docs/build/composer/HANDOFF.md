@@ -107,12 +107,14 @@ publication, not promotion out of the isolated lane, and not a claim that every 
 | Accepted commit | `6ccc58177ccda018a3ff39efe9106ed965da5c65` — "Add neutral CSV composer with verified reuse and shared visual pass" |
 | Parent | `d33d3e10bd5de9a6e2aff982c344bdbb80cc61e6` (Round B1 checkpoint) |
 | Worktree at acceptance | clean; nothing pushed |
-| Lane tip (local) | `build/composer` = `0b9975fca19f762bec2566588495c974d7cab674`, an ancestor of the accepted commit |
-| Lane tip (remote) | `origin/build/composer` = `72b80d95703159d3102d7021b14a598adac4d72e` |
+| Lane tip before publication | `build/composer` = `0b9975fca19f762bec2566588495c974d7cab674` (local; the remote was `72b80d9`) |
+| Lane tip after merge (verified) | `origin/build/composer` = `a1aab9b64586ddcecd38a80df93349ea054f044b` — merge commit of PR #1 |
 | Product integration | `integration/steward-ready-v1` = `0cb8dd0` (local and origin) — untouched |
 
-Everything from `0b9975f` onward (Round B1, the CSV slice and this candidate) exists only locally.
-`design/contracts` is not on the remote at all.
+Status at reconciliation (31 October 2026, before publication): everything from `0b9975f` onward
+existed only locally and `design/contracts` was not on the remote. That paragraph is kept as
+history. After PR #1 merged (2026-10-31T21:28:53Z), `design/contracts`, its 21 commits and the merge
+commit `a1aab9b` are all on the remote; the merged tree is identical to the accepted candidate.
 
 ### 9.2 What the candidate implements
 
@@ -207,11 +209,24 @@ acceptance; reuse not recorded as an access event; pre-change reports carry no r
 
 ### 9.6 Remote relationship and first safe next action
 
-Local acceptance, a commit in this repository, publication to `origin`, integration into
-`build/composer` and promotion to `integration/steward-ready-v1` are four different states. Only
-the first two exist. The remote `build/composer` is one commit behind the local lane tip, and the
-whole composer work is absent from the remote.
+As recorded at reconciliation (31 October 2026, before publication): local acceptance, a commit in
+this repository, publication to `origin`, integration into `build/composer` and promotion to
+`integration/steward-ready-v1` were five different states, and only the first two existed. That
+paragraph is kept as history.
 
-First safe next action: publish the lane and this task branch and open the isolated PR
-`design/contracts → build/composer` (draft), with no promotion, after explicit approval of the
-exact push/PR command. See the closure report for the proposed command set.
+Verified after the merge (read-only, same day):
+
+- PR #1 "build: neutral CSV composer candidate (design/contracts)" was merged by the owner on
+  2026-10-31T21:28:53Z with 21 commits; base `build/composer` @ `0b9975f`, head
+  `design/contracts` @ `2bd1bed`.
+- Merge commit `a1aab9b64586ddcecd38a80df93349ea054f044b`, a true merge: `0b9975f` and `2bd1bed`
+  are both ancestors, and `git diff --stat 2bd1bed a1aab9b` is empty — the merged tree is identical
+  to the accepted candidate.
+- `origin/build/composer` now equals `a1aab9b`; `integration/steward-ready-v1` remains `0cb8dd0`.
+- Publication and internal integration of this candidate into the experimental lane are complete.
+  Product promotion, final combined acceptance, release and deployment have **not** occurred.
+  Runtime evidence remains local, and the merge is not a fresh test run.
+
+First safe next action: the remaining product work is unchanged — the R14 decision, slices C–E,
+B4/B7 and G6 — on a new task branch from the lane tip after explicit assignment. Nothing is
+promoted.

@@ -15,13 +15,18 @@ disclosure (local audit versus restricted share), presentation controls, report-
 "Data & sources", saved-report history, verified reuse and an edit-a-copy flow, plus a shared
 visual pass across both modes.
 
-This is **not** a product release, not remote publication and not promotion out of the isolated
-lane. The canonical IDD pipeline above is unchanged and remains the established product. The
-composer is not published on GitHub as of this reconciliation (31 October 2026): publishing the
-branch is a separate approved action, and this paragraph must be updated with the pushed commit
-when it happens. It is not merged into `build/composer` or `integration/steward-ready-v1`, and no
-browser/accessibility acceptance beyond the exercised desktop and narrow layouts has been given. Bounded-preview, paging and other accepted limitations
-are listed in the [build handoff](docs/build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026).
+This is **not** a product release and not promotion out of the isolated lane. The canonical IDD
+pipeline above is unchanged and remains the established product.
+
+Publication to the private experimental lane is complete for this candidate: PR #1 merged
+`design/contracts` into `build/composer` on 2026-10-31T21:28:53Z at merge commit
+`a1aab9b64586ddcecd38a80df93349ea054f044b`; the merged tree was verified identical to the accepted
+candidate `2bd1bed5150c5d620dfaba8c51dc32411b175050`. This is internal integration into the
+experimental lane only — product promotion, final combined acceptance, release and deployment have
+**not** occurred, and no browser/accessibility acceptance beyond the exercised desktop and narrow
+layouts has been given. Runtime test evidence remains local; the merge is not a fresh test run.
+Bounded-preview, paging and other accepted limitations are listed in the
+[build handoff](docs/build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026).
 
 ## Quick start
 
