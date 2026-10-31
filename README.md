@@ -6,6 +6,23 @@ One open Swiss data source, three audiences, one command. This project turns Fed
 
 The [mandatory data-workflow preservation policy](docs/workflow-preservation-policy.md) applies throughout every development stage. The [Track B plan](docs/integration-plan.md) describes the future unified workspace, not shipped UI behavior. Active integration is integration/steward-ready-v1; feature branches PR back there. Track A remains frozen. [Conflict dispositions](docs/b0-conflict-dispositions.md) distinguish current routes from historical guidance and targets. A policy document does not install CI enforcement or prove a new runtime pass.
 
+## Composer status (experimental lane, 31 October 2026)
+
+A neutral CSV composer is implemented and **locally accepted** on the isolated `design/contracts`
+branch at commit `6ccc58177ccda018a3ff39efe9106ed965da5c65` ("Add neutral CSV composer with
+verified reuse and shared visual pass"): bounded upload, confirmed interpretation, explicit
+disclosure (local audit versus restricted share), presentation controls, report-bound
+"Data & sources", saved-report history, verified reuse and an edit-a-copy flow, plus a shared
+visual pass across both modes.
+
+This is **not** a product release, not remote publication and not promotion out of the isolated
+lane. The canonical IDD pipeline above is unchanged and remains the established product. The
+composer is not published on GitHub as of this reconciliation (31 October 2026): publishing the
+branch is a separate approved action, and this paragraph must be updated with the pushed commit
+when it happens. It is not merged into `build/composer` or `integration/steward-ready-v1`, and no
+browser/accessibility acceptance beyond the exercised desktop and narrow layouts has been given. Bounded-preview, paging and other accepted limitations
+are listed in the [build handoff](docs/build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026).
+
 ## Quick start
 
 Recommended local path: Docker Compose on Linux/amd64. No GitHub token, fork, Actions or host Python/R/Quarto/TinyTeX installation is required. Initial software setup requires internet.

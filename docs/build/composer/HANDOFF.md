@@ -92,3 +92,126 @@ After bootstrap/policy alignment: coordinator reads governing documents/ledger, 
 Task handoffs contain objective, dependencies, base SHA, allowed paths, interfaces, fixtures, commands/exits, artifacts, migration/backout, limits, ownership and next action. Completion requires review/checks, not merely written code.
 
 Every required ledger entry needs implementation and independent evidence; visual entries also need human disposition. Optional/deferred/decision-required entries need explicit handling. Final review can require further commits/render cycles in this lane. Promotion, release/tagging/deployment, protection/deletion and private-data distribution are separate authorized actions.
+
+## 9. Current candidate and status (31 October 2026)
+
+Status: documentation reconciliation of an accepted local candidate. Not a release, not remote
+publication, not promotion out of the isolated lane, and not a claim that every requirement is met.
+
+### 9.1 Identity
+
+| Item | Value |
+|---|---|
+| Repository | local `composer-sandbox` (not the canonical `Health_Report_Generator` remote) |
+| Branch | `design/contracts` (internal task branch; no upstream configured) |
+| Accepted commit | `6ccc58177ccda018a3ff39efe9106ed965da5c65` — "Add neutral CSV composer with verified reuse and shared visual pass" |
+| Parent | `d33d3e10bd5de9a6e2aff982c344bdbb80cc61e6` (Round B1 checkpoint) |
+| Worktree at acceptance | clean; nothing pushed |
+| Lane tip (local) | `build/composer` = `0b9975fca19f762bec2566588495c974d7cab674`, an ancestor of the accepted commit |
+| Lane tip (remote) | `origin/build/composer` = `72b80d95703159d3102d7021b14a598adac4d72e` |
+| Product integration | `integration/steward-ready-v1` = `0cb8dd0` (local and origin) — untouched |
+
+Everything from `0b9975f` onward (Round B1, the CSV slice and this candidate) exists only locally.
+`design/contracts` is not on the remote at all.
+
+### 9.2 What the candidate implements
+
+Neutral CSV composer, end to end: bounded capture (20 MiB / 100k rows / 100 columns / 64 KiB
+cell), compact interpretation confirmation with explicit roles, prepared rows with stable
+1-based ordinals, descriptive analysis (inclusive quartiles, sample SD, no pooling, repeated
+key-period records preserved), neutral rendering through the shared report source, explicit
+`local-audit` versus `restricted-share` disclosure with permitted evidence only, per-instance
+presentation controls (groups, displayed periods, axis-label policy, statistics columns,
+precision, layout, height, panel columns/scales), report-bound "Data & sources", dataset-scoped
+saved-report history, verified reuse (canonical request identity plus package validation, no
+re-render), "edit a copy", and a shared visual pass for both modes.
+
+Health behaviour is preserved: canonical bundles, four stakeholder options, existing drafts,
+reports, titles, duplicates and period semantics are untouched; the health suites and R smokes
+remain green.
+
+### 9.3 Status matrix
+
+States: **verified** (implemented with executed evidence), **partial**, **not implemented**,
+**decision required**, **deferred**. Evidence is local-only unless stated; no state implies
+product promotion or human acceptance of the whole product.
+
+| Stage | State | Basis |
+|---|---|---|
+| B0 | partial | Documentation reconciled here; G0 still open because the seed was never executed |
+| B1 | verified | composition-recipe/2 validators, capability gating, disclosure and evidence contracts, with rejection tests |
+| B2 | partial | shared parameterised source and registered renderers exist; per-block adjacent inspectors and structurally distinct presets are not complete |
+| B3 | verified for the CSV slice | bounded upload, confirmed interpretation, stable record identity, UI/CLI replay parity; multi-measure/group shapes not started |
+| B4 | not implemented | no dynamic profile discovery or versioned composer publication verifier |
+| B5 | verified for the neutral composer | authoring, preview, save/replay, history and reuse; health editing remains the existing custom-draft flow |
+| B6 | partial | provenance, disclosure and content-keyed reuse lifecycle in the CSV lane; no combined lifecycle across all routes |
+| B7 | not implemented | combined IDD/general-table/default/custom acceptance not attempted |
+| G0 | not closed | baseline recorded at `72b80d9`, not at the seed |
+| G1 | verified | strict contracts |
+| G2 | partial | reference comparison renders; adjacent per-block inspector absent |
+| G3 | partial | table interpretation done for one group/measure/optional time; presets and multi-measure not |
+| G4 | partial | composer UI/CLI parity; cloning a genuinely new profile not implemented |
+| G5 | partial | no-replace publication, digest validation, disclosure omission and reuse invalidation; no versioned composer verifier |
+| G6 | not started | final acceptance not attempted |
+| R01 | partial | baseline evidence recorded (EV-BOOT-001/002), seed never executed, G0 open |
+| R02 | verified | strict deterministic contracts and rejection tests |
+| R03 | partial | comparison exists; complete adjacent inspector not |
+| R04 | partial | three canonical audiences render from the shared source; "structurally distinct presets" not re-assessed |
+| R05 | verified | confirmed table interpretation, original records retained, UI/CLI agree |
+| R06 | not implemented | multi-measure/group/ungrouped counts are Slice C-E work |
+| R07 | partial | add/remove/duplicate/reorder/configure and edit-a-copy; clone-new-profile absent |
+| R08 | verified | labelled previews and saved recipes replay through UI and CLI |
+| R09 | partial | digest/provenance validation in the lane; no versioned composer evidence verifier |
+| R10 | verified | failed runs preserve accepted output; content-keyed analysis compatibility and reuse validation |
+| R11 | verified for neutral CSV | restricted packages exclude values, records and retained files, enforced server-side |
+| R12 | not started | end-to-end acceptance across data/profiles |
+| R13 | verified in exercised scope | no numerical drift from presentation work; old recipes remain valid; frozen reference unchanged |
+| R14 | decision required | generic PDF/static parity still undecided |
+| R15 | deferred | optional formats/encodings |
+| R16 | deferred | surveillance/inference |
+| R17 | verified with owner visual acceptance (scoped) | DOM structure/wiring checks plus the owner's desktop and narrow-layout review |
+| Round A (CSV slice plan) | done | baseline record |
+| Round B (neutral CSV) | verified and accepted | this candidate |
+| Rounds C-E | not started | count modes, multi-measure, profiles/dataset versions, batch |
+
+### 9.4 Evidence
+
+Executed on the accepted tree (all local, outside the repository):
+
+- Focused composer/CSV/display suites: 103 passed, 2 skipped — `~/.state/composer-bootstrap/csv-b-check/evidence-20261031T201934Z`.
+- Maintained suite 894 passed / 4 skipped with both R smokes clean — `suite-20261031T202257Z`.
+- DOM harnesses: journey 62/62, conflict gate 18/18, shared editor 0 — `node-20261031T201852Z`.
+- Owner fixtures rendered through the pinned image: 34/34 — `presentation-20261031T190134Z`.
+- CLI replay parity: 25/25 — `replay-20261031T122917Z` (earlier run at the same code path; not re-executed for this documentation turn).
+- Candidate manifest: `~/.state/composer-bootstrap/csv-b-check/candidate-manifest-20261031T202637Z`
+  plus the closure record `closed-20261031T2030Z` (inside the same root).
+
+Runtime for those runs: image `sha256:1ddf322f3f7b42394ce7fb1e5b1ab1a5023e2224399d1513c3b2c89d0dc521d8`
+(R 4.3.2, the image's `/opt/health-report-venv`). These are local paths; nothing here is
+published or remotely checkable.
+
+### 9.5 Owner dispositions and accepted limitations
+
+The owner accepted, by direct visual review, the exercised desktop and narrow-layout behaviour of
+P1–P4, Data & sources, saved-report history and verified reuse, the shared visual pass, the
+compact dataset selector with its expansion control, single-line section rows, and the structural
+preview area. That is scoped acceptance of the exercised journeys — not accessibility,
+cross-browser, large-group, scientific or publication acceptance, and not acceptance of reports
+the owner has not seen.
+
+Accepted limitations: structural preview bounded to the first 100 rows and 20 columns with no
+paging; long-cell inspection via `title` tooltips only; history capped at the newest 20 reports
+without pagination; status unification partial; health source-card capture/release dates "Not
+recorded" where the bundle lacks them (never inferred); no broad accessibility or cross-browser
+acceptance; reuse not recorded as an access event; pre-change reports carry no reuse identity.
+
+### 9.6 Remote relationship and first safe next action
+
+Local acceptance, a commit in this repository, publication to `origin`, integration into
+`build/composer` and promotion to `integration/steward-ready-v1` are four different states. Only
+the first two exist. The remote `build/composer` is one commit behind the local lane tip, and the
+whole composer work is absent from the remote.
+
+First safe next action: publish the lane and this task branch and open the isolated PR
+`design/contracts → build/composer` (draft), with no promotion, after explicit approval of the
+exact push/PR command. See the closure report for the proposed command set.

@@ -1,5 +1,9 @@
 # Neutral CSV integration — scoped plan and baseline record (Slice A)
 
+Status (historical, 31 October 2026): Slices A and B are complete; the neutral CSV composer was
+accepted and committed as `6ccc58177ccda018a3ff39efe9106ed965da5c65`. Slices C–E remain not
+started. Current status: [HANDOFF.md](HANDOFF.md) §9.
+
 Written by the implementation lead, 2026-10-31, branch `design/contracts`, HEAD
 `d33d3e10bd5de9a6e2aff982c344bdbb80cc61e6`, single worktree, working tree CLEAN at the time of
 writing (git status empty). Baseline checks: the preserved evidence already records the current

@@ -1,6 +1,11 @@
-# Neutral CSV — Slice B durable handoff (uncommitted)
+# Neutral CSV — Slice B durable handoff
 
-Status: Slice B CODE COMPLETE, NOT ACCEPTED. Written 2026-10-31T09:4xZ (UTC) by the previous
+Status (superseded 31 October 2026): the work described here was accepted by the owner, committed
+as `6ccc58177ccda018a3ff39efe9106ed965da5c65` and closed. This file remains the historical record
+of the slice and its evidence; **current status, the requirement ledger and the next action live in
+[HANDOFF.md](HANDOFF.md) §9**. The paragraph below records the state at the time of writing.
+
+Original status: Slice B CODE COMPLETE, NOT ACCEPTED. Written 2026-10-31T09:4xZ (UTC) by the previous
 agent at session end. The implementation is stopped; human browser review and resolution of the
 open findings in §6 are pending. Slices C–E are NOT authorised. Nothing in here is a
 permission to commit, push, stage, reset, stash, delete, clean, restart, recreate containers
