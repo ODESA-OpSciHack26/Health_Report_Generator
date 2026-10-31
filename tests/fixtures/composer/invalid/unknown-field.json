@@ -1,0 +1,36 @@
+{
+  "contract": "health-report/composer-component/1",
+  "instance_id": "cmp-0001",
+  "colour": "teal",
+  "component": { "type": "reference-comparison", "version": "1" },
+  "analysis": {
+    "snapshot_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "scope": {
+      "period_type": "year",
+      "years": [2021, 2025],
+      "reference_year": 2019,
+      "index_base_year": 2019,
+      "geography": "CHFL",
+      "measures_preferred": ["cases"],
+      "compare_by": "pathogen_class",
+      "classes_in_main_comparison": ["viral"],
+      "exclude_from_group_totals": [],
+      "sensitivity_exclude": [],
+      "source_priority": ["mandatory_reporting_system"],
+      "group_source_systems": ["mandatory_reporting_system"],
+      "dimension_filters": {}
+    }
+  },
+  "bindings": {
+    "reference_count": "virus:2019:count",
+    "latest_count": "virus:2025:count",
+    "result": "virus:reference_change"
+  },
+  "plotted": {
+    "file": "series.csv",
+    "rows": [{ "topic": "virus", "year": 2019 }],
+    "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "presentation": { "unit": "percent" },
+  "disclosure": { "distribution": "public" }
+}

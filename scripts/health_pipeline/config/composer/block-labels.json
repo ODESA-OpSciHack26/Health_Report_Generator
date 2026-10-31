@@ -1,0 +1,62 @@
+{
+  "contract": "health-report/block-labels/1",
+  "notice": "One reader-facing name and description per registered block type. Canonical block ids, recipe fields and analytical inputs are never derived from these strings.",
+  "blocks": {
+    "intro": {
+      "name": "Report context",
+      "description": "What data, question and scope this report covers."
+    },
+    "series-collection": {
+      "name": "Annual trends by disease",
+      "description": "Saved observations across years for one or more diseases, each with its exact recorded values."
+    },
+    "series-trend": {
+      "name": "Annual trend for one disease",
+      "description": "Saved observations across years for a single disease. Historical recipes only; not offered as a new section."
+    },
+    "reference-comparison": {
+      "name": "Change from the reference year",
+      "description": "The saved comparison between the reporting year and the baseline (reference) year."
+    },
+    "monitoring-overview": {
+      "name": "Latest observations by disease",
+      "description": "The latest saved observation for each disease within the reporting window."
+    },
+    "coverage-selection": {
+      "name": "Coverage and included data",
+      "description": "What the saved selection includes and excludes, read from saved selection records."
+    },
+    "sensitivity-comparison": {
+      "name": "Comparison across analysis choices",
+      "description": "Saved main and sensitivity specifications for the same analysis."
+    },
+    "limitations": {
+      "name": "Limitations and cautions",
+      "description": "What this report cannot support."
+    },
+    "reproduction": {
+      "name": "Reproduction and evidence",
+      "description": "How to check the published files and rerun the render."
+    },
+    "data-overview": {
+      "name": "Dataset overview",
+      "description": "Record and field counts and the actual selected coverage of the captured dataset."
+    },
+    "values-by-group": {
+      "name": "Values by group",
+      "description": "Observed values per group, with the group's descriptive summary."
+    },
+    "values-over-time": {
+      "name": "Values over time",
+      "description": "Observed values per selected period; gaps and repeated observations stay visible."
+    },
+    "coverage-over-time": {
+      "name": "Observation coverage over time",
+      "description": "Which groups have a recorded observation in each period, with the values deliberately not shown."
+    },
+    "data-quality": {
+      "name": "Data quality and completeness",
+      "description": "Missingness, invalid handling, repeated group-period keys and diagnostic limits."
+    }
+  }
+}

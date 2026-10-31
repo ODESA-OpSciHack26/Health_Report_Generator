@@ -1,0 +1,38 @@
+{
+  "contract": "health-report/composer-evidence/1",
+  "instance_id": "cmp-0001",
+  "inputs": {
+    "metric_ids": ["virus:2019:count", "virus:2025:count"]
+  },
+  "calculation": {
+    "method_id": "percent_reference_change",
+    "method_version": "1",
+    "formula": "percent_change",
+    "parameters": {
+      "reference_year": 2019,
+      "latest_year": 2025,
+      "measure": "cases"
+    }
+  },
+  "results": {
+    "metric_id": "virus:reference_change",
+    "value": 60.0,
+    "unit": "percent",
+    "availability": "available",
+    "unavailable_reason": null
+  },
+  "implementation": {
+    "analysis": {
+      "file": "scripts/health_pipeline/analyse.py",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "presentation": {
+      "file": "scripts/health_pipeline/templates/report_helpers.R",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "reproduction": {
+    "entry_point": "snakemake --cores 2",
+    "snapshot_id": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

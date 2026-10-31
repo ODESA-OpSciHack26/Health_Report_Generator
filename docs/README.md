@@ -9,6 +9,9 @@ The authoritative forward plan is [Track B integration](integration-plan.md). Th
 - [Steward workspace](steward-workspace.md): source review, report composition and export experience.
 - [Inspectable blocks](decisions/inspectable-blocks.md): expandable data, calculations, analysis/render code and reproduction details beside each result.
 - [Acceptance](integration-acceptance.md): objective gates and evidence scope.
+- [Composer lane status](build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026):
+  what the isolated lane implements and locally accepts, with the requirement ledger
+  ([requirements.json](build/composer/requirements.json)); documentation only, not product promotion.
 
 These describe target behavior unless explicitly identified as implemented. Committing a plan does not implement a composer, upload UI or evidence inspector.
 

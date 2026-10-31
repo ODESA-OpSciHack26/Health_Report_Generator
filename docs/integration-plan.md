@@ -16,6 +16,13 @@ Implemented foundations include the canonical IDD workflow, captured CSV/TSV ins
 
 Not yet implemented: guided upload/interpretation, actual generic selection controls, a dynamic block/profile registry, editable compositions, unified publication plans, per-block evidence inspectors or the combined steward experience. Generic geography labels are not filters; period normalization is not a date-window filter.
 
+Status note, 31 October 2026: the isolated composer lane carries a locally accepted neutral CSV
+composer (bounded upload, confirmed interpretation, disclosure, presentation controls, report-bound
+Data & sources, history and verified reuse) at commit
+`6ccc58177ccda018a3ff39efe9106ed965da5c65` on `design/contracts`. It is unmerged, unpublished and
+unreviewed by this plan's product gates; the statement above describes the product baseline, not
+that lane. See the [build handoff](build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026).
+
 The target includes multiple measures, group candidates and explicit ungrouped/row-count modes, implemented through validated interpretation/result extensions rather than silently changing old request semantics. Additional formats such as Parquet, delimiter/encoding/locale handling and wide-to-long transformation are separately evaluated extensions. Do not claim universal spreadsheet compatibility. No name-based sum/mean decision or unreadable-value coercion may be hidden from interpretation review.
 
 Prompt draft preview is desirable, but unconfirmed settings or sampled data are labelled and cannot become verified publication. Final rendering consumes captured bytes and the confirmed interpretation. Three distinctive defaults plus explicit extra profiles remain the publication goal. Generic reports currently support HTML; canonical PDF/apps are separate existing capabilities. Track A acceptance is not acceptance of the complete combined product.

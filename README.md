@@ -6,6 +6,23 @@ One open Swiss data source, three audiences, one command. This project turns Fed
 
 The [mandatory data-workflow preservation policy](docs/workflow-preservation-policy.md) applies throughout every development stage. The [Track B plan](docs/integration-plan.md) describes the future unified workspace, not shipped UI behavior. Active integration is integration/steward-ready-v1; feature branches PR back there. Track A remains frozen. [Conflict dispositions](docs/b0-conflict-dispositions.md) distinguish current routes from historical guidance and targets. A policy document does not install CI enforcement or prove a new runtime pass.
 
+## Composer status (experimental lane, 31 October 2026)
+
+A neutral CSV composer is implemented and **locally accepted** on the isolated `design/contracts`
+branch at commit `6ccc58177ccda018a3ff39efe9106ed965da5c65` ("Add neutral CSV composer with
+verified reuse and shared visual pass"): bounded upload, confirmed interpretation, explicit
+disclosure (local audit versus restricted share), presentation controls, report-bound
+"Data & sources", saved-report history, verified reuse and an edit-a-copy flow, plus a shared
+visual pass across both modes.
+
+This is **not** a product release, not remote publication and not promotion out of the isolated
+lane. The canonical IDD pipeline above is unchanged and remains the established product. The
+composer is not published on GitHub as of this reconciliation (31 October 2026): publishing the
+branch is a separate approved action, and this paragraph must be updated with the pushed commit
+when it happens. It is not merged into `build/composer` or `integration/steward-ready-v1`, and no
+browser/accessibility acceptance beyond the exercised desktop and narrow layouts has been given. Bounded-preview, paging and other accepted limitations
+are listed in the [build handoff](docs/build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026).
+
 ## Quick start
 
 Recommended local path: Docker Compose on Linux/amd64. No GitHub token, fork, Actions or host Python/R/Quarto/TinyTeX installation is required. Initial software setup requires internet.
@@ -49,6 +66,35 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for native setup and diagnostics.
 Canonical audience folders also hold methods.html, PDFs, provenance.json (embedded in HTML too), analysis data and a Shiny app. results/release.json records artifact/code hashes, Git state and runtime versions. See [audiences](docs/audiences.md).
 
 For existing canonical IDD audiences, copy a stakeholder file in scripts/health_pipeline/config/stakeholders/, change its validated communication settings and list its ID in workflow/config.yaml. No audience-specific QMD is needed. Standard release audiences retain matching analytical scope. This is not a claim that a dynamic generic registry, composer or arbitrary new method is shipped.
+
+## Report scope and block binding (experimental)
+
+Stakeholder settings accept two optional arrays: `include_topics` (if present, only those topic identifiers are candidates; must be non-empty and valid) and `exclude_topics` (removes topics from the analytical selection). Omitted fields preserve the existing eligibility policy; the two lists may not overlap. Topic identifiers are validated against `scripts/health_pipeline/config/pathogen_class.csv`, and every dataset keeps an explicit selection reason. `exclude_from_group_totals`, `sensitivity_exclude` and `classes_in_main_comparison` keep their separate meanings.
+
+Changing this scope is an analysis change: regenerate the bundle through the canonical workflow (for example `snakemake --cores 2` or `analyse.py` against a validated harmonised output). Rendering a retained bundle only changes presentation. Composed recipes use `health-report/composition-recipe/2`, where `reference-comparison` requires an explicit `topic` bound to a saved included topic; contract v1 remains readable with its historical deterministic binding.
+
+Composed recipes may also include one `series-trend` block (`topic`, `measure`, optional inclusive `years` defaulting to the reporting window, and an optional closed `presentation` object with `style` `standard` or `compact`). It displays saved annual observations for one included topic, leaves a missing year as a gap rather than zero, and refuses a second instance. The style changes figure size and wording only, never the saved rows or the analytical identity. Like the comparison, it only selects among saved results and cannot broaden analytical scope.
+
+A composed recipe may bind one `series-collection` block instead of a single trend: `topics` is `"eligible"` (every included topic in the saved bundle, in topic order) or an explicit non-empty list (author order, which must resolve completely), with one `measure`, optional inclusive `years`, and an optional `{style, default_topic}` presentation. Each topic becomes a separately checked series record and its own native disclosure panel; the default topic is open first, and all panels work without JavaScript. A recipe cannot combine a collection with a single `series-trend` block, and only one collection is allowed. Unknown or excluded topics fail the collection rather than being dropped.
+
+Composed recipes may also include one `coverage-selection` summary of the saved selection decisions, one institutional `monitoring-overview` of each included topic's latest saved value, and one `sensitivity-comparison` of the saved main and sensitivity group specifications. These read saved records only; they add no calculation and no new contract.
+
+## Composed audience reports (experimental, HTML-only)
+
+One command composes all three audience reports from their own retained analysis bundles and audience recipes:
+
+```sh
+docker compose run --rm report python scripts/health_pipeline/publish.py batch \
+  --bundle-root results/reports --output-root results/composed \
+  --data-root /app/results/snapshots/<snapshot-id> \
+  --workflow-config workflow/config.yaml
+```
+
+`compose.yaml` mounts the repository at `/app`, so these are container paths: a host-expanded `$(pwd)/...` value is not valid inside the container.
+
+Recipes live in `scripts/health_pipeline/config/composer/compositions/<audience>.json` and must declare that audience. The batch refuses a recipe or bundle whose audience does not match instead of substituting another audience's inputs. Outputs are `results/composed/researcher/report.html`, `results/composed/health_institution/report.html` and `results/composed/public/report.html`, each with `methods.html`, `provenance.json` (also embedded in the HTML) and a `data/` folder holding the exact audience parameters, artifact manifest and saved CSVs used by the download links. Keep each folder together so those links resolve. The command exits nonzero if any requested report fails; a partial run may leave the other reports in place, so check the exit status before treating the batch as complete.
+
+This is presentation-only rendering: it re-renders saved bundles and does not re-run acquisition, harmonisation or analysis. Full analysis reproduction remains `snakemake --cores 2`. Composed reports are HTML-only; passing `--composition` with PDF is rejected, and the legacy HTML/PDF route (`snakemake`, or `publish.py html|pdf` without `--composition`) is unchanged. Composed outputs are outside `results/release.json`. The main report links directly to the methods page's `#quality-checks` section, which lists every recorded check result with status, rule and dataset filters plus per-dataset warning explanations; each published artifact is listed with type, size, digest and a direct download in “Report settings and source files”.
 
 ## Local and GitHub-backed interfaces
 

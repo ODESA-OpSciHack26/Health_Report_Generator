@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local composer — generate a report</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <h1>Local composer</h1>
+  <p class="note">Create reproducible reports from saved health data or your own CSV.</p>
+  <p class="note note--strong">Preview only — generation does not imply review or publication.
+  Runs on this machine only.</p>
+</header>
+
+<div class="route-choice" role="tablist" aria-label="Report mode">
+  <button id="route-health" type="button" class="route-card" role="tab" aria-selected="true"
+          aria-controls="health-panel">Health reports</button>
+  <button id="route-csv" type="button" class="route-card" role="tab" aria-selected="false"
+          aria-controls="csv-panel">Your CSV</button>
+</div>
+
+<main>
+  <p id="live" class="sr-only" role="status" aria-live="polite"></p>
+
+  <div id="health-panel">
+  <section class="card source-card" aria-labelledby="source-title">
+    <h2 id="source-title">Data used</h2>
+    <p class="source-line"><strong>Publisher:</strong> Federal Office of Public Health, FOPH/BAG
+      · <strong>Source:</strong> Infectious Diseases Dashboard, IDD</p>
+    <p class="source-line"><strong>Geographic context:</strong>
+      <span id="source-geography">Switzerland and Liechtenstein where the saved bundle supports it</span></p>
+    <p id="source-explainer" class="hint">Health reports use saved data from the publisher's
+    Infectious Diseases Dashboard (IDD), obtained through the publisher's API as recorded by the
+    existing acquisition and provenance records. The publisher states that its API data are
+    updated weekly on Wednesdays; individual disease series may follow different publication
+    schedules. This workspace renders a retained snapshot and does not automatically refresh when
+    the source website changes.</p>
+    <p class="source-links">
+      <a href="https://www.idd.bag.admin.ch/en" target="_blank" rel="noopener noreferrer">Dashboard</a>
+      <a href="https://www.idd.bag.admin.ch/en/portal-data" target="_blank" rel="noopener noreferrer">Data and API information</a>
+    </p>
+    <dl class="source-facts" id="source-facts" aria-label="Selected saved snapshot">
+      <dt>Snapshot</dt><dd id="source-snapshot">—</dd>
+      <dt>Captured</dt><dd id="source-captured">Not recorded for this bundle</dd>
+      <dt>Publisher release</dt><dd id="source-release">Not recorded for this bundle</dd>
+      <dt>Analysed period</dt><dd id="source-years">—</dd>
+      <dt>Geography</dt><dd id="source-geo">—</dd>
+      <dt>Topics</dt><dd id="source-topics">—</dd>
+    </dl>
+    <details class="diag"><summary>Source details</summary>
+      <p class="hint">The weekly Wednesday schedule describes the publisher's publication
+      rhythm; it is not the age of the retained snapshot. A report's Data &amp; sources panel
+      records the exact retrieval and publishing dates for that report. Reported observations are
+      not automatically all infections and are not a direct measure of disease burden.</p>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="choose-title">
+    <h2 id="choose-title">Choose the audience</h2>
+    <p id="choose-hint" class="hint">Pick one. Researcher is selected to start; nothing is
+    generated until you ask for it.</p>
+    <div id="presets" class="presets" role="radiogroup" aria-labelledby="choose-title"
+         aria-describedby="choose-hint"></div>
+    <p id="source-summary" class="summary">Reading the saved inputs…</p>
+    <div class="generate-row">
+      <button id="generate" type="button" class="primary" disabled>Generate preview</button>
+      <span id="job-state" class="job-state" role="status">idle</span>
+      <span id="ready-state" class="chip" role="status"></span>
+    </div>
+    <p id="generate-status" class="status" role="status"></p>
+    <p id="blocking" class="status error" role="alert" hidden></p>
+    <div id="reuse" class="reuse" hidden>
+      <p id="reuse-text" class="reuse-text">A report matching these settings is already
+        available.</p>
+      <div class="buttons buttons--inline">
+        <button id="reuse-show" type="button" class="primary">Show here</button>
+        <a id="reuse-open" class="button-link" target="_blank" rel="noopener" hidden>Open
+          separately</a>
+      </div>
+      <p id="reuse-meta" class="hint"></p>
+    </div>
+    <p class="digest">Generated from recipe <code id="job-digest">—</code>
+      <span id="stale" class="stale" hidden></span></p>
+    <details class="diag">
+      <summary>Exact CLI replay of the generated recipe</summary>
+      <pre id="replay-command">Generate a report to see its replay command.</pre>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="edit-title" id="audience-card">
+    <h2 id="edit-title">2. Sections
+      <span id="custom-badge" class="badge" hidden>Customized</span></h2>
+    <details id="editor" class="editor">
+      <summary>Adapt a saved copy of this audience</summary>
+      <p class="hint">Opening this section changes nothing. Editing creates one managed copy for
+      this audience; the maintained recipe is never changed, and the copy is kept when you switch
+      to another audience.</p>
+      <div class="editor-bar">
+        <p id="differences" class="hint"></p>
+        <button id="reset-open" type="button" class="secondary">Reset to default</button>
+      </div>
+      <div id="reset-confirm" class="confirm" role="alertdialog" aria-modal="false"
+           aria-labelledby="reset-question" hidden>
+        <p id="reset-question">Discard the current changes and restore this audience's default?
+        Generated reports and saved snapshots are kept.</p>
+        <div class="buttons">
+          <button id="reset-confirm-yes" type="button" class="danger">Reset copy</button>
+          <button id="reset-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+      <p class="hint">Include the sections the report should show, and set their order. Required
+      sections stay in every report so readers keep the limitations and the evidence.</p>
+      <ul id="blocks" class="blocks" aria-label="Report sections"></ul>
+      <p class="digest">Last renderable recipe <code id="renderable-digest">—</code>
+        <span id="pending-note" class="hint"></span></p>
+    </details>
+    <p id="edit-status" class="status" role="status"></p>
+  </section>
+
+  <section class="card" aria-labelledby="custom-title" id="custom-card" hidden>
+    <h2 id="custom-title">2. Report sections, in order
+      <span class="badge">Custom composition</span></h2>
+    <p class="hint">The same editor as the audience presets. Use the Include checkbox to keep a
+    section or set it aside: an excluded section keeps its settings and can be restored. Checking
+    a section that is not in the report yet adds it, and required sections stay in every
+    report.</p>
+    <div id="custom-repair" class="confirm" role="alert" hidden>
+      <p id="custom-repair-text"></p>
+      <div class="buttons">
+        <button id="custom-repair-yes" type="button" class="secondary">Repair draft</button>
+      </div>
+    </div>
+    <ol id="custom-blocks" class="blocks blocks--custom" aria-label="Custom report sections"></ol>
+    <p id="custom-empty" class="hint" hidden></p>
+
+    <div id="custom-pending-wrap" hidden>
+      <h3 class="subhead">Waiting for a choice</h3>
+      <p class="hint">These sections are not part of the saved composition yet, so Generate stays
+      disabled until each one is complete or discarded.</p>
+      <ul id="custom-pending" class="blocks blocks--pending"></ul>
+    </div>
+
+    <div class="editor-bar">
+      <p id="custom-ready" class="chip" role="status"></p>
+      <button id="custom-reset-open" type="button" class="secondary">Reset custom composition</button>
+    </div>
+    <div id="custom-reset-confirm" class="confirm" role="alertdialog" aria-modal="false"
+         aria-labelledby="custom-reset-question" hidden>
+      <p id="custom-reset-question">Discard this context's custom composition and start again from
+      the initial sections? Other data contexts, audience drafts and generated reports are kept.</p>
+      <div class="buttons">
+        <button id="custom-reset-yes" type="button" class="danger">Reset custom composition</button>
+        <button id="custom-reset-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+    <p id="custom-blocking" class="status error" role="alert" hidden></p>
+    <p id="custom-status" class="status" role="status"></p>
+    <p class="digest">Saved composition <code id="custom-digest">—</code>
+      <span id="custom-pending-note" class="hint"></span></p>
+  </section>
+
+  <section class="card report-region" id="report" tabindex="-1"
+           aria-labelledby="report-title">
+    <h2 id="report-title">3. Report</h2>
+    <p><a id="open-report" href="#" target="_blank" rel="noopener" hidden>Open report
+      separately</a></p>
+    <div class="frame-wrap">
+      <iframe id="report-frame" title="Generated report preview" hidden></iframe>
+    </div>
+    <p id="report-empty" class="status">No report is currently displayed.</p>
+  </section>
+
+  <section class="card" aria-labelledby="data-title">
+    <h2 id="data-title">Saved reports</h2>
+    <div class="saved-toolbar">
+      <label class="saved-scope" for="saved-scope">Scope
+        <select id="saved-scope">
+          <option value="mode" selected>This mode</option>
+          <option value="all">All reports</option>
+        </select>
+      </label>
+      <span id="saved-total" class="hint"></span>
+    </div>
+    <p class="hint">Every report below is a separate, immutable generation. Opening or resetting
+    never replaces an earlier one. A report stays openable even when its settings no longer match
+    the editor.</p>
+    <div class="saved-scroll">
+      <ul id="saved-list" class="saved"></ul>
+      <p id="saved-empty" class="hint" hidden>No reports generated yet.</p>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="locations-title">
+    <h2 id="locations-title">Data and source locations</h2>
+    <details id="data" class="diag">
+      <summary>Paths and managed copies</summary>
+      <p id="data-paths" class="hint">Open this to read the locations.</p>
+      <p class="hint">A managed copy is the per-audience working copy the editor writes; it is
+      not a published report and contains no generated output.</p>
+      <div id="custom-drafts" class="custom-drafts"></div>
+    </details>
+  </section>
+  </div><!-- /health-panel -->
+
+  <div id="csv-panel" hidden>
+  <section class="card" aria-labelledby="csv-upload-title">
+    <h2 id="csv-upload-title">1. Dataset</h2>
+    <div id="csv-dataset-header" class="dataset-header" hidden></div>
+    <div class="dataset-toolbar">
+      <h3 class="subhead" id="csv-datasets-title">Captured datasets</h3>
+      <button id="csv-datasets-toggle" type="button" class="link-button"
+        aria-expanded="false" aria-controls="csv-datasets" hidden>Show all datasets</button>
+    </div>
+    <div class="route-choice" id="csv-datasets" aria-labelledby="csv-datasets-title"></div>
+
+    <div id="csv-preview-block" class="preview-block" hidden>
+      <h3 class="subhead">Structural preview</h3>
+      <p id="csv-preview-summary" class="hint"></p>
+      <div id="csv-preview-wrap" class="csv-preview-scroll" tabindex="0"
+           role="region" aria-label="Structural preview of the captured table">
+        <div id="csv-preview" class="csv-preview"></div>
+      </div>
+      <p id="csv-preview-note" class="hint"></p>
+    </div>
+
+    <details id="csv-setup-details" class="setup-fold">
+    <summary>Upload a table</summary>
+    <p class="hint">CSV or TSV, UTF-8. One column is read as the group, one numeric column as the
+    measure, and optionally one column as the time. The file is captured once and never re-read;
+    nothing is generated until you ask for it.</p>
+    <form id="csv-upload-form">
+      <div class="csv-upload">
+        <input id="csv-file" type="file" name="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
+      </div>
+      <p id="csv-upload-error" class="csv-problems" role="alert" hidden></p>
+      <div class="buttons">
+        <button id="csv-upload-button" type="submit" class="primary">Capture table</button>
+      </div>
+    </form>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="csv-confirm-title" id="csv-confirm-card" hidden>
+    <h2 id="csv-confirm-title">2. Interpretation</h2>
+    <div id="csv-passport" class="csv-passport"></div>
+    <details id="csv-interpretation-details" class="setup-fold">
+      <summary>Review or change how the table is read</summary>
+      <div id="csv-confirm"></div>
+      <p id="csv-confirm-status" class="status" role="status"></p>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="csv-disclosure-title" id="csv-disclosure-card" hidden>
+    <h2 id="csv-disclosure-title">3. Disclosure</h2>
+    <p id="csv-disclosure-summary" class="disclosure-summary">No disclosure policy chosen yet.</p>
+    <p id="csv-disclosure-warning" class="hint" hidden></p>
+    <p><button id="csv-disclosure-toggle" type="button" class="ghost" aria-expanded="false"
+      aria-controls="csv-disclosure-more">Change disclosure</button></p>
+    <div id="csv-disclosure-more" hidden>
+      <p class="hint">This choice is part of the saved request: it decides what the generated
+      report and its evidence files contain, and the replay command reproduces it exactly.</p>
+      <fieldset id="csv-disclosure" class="disclosure-choice">
+        <legend class="visually-hidden">Disclosure policy</legend>
+      </fieldset>
+      <div id="csv-disclosure-detail" class="disclosure-detail"></div>
+    </div>
+    <p id="csv-disclosure-conflicts" class="status error" role="alert" hidden></p>
+  </section>
+
+  <section class="card" aria-labelledby="csv-compose-title" id="csv-compose-card" hidden>
+    <h2 id="csv-compose-title">4. Sections</h2>
+    <p class="hint">Include the sections the report should show and set their order. Required
+    sections stay in every report. An excluded section is removed from this saved composition and
+    can be added back from the list below.</p>
+    <ul id="csv-blocks" class="blocks blocks--custom" aria-label="Your CSV report sections"></ul>
+    <p id="csv-blocking" class="status error" role="alert" hidden></p>
+    <div class="editor-bar">
+      <p id="csv-ready" class="chip" role="status"></p>
+      <button id="csv-generate" type="button" class="primary" disabled>Generate report</button>
+    </div>
+    <p id="csv-generate-status" class="status" role="status"></p>
+    <p class="digest">Saved composition <code id="csv-digest">—</code></p>
+  </section>
+
+  <section class="card report-region" id="csv-report" tabindex="-1" aria-labelledby="csv-report-title">
+    <h2 id="csv-report-title">5. Report</h2>
+    <p class="report-actions">
+      <a id="csv-open-report" href="#" target="_blank" rel="noopener" hidden>Open report
+        separately</a>
+      <button id="csv-sources" type="button" class="ghost" disabled>Data &amp; sources</button>
+    </p>
+    <div class="frame-wrap">
+      <iframe id="csv-report-frame" title="Your CSV report preview" hidden></iframe>
+    </div>
+    <p id="csv-report-empty" class="status">No report generated yet for this dataset.</p>
+    <details class="diag"><summary>Reproduction details</summary>
+      <p class="digest">Replay command
+        <code id="csv-replay-command">Generate a report to see its replay command.</code></p>
+    </details>
+  </section>
+  <section class="card" id="csv-history-card" aria-labelledby="csv-history-title" hidden>
+    <h2 id="csv-history-title">Previously generated reports</h2>
+    <p class="hint">Reports already generated for this captured dataset. Open one without
+    rendering again, check it, copy its settings, or read its data and sources.</p>
+    <ul id="csv-history" class="saved" aria-label="Previously generated reports"></ul>
+    <p id="csv-history-empty" class="hint" hidden>No reports generated for this dataset yet.</p>
+    <p id="csv-history-status" class="status" role="status"></p>
+    <div id="csv-copy-confirm" class="confirm-bar" hidden>
+      <p id="csv-copy-confirm-text"></p>
+      <button id="csv-copy-confirm-yes" type="button">Copy anyway</button>
+      <button id="csv-copy-confirm-no" type="button" class="ghost">Cancel</button>
+    </div>
+  </section>
+  </div><!-- /csv-panel -->
+
+  <section class="card sources-panel" id="sources-panel" role="dialog" aria-modal="false"
+           aria-labelledby="sources-title" hidden>
+    <div class="sources-head">
+      <h2 id="sources-title">Data &amp; sources</h2>
+      <button id="sources-close" type="button" class="ghost">Close</button>
+    </div>
+    <p class="hint" id="sources-note"></p>
+    <p id="sources-status" class="status" role="status"></p>
+    <div id="sources-body"></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Preview only. A failed generation leaves the report already on screen unchanged. Stop with
+  Ctrl+C in the terminal running the service.</p>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

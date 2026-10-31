@@ -32,6 +32,33 @@ def run(project):
     dest=out/'bundle';analyse(out,cfg,classes,dest)
     return dest
 
+@pytest.fixture
+def scoped_project(tmp_path):
+    """Three-topic fixture: two viral (virus, virus2) and one bacterial, plus a catalogue-only topic."""
+    raw=tmp_path/'scoped-raw'; cfg=tmp_path/'scoped.json'; classes=tmp_path/'scoped-classes.csv'; out=tmp_path/'scoped-out'
+    for topic,scale in [('virus',1),('virus2',2),('bacterium',3)]:
+        p=raw/topic;p.mkdir(parents=True)
+        meta={'metaVariables':{'topic':topic,'source':'mandatory_reporting_system','valueCategory':{'column':'valueCategory'}},
+              'temporalVariables':{'column':'temporal','typeColumn':'temporal_type'},
+              'groupingVariables':{'georegion':{'column':'georegion','typeColumn':'georegion_type','allValue':'all'},'sex':{'column':'sex','allValue':'all'}},
+              'valueVariables':{'value':{},'pop':{}},'entryVariables':{'dataComplete':{}}}
+        (p/'metadata.json').write_text(json.dumps(meta))
+        pd.DataFrame([dict(valueCategory='cases',temporal=str(y),temporal_type='year',georegion='CHFL',georegion_type='CHFL',sex='all',value=(y-2009)*scale,pop=100000,dataComplete='TRUE') for y in YEARS]).to_csv(p/'data.csv',index=False)
+    template=Path(__file__).resolve().parents[1]/'scripts/health_pipeline/config/stakeholders/public_health_expert.json'
+    c=json.loads(template.read_text());c.update(id='scoped',exclude_from_group_totals=[],sensitivity_exclude=[],dimension_filters={})
+    cfg.write_text(json.dumps(c))
+    classes.write_text('topic,pathogen_class,label\nvirus,viral,Virus\nvirus2,viral,Virus 2\nbacterium,bacterial,Bacterium\naids,viral,AIDS (catalogue only)\n')
+    harmonise([str(raw),'--out',str(out)]);validate(out)
+    return raw,out,cfg,classes
+
+def mutate_cfg(project, **changes):
+    p=project[2];c=json.loads(p.read_text());c.update(changes);p.write_text(json.dumps(c));return c
+
+def run_scoped(project, dest='bundle'):
+    raw,out,cfg,classes=project
+    target=out/dest;analyse(out,cfg,classes,target)
+    return target
+
 def edit_csv(project,fn,topic='virus'):
     p=project[0]/topic/'data.csv';fn(pd.read_csv(p)).to_csv(p,index=False)
 
@@ -272,3 +299,97 @@ def test_invalid_presentation_config(project, presentation):
 
     with pytest.raises(ValueError, match="Invalid stakeholder setting"):
         load_config(path)
+
+
+# --- explicit report-level topic scope -------------------------------------
+
+def series_topics(bundle):
+    return sorted(set(pd.read_csv(bundle / 'series.csv').topic))
+
+
+def test_scope_fields_omitted_preserve_existing_selection(scoped_project):
+    bundle = run_scoped(scoped_project, 'omitted')
+    cfg = json.loads((bundle / 'stakeholder.json').read_text())
+    assert 'include_topics' not in cfg and 'exclude_topics' not in cfg
+    assert series_topics(bundle) == ['bacterium', 'virus', 'virus2']
+    selection = pd.read_csv(bundle / 'selection.csv')
+    assert set(selection[selection.status == 'included'].topic) == {'bacterium', 'virus', 'virus2'}
+
+
+def test_include_topics_narrows_selection(scoped_project):
+    mutate_cfg(scoped_project, include_topics=['virus', 'bacterium'])
+    bundle = run_scoped(scoped_project, 'included')
+    assert series_topics(bundle) == ['bacterium', 'virus']
+    selection = pd.read_csv(bundle / 'selection.csv')
+    virus2 = selection[selection.topic == 'virus2']
+    assert set(virus2.status) == {'excluded'}
+    assert 'Not in include_topics report scope' in set(virus2.reason)
+
+
+def test_global_exclude_differs_from_group_total_exclusion(scoped_project):
+    mutate_cfg(scoped_project, exclude_from_group_totals=['virus2'])
+    grouped = run_scoped(scoped_project, 'group-exclusion')
+    assert 'virus2' in series_topics(grouped)
+    metrics = pd.read_csv(grouped / 'metrics.csv').set_index('metric_id')
+    inputs = json.loads(metrics.loc['viral:main:2019:total', 'inputs_json'])
+    assert 'virus:2019:count' in inputs and 'virus2:2019:count' not in inputs
+
+    mutate_cfg(scoped_project, exclude_from_group_totals=[], exclude_topics=['virus2'])
+    global_exclusion = run_scoped(scoped_project, 'global-exclusion')
+    assert 'virus2' not in series_topics(global_exclusion)
+    selection = pd.read_csv(global_exclusion / 'selection.csv')
+    assert 'Excluded by exclude_topics report scope' in set(selection[selection.topic == 'virus2'].reason)
+
+
+def test_contradictory_and_malformed_scope_configs_rejected(scoped_project):
+    cfg = mutate_cfg(scoped_project, include_topics=['virus'], exclude_topics=['virus'])
+    with pytest.raises(ValueError, match='Contradictory topic scope'):
+        load_config(scoped_project[2])
+
+    for changes in ({'include_topics': ['virus', 'virus']},
+                    {'include_topics': []},
+                    {'include_topics': ['Virus!']}):
+        mutate_cfg(scoped_project, **changes)
+        with pytest.raises(ValueError):
+            load_config(scoped_project[2])
+
+
+def test_topic_outside_supported_catalogue_rejected(scoped_project):
+    mutate_cfg(scoped_project, include_topics=['not_a_topic'])
+    load_config(scoped_project[2])
+    with pytest.raises(ValueError, match='not in supported topic catalogue'):
+        run_scoped(scoped_project, 'unknown-topic')
+
+
+def test_catalogue_topic_absent_from_snapshot_fails_explicitly(scoped_project):
+    mutate_cfg(scoped_project, include_topics=['aids'])
+    with pytest.raises(ValueError, match=r'Requested include_topics not fulfilled: aids: no input dataset'):
+        run_scoped(scoped_project, 'absent-topic')
+
+
+def test_supported_but_incomplete_requested_topic_reports_reason(scoped_project):
+    p = scoped_project[0] / 'virus2' / 'data.csv'
+    data = pd.read_csv(p)
+    data[data.temporal != 2019].to_csv(p, index=False)
+    harmonise([str(scoped_project[0]), '--out', str(scoped_project[1])])
+    validate(scoped_project[1])
+    mutate_cfg(scoped_project, include_topics=['virus', 'virus2', 'bacterium'])
+    with pytest.raises(ValueError, match=r'Requested include_topics not fulfilled: virus2: 2019: missing'):
+        run_scoped(scoped_project, 'incomplete-topic')
+
+
+def test_reference_and_base_years_outside_window_remain_required(scoped_project):
+    mutate_cfg(scoped_project, years=[2022, 2024], reference_year=2019, index_base_year=2019)
+    bundle = run_scoped(scoped_project, 'window')
+    assert sorted(set(pd.read_csv(bundle / 'series.csv').year)) == [2019, 2022, 2023, 2024]
+
+    mutate_cfg(scoped_project, reference_year=2018, index_base_year=2018,
+               include_topics=['virus', 'virus2', 'bacterium'])
+    with pytest.raises(ValueError, match=r'2018: missing annual value or 12 distinct months'):
+        run_scoped(scoped_project, 'missing-reference')
+
+
+def test_narrowed_scope_cannot_leave_required_group_empty(scoped_project):
+    mutate_cfg(scoped_project, include_topics=['bacterium'])
+    with pytest.raises(ValueError, match=r'No eligible members for viral/main after report scope \(include_topics'):
+        run_scoped(scoped_project, 'empty-group')

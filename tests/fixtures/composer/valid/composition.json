@@ -1,0 +1,5 @@
+{
+  "contract": "health-report/composer-composition/1",
+  "composition_id": "comp-0001",
+  "instances": ["cmp-0001", "cmp-0002"]
+}

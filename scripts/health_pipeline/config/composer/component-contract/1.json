@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "health-report/composer-component/1",
+  "title": "Composer contracts for one reference-comparison block, version 1",
+  "description": "Structural contract only. Semantic agreement with a saved bundle, filesystem resolution and numerical verification are separate layers.",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{2,39}$"
+    },
+    "artifact_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "metric_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(?::[a-z0-9_]+)+$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "period_type",
+        "years",
+        "reference_year",
+        "index_base_year",
+        "geography",
+        "measures_preferred",
+        "compare_by",
+        "classes_in_main_comparison",
+        "exclude_from_group_totals",
+        "sensitivity_exclude",
+        "source_priority",
+        "group_source_systems",
+        "dimension_filters"
+      ],
+      "properties": {
+        "period_type": { "type": "string" },
+        "years": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "integer" }
+        },
+        "reference_year": { "type": "integer" },
+        "index_base_year": { "type": "integer" },
+        "geography": { "enum": ["CH", "CHFL"] },
+        "measures_preferred": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["cases", "consultations"] }
+        },
+        "compare_by": { "type": "string" },
+        "classes_in_main_comparison": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["viral", "bacterial"] }
+        },
+        "exclude_from_group_totals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "include_topics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude_topics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sensitivity_exclude": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_priority": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "group_source_systems": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "dimension_filters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["values", "reason"],
+            "properties": {
+              "values": { "type": "object" },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "code_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": { "$ref": "#/$defs/artifact_path" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "instance_id",
+        "component",
+        "analysis",
+        "bindings",
+        "plotted",
+        "presentation",
+        "disclosure"
+      ],
+      "properties": {
+        "contract": { "const": "health-report/composer-component/1" },
+        "instance_id": { "$ref": "#/$defs/identifier" },
+        "component": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "version"],
+          "properties": {
+            "type": { "const": "reference-comparison" },
+            "version": { "const": "1" }
+          }
+        },
+        "analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["snapshot_id", "scope"],
+          "properties": {
+            "snapshot_id": { "$ref": "#/$defs/sha256" },
+            "scope": { "$ref": "#/$defs/scope" }
+          }
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reference_count", "latest_count", "result"],
+          "properties": {
+            "reference_count": { "$ref": "#/$defs/metric_id" },
+            "latest_count": { "$ref": "#/$defs/metric_id" },
+            "result": { "$ref": "#/$defs/metric_id" }
+          }
+        },
+        "plotted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "rows", "digest"],
+          "properties": {
+            "file": { "$ref": "#/$defs/artifact_path" },
+            "rows": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["topic", "year"],
+                "properties": {
+                  "topic": { "type": "string", "minLength": 1 },
+                  "year": { "type": "integer" }
+                }
+              }
+            },
+            "digest": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "presentation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit"],
+          "properties": {
+            "unit": { "const": "percent" },
+            "digits": { "type": "integer", "minimum": 0, "maximum": 6 }
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["distribution"],
+          "properties": {
+            "initial": { "enum": ["collapsed", "expanded"] },
+            "distribution": { "enum": ["public", "restricted"] }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "instance_id",
+        "inputs",
+        "calculation",
+        "results",
+        "implementation",
+        "reproduction"
+      ],
+      "properties": {
+        "contract": { "const": "health-report/composer-evidence/1" },
+        "instance_id": { "$ref": "#/$defs/identifier" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metric_ids"],
+          "properties": {
+            "metric_ids": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "$ref": "#/$defs/metric_id" }
+            }
+          }
+        },
+        "calculation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method_id", "method_version", "formula", "parameters"],
+          "properties": {
+            "method_id": { "const": "percent_reference_change" },
+            "method_version": { "const": "1" },
+            "formula": { "const": "percent_change" },
+            "parameters": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reference_year", "latest_year", "measure"],
+              "properties": {
+                "reference_year": { "type": "integer" },
+                "latest_year": { "type": "integer" },
+                "measure": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "results": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metric_id", "value", "unit", "availability"],
+          "properties": {
+            "metric_id": { "$ref": "#/$defs/metric_id" },
+            "value": { "type": ["number", "null"] },
+            "unit": { "const": "percent" },
+            "availability": { "enum": ["available", "unavailable"] },
+            "unavailable_reason": { "enum": ["non_positive_baseline", null] }
+          }
+        },
+        "implementation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["analysis", "presentation"],
+          "properties": {
+            "analysis": { "$ref": "#/$defs/code_reference" },
+            "presentation": { "$ref": "#/$defs/code_reference" },
+            "contracts": { "$ref": "#/$defs/code_reference" },
+            "binding": { "$ref": "#/$defs/code_reference" },
+            "schema": { "$ref": "#/$defs/code_reference" }
+          }
+        },
+        "reproduction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entry_point"],
+          "properties": {
+            "entry_point": { "type": "string", "minLength": 1 },
+            "snapshot_id": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "composition_id", "instances"],
+      "properties": {
+        "contract": { "const": "health-report/composer-composition/1" },
+        "composition_id": { "$ref": "#/$defs/identifier" },
+        "instances": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/identifier" }
+        }
+      }
+    }
+  }
+}

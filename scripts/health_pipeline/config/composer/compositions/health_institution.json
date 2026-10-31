@@ -1,0 +1,12 @@
+{
+  "contract": "health-report/composition-recipe/2",
+  "audience": "health_institution",
+  "blocks": [
+    { "block": "intro", "instance_id": "hi-intro-0001" },
+    { "block": "monitoring-overview", "instance_id": "hi-monitoring-overview" },
+    { "block": "series-collection", "instance_id": "hi-series-collection", "topics": "eligible", "measure": "cases", "presentation": { "style": "compact", "default_topic": "campylobacteriosis" } },
+    { "block": "reference-comparison", "instance_id": "hi-reference-0001", "topic": "campylobacteriosis" },
+    { "block": "limitations", "instance_id": "hi-limitations-0001" },
+    { "block": "reproduction", "instance_id": "hi-reproduction-0001" }
+  ]
+}
