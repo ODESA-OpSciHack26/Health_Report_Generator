@@ -105,6 +105,6 @@ def test_checked_in_example_request_pins_exact_bytes():
 
 
 def test_documented_paths_exist():
-    for name in ["docs/m4-tabular-reproduction.md", "docs/m4-browser-review.md",
-                 "scripts/health_pipeline/evidence_archive.py"]:
+    for name in ["docs/report-generation.md", "docs/reproducibility.md",
+                 "docs/troubleshooting.md", "scripts/health_pipeline/evidence_archive.py"]:
         assert (ROOT / name).is_file()

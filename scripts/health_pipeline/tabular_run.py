@@ -37,8 +37,7 @@ def load_request(path):
     return request
 
 
-def run_tabular(source, request, destination, *, quarto="quarto", renderer="r",
-                source_identity_path=None):
+def run_tabular(source, request, destination, *, quarto="quarto", renderer="r"):
     """Publish one complete three-audience result, without replacing outputs.
 
     A missing output parent is created only after request/input validation.
@@ -61,7 +60,7 @@ def run_tabular(source, request, destination, *, quarto="quarto", renderer="r",
     try:
         bundle = bundles.publish_prepared_bundle(prepared, scratch / "input-bundle")
         reports = render_tabular_reports(bundle, scratch / "reports", quarto=quarto, report_options=request.get("report"),
-                                         renderer=renderer, source_identity_path=source_identity_path)
+                                         renderer=renderer)
         verify_tabular_reports(reports)
         bundles._rename_no_replace(reports, destination)
     finally:
@@ -78,8 +77,8 @@ def main(argv=None):
     build.add_argument("--request", required=True)
     build.add_argument("--output", required=True)
     build.add_argument("--quarto", default="quarto")
-    build.add_argument("--renderer", choices=("r", "python"), default="r")
-    build.add_argument("--source-identity")
+    build.add_argument("--renderer", choices=("r",), default="r",
+                       help="Report renderer; only the R/Quarto path is supported")
     verify = commands.add_parser("verify", help="Verify an existing report set")
     verify.add_argument("--output", required=True)
     verify.add_argument("--verify-source", action="store_true",
@@ -88,8 +87,7 @@ def main(argv=None):
     try:
         if args.action == "build":
             run_tabular(args.input, args.request, args.output, quarto=args.quarto,
-                        renderer=args.renderer,
-                        source_identity_path=args.source_identity)
+                        renderer=args.renderer)
             print("Prepared and verified HTML reports published for all three audiences.")
         else:
             verify_tabular_reports(args.output, verify_source=args.verify_source)

@@ -1588,7 +1588,7 @@ def render(bundle, output, fmt, quarto="quarto", provenance=None, provenance_out
                     'rendering_command':'python scripts/health_pipeline/publish.py html --bundle <published-saved-bundle>/data --output <output-dir>/report.html --provenance <output-dir>/provenance.json --composition <package>/reproduction/composition.json --data-root <original-snapshot-root>/snapshots/<snapshot-id> --workflow-config <retained-checkout>/workflow/config.yaml',
                     'placeholder_note':'Angle-bracketed values are required inputs to supply; they are not contained in this package.',
                     'required_inputs':['retained source checkout','published saved bundle (data/ files listed in bundle.json)','original snapshot root containing snapshots/<snapshot-id>','writable output directory'],
-                    'original_analysis':{'retained_instructions':['README.md','GETTING_STARTED.md','Snakefile in the retained checkout'],'workflow_config':'workflow/config.yaml'},
+                    'original_analysis':{'retained_instructions':['README.md','docs/installation.md','Snakefile in the retained checkout'],'workflow_config':'workflow/config.yaml'},
                     'integrity_example':'verify data/ digests against bundle.json; inspection only, not production replay',
                     'recipe_file':'reproduction/composition.json',
                     'recipe_sha256':digest(composition),

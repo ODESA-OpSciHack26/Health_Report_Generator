@@ -1,4 +1,9 @@
-"""Opt-in verified tabular HTML reports from the canonical shared QMD."""
+"""Opt-in verified tabular HTML reports from the canonical shared QMD.
+
+Reports are rendered by the R/Quarto path only. Artifacts produced by the retired
+Python pilot renderer (schema ``health-report/tabular-render/2``) can still be
+integrity-verified offline; their source cannot be verified from this checkout.
+"""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +20,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import tabular_bundle as bundles
-import source_identity
 from tabular_describe import describe, normalize_report_options
 
 HERE = Path(__file__).resolve().parent
@@ -25,12 +29,6 @@ SCHEMA = "health-report/tabular-render/1"
 SCHEMA_V2 = "health-report/tabular-render/2"
 EMBED = re.compile(r'<script type="application/json" id="report-provenance">(.*?)</script>', re.S)
 HELPERS = ("report_helpers.R", "audience_reports.R", "tabular_report.R", "tabular_charts.R", "dashboard.css")
-PILOT_FILES = ("pilot_document.py", "pilot_charts.py", "tabular_python.py",
-               "tabular_render.py", "tabular_run.py", "tabular_bundle.py",
-               "tabular_prepare.py", "tabular_input.py", "tabular_describe.py",
-               "source_identity.py")
-PILOT_LOCK = HERE / "requirements.pilot.lock.txt"
-BASE_LOCK = HERE / "requirements.lock.txt"
 
 
 def _hash(path):
@@ -43,61 +41,6 @@ def _sources():
     paths += [HERE / "templates" / name for name in HELPERS]
     paths += [HERE / "config/stakeholders" / f"{audience}.json" for audience in AUDIENCES]
     return {path.relative_to(PROJECT).as_posix(): _hash(path) for path in paths}
-
-
-def _pilot_sources():
-    paths = [HERE / name for name in PILOT_FILES]
-    paths.append(HERE / "templates" / "dashboard.css")
-    paths += [HERE / "config/stakeholders" / f"{audience}.json" for audience in AUDIENCES]
-    return {path.relative_to(PROJECT).as_posix(): _hash(path) for path in paths}
-
-
-def _matplotlib_version():
-    try:
-        import importlib.metadata as metadata
-        return metadata.version("matplotlib")
-    except Exception as exc:  # explicit: the Python renderer requires its pilot environment
-        raise ValueError(
-            "the Python tabular renderer requires matplotlib from the frozen pilot "
-            "environment; use --renderer r or install requirements.pilot.lock.txt") from exc
-
-
-def _pilot_software(quarto):
-    return {"python": platform.python_version(),
-            "quarto": _tool_version([quarto, "--version"]),
-            "matplotlib": _matplotlib_version(),
-            "R": "not used"}
-
-
-def _pilot_environment():
-    return {"base_lock": BASE_LOCK.name, "base_lock_sha256": _hash(BASE_LOCK),
-            "pilot_lock": PILOT_LOCK.name if PILOT_LOCK.is_file() else None,
-            "pilot_lock_sha256": _hash(PILOT_LOCK) if PILOT_LOCK.is_file() else None,
-            "python": platform.python_version(), "matplotlib": _matplotlib_version(),
-            "note": ("experimental pilot environment derived from the production lock; "
-                     "not a production resolution")}
-
-
-def _record_python(prepared, snapshot, audience, profile, software, code, analysis,
-                   identity, environment):
-    record = _record_base(prepared, snapshot, audience, profile, software, code)
-    record["schema"] = SCHEMA_V2
-    record["output"] = {"format": "html",
-                        "documents": ["report.html", "methods.html"],
-                        "template": "health-report/tabular-python/2"}
-    record["descriptive_analysis"] = {
-        "schema": analysis["schema"], "path": "../analysis.json",
-        "sha256": hashlib.sha256(bundles._json_bytes(analysis)).hexdigest(),
-        "policy": analysis["policy"]}
-    record["effective_parameters"]["report"] = analysis["parameters"]
-    record["limitations"][0] = ("No cross-category totals or category-period pooling; descriptive "
-                                "comparisons are not causal or clinical conclusions.")
-    record["code"] = {"source_identity": identity,
-                      "renderer": {"implementation": "python",
-                                   "entry_point": "scripts/health_pipeline/tabular_python.py",
-                                   "files": code},
-                      "environment": environment}
-    return record
 
 
 def _profile(audience):
@@ -269,7 +212,6 @@ def verify_tabular_reports(destination, *, verify_source=False):
     if captured["analysis.json"] != bundles._json_bytes(describe(prepared, report_options)):
         raise ValueError("Saved descriptive results differ from independently reproduced analysis.")
     version = manifest["schema"]
-    code = _sources() if version == SCHEMA else _pilot_sources()
     for audience in AUDIENCES:
         record = bundles._json_load(captured[f"{audience}/provenance.json"])
         try:
@@ -286,6 +228,7 @@ def verify_tabular_reports(destination, *, verify_source=False):
                     or software["python"] != platform.python_version()
                     or any(not isinstance(value, str) or not value for value in software.values())):
                 raise ValueError("Invalid recorded renderer software.")
+            code = _sources()
             expected_record = _record(prepared, snapshot, audience, _profile(audience),
                                       software, code, report_options)
             expected_record["rendered_at_utc"] = record["rendered_at_utc"]
@@ -301,17 +244,10 @@ def verify_tabular_reports(destination, *, verify_source=False):
             identity = (record.get("code") or {}).get("source_identity")
             _validate_identity_shape(identity)
             if verify_source:
-                environment = _pilot_environment()
-                expected_record = _record_python(prepared, snapshot, audience,
-                                                 _profile(audience), software, code,
-                                                 saved_analysis, identity, environment)
-                expected_record["rendered_at_utc"] = record["rendered_at_utc"]
-                if bundles._json_bytes(record) != bundles._json_bytes(expected_record):
-                    raise ValueError("Render provenance disagrees with the current checkout.")
-                current = source_identity.content_manifest(PROJECT)
-                if (identity["content"]["digest"] != current["digest"]
-                        or identity["content"]["count"] != current["count"]):
-                    raise ValueError("Recorded source content does not match the current checkout.")
+                raise ValueError(
+                    "v2 artifacts were produced by the retired Python pilot renderer; this R "
+                    "release verifies their artifact, bundle and provenance integrity only and "
+                    "cannot verify their source against this checkout")
         for name in ("report.html", "methods.html"):
             text = captured[f"{audience}/{name}"].decode("utf-8")
             matches = EMBED.findall(text)
@@ -323,75 +259,15 @@ def verify_tabular_reports(destination, *, verify_source=False):
     return manifest
 
 
-def _render_python_reports(prepared, destination, *, quarto, report_options,
-                           source_identity_path):
-    """Explicit Python candidate path; no R invocation and no fallback."""
-    import tabular_python  # imported only for the selected Python renderer
-
-    analysis = describe(prepared, report_options)
-    profiles = {audience: _profile(audience) for audience in AUDIENCES}
-    software = _pilot_software(quarto)
-    code = _pilot_sources()
-    identity = source_identity.resolve(PROJECT, source_identity_path)
-    environment = _pilot_environment()
-    stage = Path(tempfile.mkdtemp(prefix=f".{destination.name}.staging-", dir=destination.parent))
-    try:
-        snapshot = bundles.publish_prepared_bundle(prepared, stage / "bundle")
-        (stage / "analysis.json").write_bytes(bundles._json_bytes(analysis))
-        for audience in AUDIENCES:
-            profile = profiles[audience]
-            folder = stage / audience
-            folder.mkdir()
-            context = _context(prepared, profile, report_options)
-            context["audience"] = audience
-            record = _record_python(prepared, snapshot, audience, profile, software, code,
-                                    analysis, identity, environment)
-            (folder / "provenance.json").write_bytes(bundles._json_bytes(record))
-            with tempfile.TemporaryDirectory(prefix="health-tabular-python-") as work:
-                work = Path(work)
-                shutil.copyfile(HERE / "templates" / "dashboard.css", work / "dashboard.css")
-                (work / "provenance.json").write_bytes(bundles._json_bytes(record))
-                for document in ("report", "methods"):
-                    figures = {}
-                    tables = {}
-                    (work / f"{document}.qmd").write_text(
-                        tabular_python.quarto_document(context, document, record,
-                                                      figures=figures, tables=tables),
-                        encoding="utf-8")
-                    subprocess.run([quarto, "render", f"{document}.qmd", "--to", "html",
-                                    "--output", f"{document}.html"],
-                                   cwd=work, env=os.environ.copy(), check=True)
-                    result = work / f"{document}.html"
-                    if not result.is_file() or result.stat().st_size == 0:
-                        raise ValueError("Quarto returned without a nonempty document.")
-                    rendered = tabular_python.doc.restore_figures(
-                        result.read_text(encoding="utf-8"), figures)
-                    rendered = tabular_python.doc.restore_tables(rendered, tables)
-                    result.write_text(rendered, encoding="utf-8")
-                    shutil.copyfile(result, folder / result.name)
-        names = sorted(path.relative_to(stage).as_posix()
-                       for path in stage.rglob("*") if path.is_file())
-        manifest = {"schema": SCHEMA_V2, "artifacts": {
-            name: {"bytes": (stage / name).stat().st_size, "sha256": _hash(stage / name)}
-            for name in names}}
-        (stage / "render_manifest.json").write_bytes(bundles._json_bytes(manifest))
-        verify_tabular_reports(stage)
-        bundles._rename_no_replace(stage, destination)
-    finally:
-        if stage.exists():
-            shutil.rmtree(stage)
-    return destination
-
-
 def render_tabular_reports(bundle, destination, *, quarto="quarto", report_options=None,
-                           renderer="r", source_identity_path=None):
+                           renderer="r"):
     """Verify before Quarto, stage all three audiences, then publish as one set.
 
-    ``renderer='python'`` is the experimental pilot path. It is never selected implicitly and
-    never falls back to R; its dependency failure is an actionable error.
+    The R/Quarto renderer is the only supported implementation. There is no fallback:
+    any other renderer value is rejected explicitly.
     """
-    if renderer not in ("r", "python"):
-        raise ValueError(f"Unsupported tabular renderer: {renderer!r}")
+    if renderer != "r":
+        raise ValueError(f"Unsupported tabular renderer: {renderer!r}; only 'r' is supported")
     prepared = bundles.verify_prepared_bundle(bundle)
     report_options = normalize_report_options(report_options)
     destination = bundles._safe_path(destination)
@@ -399,12 +275,6 @@ def render_tabular_reports(bundle, destination, *, quarto="quarto", report_optio
         raise ValueError("A named output and existing parent are required.")
     if os.path.lexists(destination):
         raise FileExistsError(str(destination))
-    if renderer == "python":
-        return _render_python_reports(prepared, destination, quarto=quarto,
-                                      report_options=report_options,
-                                      source_identity_path=source_identity_path)
-    if source_identity_path:
-        raise ValueError("source identity is supported only with --renderer python")
     analysis = describe(prepared, report_options)
     profiles = {audience: _profile(audience) for audience in AUDIENCES}
     software = {"python": platform.python_version(),
@@ -465,10 +335,9 @@ if __name__ == "__main__":
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--quarto", default="quarto")
-    parser.add_argument("--renderer", choices=("r", "python"), default="r")
-    parser.add_argument("--source-identity")
+    parser.add_argument("--renderer", choices=("r",), default="r",
+                        help="Report renderer; only the R/Quarto path is supported")
     arguments = parser.parse_args()
     render_tabular_reports(arguments.bundle, arguments.output, quarto=arguments.quarto,
-                           renderer=arguments.renderer,
-                           source_identity_path=arguments.source_identity)
+                           renderer=arguments.renderer)
     print("Verified tabular HTML reports published for all three audiences.")

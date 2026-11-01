@@ -1,8 +1,0 @@
-# Experimental inputs for the R-free supplied-table pilot.
-#
-# Owner: the experiment/rfree-tabular-pilot branch. This is NOT a production resolution.
-# It is derived from the authoritative production lock and used only by
-# Dockerfile.report.pilot. Dockerfile.report, compose.yaml and production CI do not reference
-# it. The generated requirements.pilot.lock.txt is the frozen acceptance input.
--r requirements.lock.txt
-matplotlib==3.11.2

@@ -11,7 +11,7 @@ concurrency:
   group: validate-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 # Actions are pinned to full commit SHAs; Dependabot (.github/dependabot.yml) proposes updates.
-# Required status checks for main: fast, secrets, container, full (docs/phase-6-ci-hardening.md).
+# Required status checks for main: fast, secrets, container, full (docs/reproducibility.md).
 jobs:
   fast:
     name: fast
@@ -30,63 +30,11 @@ jobs:
       - name: Lint Python (Ruff)
         run: ruff check --output-format=github .
       - name: Python unit, schema and contract tests
-        # R presentation, report_runtime and quarto_runtime tests run with the
-        # complete suite in the report container.
-        run: python -m pytest -q --strict-markers --ignore=tests/test_tabular_presentation.py -m "not report_runtime and not quarto_runtime"
+        # R presentation and report_runtime tests run with the complete suite in
+        # the report container; the fast job installs only the declared lock.
+        run: python -m pytest -q --strict-markers --ignore=tests/test_tabular_presentation.py -m "not report_runtime"
       - name: Snakemake dry run
         run: snakemake --dry-run --cores 1
-
-  rfree-pilot:
-    name: rfree-pilot
-    needs: fast
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build R-free pilot image
-        run: docker build --file Dockerfile.report.pilot --tag health-report:rfree-ci .
-
-      - name: Verify R-free runtime
-        run: |
-          docker image inspect health-report:rfree-ci --format 'RFree image {{.Id}}'
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            --env HOME=/tmp \
-            --volume "$PWD:/app" \
-            --workdir /app \
-            health-report:rfree-ci sh -ec "
-              set -eu
-              command -v quarto
-              quarto --version
-              python --version
-              python -c 'import matplotlib; print(\"MATPLOTLIB\", matplotlib.__version__)'
-              if command -v Rscript >/dev/null 2>&1; then
-                echo 'Rscript must be absent from the rfree-pilot image' >&2
-                exit 1
-              fi
-            "
-
-      - name: Run mandatory quarto_runtime tests
-        run: |
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            --env HOME=/tmp \
-            --env PYTHONDONTWRITEBYTECODE=1 \
-            --volume "$PWD:/app" \
-            --workdir /app \
-            health-report:rfree-ci sh -ec "
-              python -m pytest -q -rs -m quarto_runtime --strict-markers \
-                -p no:cacheprovider --junitxml=/app/rfree-quarto-runtime.xml
-            "
-
-      - name: Enforce eight executed quarto_runtime tests
-        run: |
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            --volume "$PWD:/app" \
-            --workdir /app \
-            health-report:rfree-ci python scripts/ci/check_quarto_runtime.py /app/rfree-quarto-runtime.xml
 
   secrets:
     name: secrets
@@ -116,7 +64,7 @@ jobs:
             --env HOME=/tmp \
             --volume "$PWD:/app" \
             health-report:reports-ci \
-            sh -ec 'command -v Rscript >/dev/null; python -m pytest -q -m "not quarto_runtime"'
+            sh -ec 'command -v Rscript >/dev/null; python -m pytest -q -rs'
 
       - name: Report-runtime integration tests
         run: |

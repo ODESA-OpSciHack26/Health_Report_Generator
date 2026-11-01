@@ -9,7 +9,6 @@ import yaml
 
 from analyse import load_config
 from publish import build_provenance, package
-import render_selected
 from test_pipeline import project, run  # noqa: F401  (pytest fixture reuse)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,15 +107,6 @@ def test_provenance_record_contents(project):  # noqa: F811
     assert rec['rendered_at_utc'] and rec['software']['python']
     assert 'git_commit' in rec['code']
     json.dumps(rec, allow_nan=False)
-
-
-def test_selected_report_lineage_prefers_researcher_then_legacy(tmp_path):
-    for sid in ['public_health_expert', 'researcher']:
-        d = tmp_path / 'reports' / sid / 'data'
-        d.mkdir(parents=True)
-        (d / 'series.csv').write_text('x\n')
-        (d / 'selection.csv').write_text('x\n')
-        assert render_selected.lineage_bundle(tmp_path) == d
 
 
 def test_template_path_rename_changes_cache_code_identity(tmp_path):
