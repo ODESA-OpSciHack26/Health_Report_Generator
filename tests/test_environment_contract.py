@@ -22,7 +22,7 @@ def test_python_contract_is_aligned():
     project = tomllib.loads(text("pyproject.toml"))
     assert project["project"]["requires-python"] == supported
     assert f"python={validated}" in text("workflow/environment.yml")
-    assert f"FROM python:{validated}-slim" in text("Dockerfile")
+    assert f"uv python install {validated}" in text("Dockerfile.report")
     for workflow in WORKFLOWS:
         assert f'python-version: "{validated}"' in text(workflow).replace("'", '"')
 
@@ -31,7 +31,7 @@ def test_r_and_quarto_contract_is_aligned():
     r_version = CONTRACT["r"]["validated"]
     quarto_version = CONTRACT["quarto"]["validated"]
     assert f"r-base={r_version}" in text("workflow/environment.yml")
-    assert f"ARG QUARTO_VERSION={quarto_version}" in text("Dockerfile")
+    assert f"ARG QUARTO_VERSION={quarto_version}" in text("Dockerfile.report")
     for workflow in WORKFLOWS:
         content = text(workflow).replace("'", '"')
         assert f'r-version: "{r_version}"' in content
@@ -68,8 +68,6 @@ def test_workflow_branch_refs_are_main():
         content = text(workflow)
         assert "ref: main" in content
         assert "ref: connector" not in content
-    assert 'os.getenv("GITHUB_APP_REF", "main")' in text("src/ui.py")
-    assert 'os.getenv("GITHUB_APP_REF", "connector")' not in text("src/ui.py")
     assert "`connector` branch" not in text("CONNECTOR_SETUP.md")
 
 
@@ -79,7 +77,7 @@ def test_documentation_names_authoritative_contract():
 
 
 def test_uv_version_is_aligned():
-    assert f'ARG UV_VERSION={CONTRACT["uv"]["validated"]}' in text("Dockerfile")
+    assert f'ARG UV_VERSION={CONTRACT["uv"]["validated"]}' in text("Dockerfile.report")
 
 
 def test_canonical_data_root_is_used_everywhere_active():
@@ -109,12 +107,8 @@ def test_legacy_data_root_remains_removed_and_auditable():
     assert removal["unmapped_legacy_directories"] == 0
 
 
-def test_uv_lock_matches_declared_python_range():
-    """`uv sync --locked` (container smoke test) fails if the lock targets another Python range."""
+def test_project_metadata_does_not_define_a_second_runtime_resolution():
     project = tomllib.loads(text("pyproject.toml"))
-    lock = tomllib.loads(text("uv.lock"))
-    normalise = lambda spec: spec.replace(" ", "")  # uv writes ">=3.11.6, <3.12"
-    assert normalise(lock["requires-python"]) == normalise(project["project"]["requires-python"])
-    declared = {d.split(">")[0].split("=")[0].split("<")[0].strip().lower().replace("_", "-")
-                for d in project["project"]["dependencies"]}
-    assert declared <= {p["name"] for p in lock["package"]}
+    assert project["project"]["requires-python"] == CONTRACT["python"]["supported"]
+    assert project["project"]["dependencies"] == []
+    assert (ROOT / "scripts/health_pipeline/requirements.lock.txt").is_file()

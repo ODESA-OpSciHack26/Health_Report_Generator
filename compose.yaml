@@ -29,23 +29,3 @@ services:
       HOME: /tmp
       XDG_CACHE_HOME: /tmp/health-report-cache
     command: ["python", "src/sync_idd_exports.py"]
-
-  ui:
-    profiles: ["ui"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    working_dir: /app
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
-    volumes:
-      - .:/app
-      - ./.cache/uv:/tmp/uv-cache
-    environment:
-      UV_CACHE_DIR: /tmp/uv-cache
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
-      GITHUB_OWNER: ${GITHUB_OWNER:-LarsEBaumann}
-      GITHUB_REPO: ${GITHUB_REPO:-Health_Report_Generator}
-      GITHUB_APP_REF: ${GITHUB_APP_REF:-main}
-      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
-      GITHUB_WORKFLOW: ${GITHUB_WORKFLOW:-refresh-idd-data.yml}

@@ -1,28 +1,53 @@
-# Documentation index
+# User documentation
 
-## Active product plan
+This software generates audience-specific health reports and provides an
+experimental local CSV report composer. Use the instructions for the route you
+intend to run; the canonical health pipeline, supplied-table CLI and optional
+GitHub-backed interface are separate entry points.
 
-The authoritative forward plan is [Track B integration](integration-plan.md). The active integration branch is `integration/steward-ready-v1`. Track A is preserved at `m4/frozen-descriptive-reports`, commit `c72bd54f69300b8e79bb967c201529d48625ae45`. Use B0-B7 for current delivery stages; older M4/M5 labels describe their historical planning context. Surveillance remains a separately gated future extension.
+## Install and generate a first report
 
-- [Integration plan](integration-plan.md): end state, current capabilities, dependencies and preparation checklist.
-- [Contracts](integration-contracts.md): interpretation, selection, analysis, composition, evidence and publication responsibilities.
-- [Steward workspace](steward-workspace.md): source review, report composition and export experience.
-- [Inspectable blocks](decisions/inspectable-blocks.md): expandable data, calculations, analysis/render code and reproduction details beside each result.
-- [Acceptance](integration-acceptance.md): objective gates and evidence scope.
-- [Composer lane status](build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026):
-  what the isolated lane implements and locally accepts, with the requirement ledger
-  ([requirements.json](build/composer/requirements.json)); documentation only, not product promotion.
+- [Installation and setup](../GETTING_STARTED.md)
+- [Reproduce and verify reports](reproduction.md)
+- [Audience-specific reports](audiences.md)
 
-These describe target behavior unless explicitly identified as implemented. Committing a plan does not implement a composer, upload UI or evidence inspector.
+## Work with data
 
-## Existing executable routes
+- [Data sources, attribution and terms](../data/README.md)
+- [Supplied-table CLI](m4-tabular-reproduction.md)
+- [Descriptive tables and charts](m4-tabular-descriptive-visuals.md)
+- [Retired local reporting form](local-interface.md)
+- [Local CSV and health-report composer](composer.md)
 
-Use [setup](../GETTING_STARTED.md), [reproduction](reproduction.md), [canonical IDD architecture](architecture.md), [local form](local-interface.md), [supplied-table CLI](m4-tabular-reproduction.md), [descriptive visuals](m4-tabular-descriptive-visuals.md), [audiences](audiences.md), [dependency ownership](dependency-ownership.md) and [scientific policy](scientific-policy.md). The optional GitHub-backed interface has separate [connector setup](../CONNECTOR_SETUP.md).
+The local reporting form and optional GitHub-backed interface are not the
+experimental composer. See the composer guide for its separate entry point,
+access credential, runtime requirements and input-path limitations.
 
-The canonical route and explicitly mapped CSV/TSV CLI exist. The unified source-selection/mapping/composer workspace does not yet exist. Existing local and GitHub-backed forms are different interfaces.
+## Understand results and limitations
 
-## Historical and transitional guidance
+- [Methods and scientific policy](scientific-policy.md)
+- [Known limitations](limitations.md)
+- [Canonical health-pipeline architecture](architecture.md)
+- [Software environments and dependency locks](dependency-ownership.md)
 
-[Handover](handover.md), [repository map](repository-map.md) and [original composer notes](branch-notes/m5-report-composer.md) retain useful history but are being reconciled in B0. Where their milestone or integration-home statements conflict, the current integration plan governs. Do not rewrite historical test identities or infer a new run from a documentation update.
+Canonical health reports and generic CSV reports have different capabilities.
+Do not assume generic PDF/app support or universal spreadsheet compatibility.
+The CSV structural preview is limited to the first 100 rows and 20 columns;
+scrolling does not reveal additional records or columns.
 
-Phase records, migration JSON and `docs/evidence/` remain historical evidence. Preserve licences and attribution; current software terms are [MIT](../LICENSE), separate from [data terms](../data/README.md).
+## Retired GitHub-backed interface
+
+- [Connector setup](../CONNECTOR_SETUP.md)
+
+The connector UI is retired from this product tree. Its documentation link
+is retained as a retirement notice. GitHub credentials are not required for
+the standard local canonical reporting workflow.
+
+## Contribute and cite
+
+- [Contributor guidance](../CONTRIBUTING.md)
+- [Software licence](../LICENSE)
+- [Citation information](../CITATION.cff)
+
+Development plans and historical acceptance records are not user instructions.
+Their presence does not establish that a proposed feature is implemented.

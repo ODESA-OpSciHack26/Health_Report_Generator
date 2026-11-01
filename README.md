@@ -2,31 +2,26 @@
 
 One open Swiss data source, three audiences, one command. This project turns Federal Office of Public Health (FOPH) [Infectious Diseases Dashboard](https://www.idd.bag.admin.ch/) exports into interactive HTML reports for researchers, health institutions and the public. Shared Quarto source and audience parameter files retain machine-readable provenance, uncertainty and limitations. Built for the hackathon challenge One Data Source, Many Audiences.
 
-## Workflow preservation and development status
+## Available reporting routes
 
-The [mandatory data-workflow preservation policy](docs/workflow-preservation-policy.md) applies throughout every development stage. The [Track B plan](docs/integration-plan.md) describes the future unified workspace, not shipped UI behavior. Active integration is integration/steward-ready-v1; feature branches PR back there. Track A remains frozen. [Conflict dispositions](docs/b0-conflict-dispositions.md) distinguish current routes from historical guidance and targets. A policy document does not install CI enforcement or prove a new runtime pass.
+- Canonical health reports: generate three audience-specific reports from the
+  committed Swiss infectious-disease data using the quick start below.
+- [Experimental local composer](docs/composer.md): work with supported CSV inputs
+  or prepared health bundles through a separate local browser application.
+  Its runtime and input preparation requirements differ from the canonical route.
+- [Supplied-table CLI](docs/m4-tabular-reproduction.md): generate three HTML
+  reports from an explicitly mapped CSV/TSV.
+- Retired local and GitHub-backed forms: see the retirement notices below.
 
-## Composer status (experimental lane, 31 October 2026)
+The composer is experimental, not a production release. Its recorded local
+acceptance is scoped; it does not establish broad browser/accessibility acceptance,
+clinical validity or deployment readiness. Historical candidate identities and
+review scope remain in the [composer handoff](docs/build/composer/HANDOFF.md).
 
-A neutral CSV composer is implemented and **locally accepted** on the isolated `design/contracts`
-branch at commit `6ccc58177ccda018a3ff39efe9106ed965da5c65` ("Add neutral CSV composer with
-verified reuse and shared visual pass"): bounded upload, confirmed interpretation, explicit
-disclosure (local audit versus restricted share), presentation controls, report-bound
-"Data & sources", saved-report history, verified reuse and an edit-a-copy flow, plus a shared
-visual pass across both modes.
-
-This is **not** a product release and not promotion out of the isolated lane. The canonical IDD
-pipeline above is unchanged and remains the established product.
-
-Publication to the private experimental lane is complete for this candidate: PR #1 merged
-`design/contracts` into `build/composer` on 2026-10-31T21:28:53Z at merge commit
-`a1aab9b64586ddcecd38a80df93349ea054f044b`; the merged tree was verified identical to the accepted
-candidate `2bd1bed5150c5d620dfaba8c51dc32411b175050`. This is internal integration into the
-experimental lane only — product promotion, final combined acceptance, release and deployment have
-**not** occurred, and no browser/accessibility acceptance beyond the exercised desktop and narrow
-layouts has been given. Runtime test evidence remains local; the merge is not a fresh test run.
-Bounded-preview, paging and other accepted limitations are listed in the
-[build handoff](docs/build/composer/HANDOFF.md#9-current-candidate-and-status-31-october-2026).
+The [data-workflow preservation policy](docs/workflow-preservation-policy.md)
+continues to apply. Development targets and historical integration decisions are
+documented separately in the [integration plan](docs/integration-plan.md) and
+[conflict dispositions](docs/b0-conflict-dispositions.md).
 
 ## Quick start
 
@@ -43,7 +38,7 @@ docker compose build report
 docker compose run --rm report snakemake --cores 2
 ```
 
-For acceptance, check out the exact recorded candidate before testing. The report image uses Dockerfile.report; the optional connector UI uses Dockerfile. workflow/toolchain.json declares runtime versions. Builds read committed data/reference/ without fetching new IDD data. Acquisition is separate.
+For acceptance, check out the exact recorded candidate before testing. The report image uses Dockerfile.report; the former UI Dockerfile is retired. workflow/toolchain.json declares runtime versions. Builds read committed data/reference/ without fetching new IDD data. Acquisition is separate.
 
 Open results/reports/public/report.html. Keep each complete results/reports/<id>/ folder together for links/downloads. Verify:
 
@@ -103,9 +98,14 @@ This is presentation-only rendering: it re-renders saved bundles and does not re
 
 ## Local and GitHub-backed interfaces
 
-The optional [host-local Marimo form](docs/local-interface.md), for trusted Linux/WSL use, selects an audience/year range and invokes Docker plus the custom-report cache. It needs host uv and Docker Compose, but no GitHub account/token/fork/Actions. It offers three standard profiles plus the retained public-health-expert profile as custom reports.
+The [experimental local composer](docs/composer.md) has its own service,
+local access token and saved working state. It is separate from both
+retired Marimo forms described below. See its guide for launch requirements and
+current limitations.
 
-The [GitHub-backed Marimo interface](CONNECTOR_SETUP.md) is separate: it uses a fork, token and Actions; each request renders from scratch without the custom-report cache. Neither interface is the target unified upload/interpretation/composer workspace.
+The former [host-local Marimo form](docs/local-interface.md) is retired from this product tree. Use the experimental composer for supported browser workflows. The custom-report CLI and its cache remain available; retiring the form does not remove those services.
+
+The former [GitHub-backed Marimo interface](CONNECTOR_SETUP.md) is retired from this product tree. The selected-report CLI and workflow remain available independently. The experimental composer uses a local access credential, not a GitHub token.
 
 ## Custom reports
 
@@ -140,7 +140,7 @@ The default canonical workflow is unchanged. An explicitly mapped synthetic CSV 
 docker compose run --rm --no-deps report python scripts/health_pipeline/tabular_run.py build --input examples/tabular/observations.csv --request examples/tabular/request.json --output reproduced/tabular-example
 ```
 
-See [tabular reproduction](docs/m4-tabular-reproduction.md) for setup, checksum-pinned requests, outputs and verification, plus the [browser review checklist](docs/m4-browser-review.md). Current supported generic shape is one category, one measure and optional time in explicitly mapped CSV/TSV. No upload UI is enabled. Generic HTML does not imply PDF/apps. Guided interpretation, actual generic selection controls, multiple-measure/ungrouped extensions, dynamic composition and per-block inspectors remain staged targets.
+See [tabular reproduction](docs/m4-tabular-reproduction.md) for setup, checksum-pinned requests, outputs and verification, plus the [browser review checklist](docs/m4-browser-review.md). This supplied-table CLI supports one category, one measure and optional time in explicitly mapped CSV/TSV. It is a command-line route, not the browser upload workflow. See the [experimental composer guide](docs/composer.md) for that separate interface. Generic HTML does not imply PDF/app support, and capabilities must not be inferred across routes.
 
 ## Tests, provenance and release discipline
 
@@ -158,7 +158,7 @@ Tests cover scientific/QC boundaries, incomplete periods/baselines, denominators
 
 CI has fast, secrets, container and full gates; see [phase 6](docs/phase-6-ci-hardening.md). Release bundles are uploaded only after full checks succeed; CI does not deploy a production site. Failed builds can leave older reports: only a completed build and matching release.json define a release. Preserve earlier accepted artifacts separately. Historical green checks are not a test of a later merge commit.
 
-The production Python lock is scripts/health_pipeline/requirements.lock.txt; uv.lock covers optional Marimo/connector dependencies; renv.lock records R dependencies; workflow/toolchain.json governs runtime policy. workflow/environment.yml is a convenience environment, not another authoritative lock. See [dependency ownership](docs/dependency-ownership.md).
+The production Python lock is scripts/health_pipeline/requirements.lock.txt; renv.lock records R dependencies; workflow/toolchain.json governs runtime policy. workflow/environment.yml is a convenience environment, not another authoritative lock. See [dependency ownership](docs/dependency-ownership.md).
 
 ## Documentation and handover
 

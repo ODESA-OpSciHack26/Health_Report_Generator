@@ -85,3 +85,16 @@ def test_store_lookup_and_corruption(tmp_path):
 def test_incomplete_entry_is_a_miss(tmp_path):
     (tmp_path / "cache" / "k2").mkdir(parents=True)
     assert rc.lookup(tmp_path / "cache", "k2") is None
+
+
+def test_cache_version_separates_old_and_new_keys(tmp_path, monkeypatch):
+    request = write_request(tmp_path)
+    snapshot = make_snapshot(tmp_path, "version")
+    assert rc.CACHE_VERSION == "2"
+    current, parts = rc.request_key(request, snapshot)
+    assert parts["cache_version"] == "2"
+    assert "Dockerfile.report" in rc.TOOLCHAIN_FILES
+    assert all("requirements.ui" not in p for p in rc.TOOLCHAIN_FILES)
+    monkeypatch.setattr(rc, "CACHE_VERSION", "1")
+    historical_namespace, _ = rc.request_key(request, snapshot)
+    assert historical_namespace != current

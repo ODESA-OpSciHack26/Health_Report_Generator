@@ -14,9 +14,9 @@ Integration home: integration/steward-ready-v1. Focused branches start there and
 | data/reference/ | Canonical committed IDD inputs and publisher metadata |
 | scripts/health_pipeline/ | Verified analysis, tabular preparation, shared report source, publishing, cache and checks |
 | scripts/health_pipeline/config/stakeholders/ | Existing stakeholder configurations |
-| src/local_ui.py, src/local_report.py | Host-local form/adapter, custom cache and fixed profile choices; dynamic discovery remains a target |
-| src/ui.py, src/artifact_download.py, CONNECTOR_SETUP.md | Separate optional GitHub-backed connector without custom cache |
-| Dockerfile.report, Dockerfile, compose.yaml, lockfiles | Environment boundaries; changes require compatibility evidence |
+| src/composer_site.py, src/composer_web/ | Experimental local CSV and health-report composer; uses shared workspace and rendering services |
+| CONNECTOR_SETUP.md, docs/local-interface.md | Retirement notices for the former Marimo interfaces |
+| Dockerfile.report, compose.yaml, pipeline and R locks | Reporting environment; changes require compatibility evidence |
 | tests/, .github/workflows/ | Regression, container, release and CI gates |
 | docs/evidence/ | Historical validation records with preserved tested identities |
 
@@ -34,4 +34,4 @@ Phase records, migration/removal JSON and docs/evidence/ remain audit history, n
 
 Historical licence prose does not override today's MIT LICENSE or separate source-data terms. Handover records baseline acceptance, not combined-product completion.
 
-Health_Report_Generator-test/, scripts/health_pipeline/example_output/, design/report-mockups.html and configs/report.yml are historical/prototype/reference material unless explicitly selected. They are not evidence of a successful current render. Do not delete scientific policy, provenance, licences, audit manifests or validated evidence to remove obsolete planning language.
+Historical donor reports, example outputs and design mockups are excluded from this product tree; earlier versions remain in Git history. configs/report.yml remains pending dependency review. Historical artifacts are not evidence of a successful current render. Preserve scientific policy, provenance, licences and required verification contracts during cleanup.

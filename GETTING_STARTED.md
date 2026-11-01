@@ -129,9 +129,9 @@ do not claim byte-identical PDFs unless tested.
 Install the declared R, Quarto, and TeX toolchain before native rendering.
 Docker is the simpler route when those tools are unavailable.
 
-Keep the report environment separate from the optional UI environment:
-the pipeline lock pins pandas 2.2.3, while the current UI project requires
-pandas >=3.0.6.
+Use the production pipeline lock for this environment. The former optional
+Marimo environment and its lock are retired. Project metadata in
+pyproject.toml is not a substitute for installing the pipeline dependencies.
 
 With uv installed, create a new pipeline environment:
 
@@ -174,18 +174,19 @@ docker compose run --rm report snakemake shiny --cores 2
 
 Partial builds do not establish that a complete release works.
 
-## 8. Data updates and optional interface
+## 8. Data updates and browser workflows
 
 Local builds use the committed snapshot, not a live API request.
 Remote API acquisition is implemented separately by the IDD data-update
 workflow. A successful update can change the committed data and later findings.
 
-Two optional interfaces are separate:
+The composer and retired interfaces have separate status:
 
-- [Local browser form](docs/local-interface.md): host-side Marimo invokes
-  the Docker report service and custom-report cache without GitHub credentials.
-- [GitHub-backed connector](CONNECTOR_SETUP.md): downloads workflow artifacts
-  and dispatches selected-report requests using a configured repository/token.
+- [Experimental local composer](docs/composer.md): a separate local service
+  with its own runtime and prepared-input requirements. The former
+  [local browser form](docs/local-interface.md) is retired.
+- The former [GitHub-backed connector](CONNECTOR_SETUP.md) is retired.
+  Its selected-report rendering workflow remains independently available.
 
 Neither interface is required for the standard three-report build.
 

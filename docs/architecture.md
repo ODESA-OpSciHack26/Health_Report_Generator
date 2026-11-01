@@ -26,7 +26,7 @@ Snakemake expands analysis/rendering per stakeholder listed in workflow/config.y
 
 ## Existing custom/local/connector routes
 
-The custom-request CLI and host-local form use the custom-report cache. The GitHub-backed form is separate and renders without that cache. Legacy custom --out is replaced; preserve the previous output or use a fresh destination. No-replace publication is required for the new unified lifecycle but is not implemented by this document for legacy routes.
+The custom-request CLI uses the content-addressed custom-report cache. The former local and GitHub-backed Marimo interfaces are retired. The selected-report renderer and workflow remain separate retained routes. The composer uses its workspace, job and verified-reuse machinery; do not assume those mechanisms are identical to the custom-report cache.
 
 ## Design boundaries
 
@@ -45,8 +45,8 @@ The custom-request CLI and host-local form use the custom-report cache. The GitH
 | scripts/health_pipeline/config/stakeholders/ | Existing profiles, including retained public-health-expert profile |
 | scripts/health_pipeline/report_shared.qmd, templates/ | Shared report source, methods, R helpers/styles/apps |
 | data/reference/ | Canonical committed IDD inputs and retrieval metadata |
-| src/local_ui.py, src/local_report.py | Host-local form/adapter |
-| src/ui.py, CONNECTOR_SETUP.md | Separate optional GitHub-backed interface |
+| src/composer_site.py, src/composer_web/ | Experimental local CSV and health-report composer; uses shared workspace and rendering services |
+| CONNECTOR_SETUP.md, docs/local-interface.md | Retirement notices for former interfaces |
 | tests/ | Python contracts/calculations and runtime R smoke checks |
 
 ## Track B targets, not shipped architecture

@@ -14,14 +14,14 @@ import inventory
 from common import SCHEMA_VERSION, digest, object_hash, write_json
 
 ROOT = Path(__file__).resolve().parents[2]
-CACHE_VERSION = '1'
+CACHE_VERSION = '2'
 ENTRY = 'cache_entry.json'
 TOOLCHAIN_FILES = [
     'workflow/toolchain.json',
     'workflow/config.schema.json',
     'workflow/r-packages.tsv',
     'scripts/health_pipeline/requirements.lock.txt',
-    'scripts/health_pipeline/requirements.ui.lock.txt',
+    'Dockerfile.report',
 ]
 IGNORED_TOP = {'__pycache__', 'example_output', 'config'}
 

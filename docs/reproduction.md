@@ -25,13 +25,13 @@ The report command reads committed reference data and requires no GitHub
 token, fork, or GitHub Actions. It does not perform an IDD data update.
 
 `Dockerfile.report` provides the report environment.
-The original `Dockerfile` provides the separate optional UI environment.
+The former optional UI Dockerfile and dependency environment are retired.
 
 ### Alternative: native setup
 
 Install the declared R and Quarto versions and required TeX toolchain.
-Use a separate pipeline environment, not the optional UI's `.venv`:
-the two current dependency specifications require incompatible pandas versions.
+Use a dedicated pipeline environment with the production dependency lock:
+Do not substitute project metadata or a historical UI environment for the production pipeline lock.
 
 With uv installed:
 
