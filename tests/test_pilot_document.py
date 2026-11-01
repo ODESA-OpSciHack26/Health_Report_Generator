@@ -40,7 +40,8 @@ def test_table_labels_and_missing_values():
 
 
 def test_sections_are_minimal_and_audience_parameterised(monkeypatch):
-    monkeypatch.setattr(tabular_python.pilot_charts, "graphs", lambda analysis, technical: [])
+    monkeypatch.setattr(tabular_python.pilot_charts, "graphs",
+                        lambda analysis, technical, period=None: [])
     analysis = {
         "schema": "health-report/tabular-analysis/1",
         "parameters": {"title": "T", "measure_label": "Value", "unit": "count",

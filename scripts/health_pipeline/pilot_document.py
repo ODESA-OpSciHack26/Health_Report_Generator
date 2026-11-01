@@ -142,10 +142,21 @@ def link(href, label, current=False) -> str:
     return f'<a href="{href}"{aria}>{esc(label)}</a>'
 
 
-def figure(png: bytes, title: str, note: str, width=9, height=4.2, registry=None) -> str:
+def figure(png: bytes, title: str, note: str, width=9, height=4.2, registry=None,
+           narrow_png: bytes | None = None) -> str:
     data = base64.b64encode(png).decode("ascii")
-    markup = (f'<figure class="report-figure"><img alt="{esc(title)}" '
-              f'src="data:image/png;base64,{data}"><figcaption>{esc(note)} '
+    if narrow_png:
+        # Responsive art direction: below 800 px the browser loads a chart
+        # rendered for a narrow canvas (one panel per row, larger type) instead
+        # of shrinking the wide figure until its labels are illegible.
+        narrow = base64.b64encode(narrow_png).decode("ascii")
+        image = (f'<picture><source media="(max-width: 800px)" '
+                 f'srcset="data:image/png;base64,{narrow}">'
+                 f'<img alt="{esc(title)}" src="data:image/png;base64,{data}">'
+                 '</picture>')
+    else:
+        image = f'<img alt="{esc(title)}" src="data:image/png;base64,{data}">'
+    markup = (f'<figure class="report-figure">{image}<figcaption>{esc(note)} '
               f'<a href="methods.html#statistics">Detailed statistics and methods</a>.</figcaption></figure>')
     if registry is None:
         return markup
@@ -215,7 +226,7 @@ header#title-block-header{display:none}
 .tabular-enriched .report-card{padding:18px;background:#edf4f5;border-radius:10px;border-top:4px solid #247c85}
 .tabular-enriched .card-number{display:block;font-size:1.8rem;font-weight:750;color:#173f63;line-height:1.2}
 .tabular-enriched .card-label{display:block;color:#28474f;font-size:1rem;margin-top:8px}
-.tabular-enriched .report-figure{margin:12px 0}.tabular-enriched .report-figure img{width:100%;height:auto}
+.tabular-enriched .report-figure{margin:12px 0}.tabular-enriched .report-figure picture{display:block}.tabular-enriched .report-figure img{width:100%;height:auto}
 .tabular-enriched figcaption,.tabular-enriched .chart-note{color:#354f58;font-size:.98rem;line-height:1.6}
 .tabular-enriched .monitor-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
 .tabular-enriched .monitor-grid .report-section{margin:0;min-width:0}
