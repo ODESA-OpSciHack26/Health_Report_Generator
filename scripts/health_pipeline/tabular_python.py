@@ -79,7 +79,8 @@ def _plot_html(plots, kind, figures=None):
                       narrow_png=item.get("narrow_png"))
 
 
-def document_html(context: dict, document: str = "report", figures=None) -> str:
+def document_html(context: dict, document: str = "report", figures=None,
+                  tables=None) -> str:
     if document not in ("report", "methods"):
         raise doc.PilotDocumentError("Unsupported tabular document")
     analysis = context["analysis"]
@@ -153,7 +154,8 @@ def document_html(context: dict, document: str = "report", figures=None) -> str:
              f'{doc.esc(parameters.get("unit"))}</p>'
              f'<p>{doc.esc(parameters.get("source_label"))}</p></header>',
              navigation, "<main>"]
-    table = lambda rows, columns: doc.display_table(rows, columns, period)
+    table = lambda rows, columns: doc.display_table(rows, columns, period,
+                                                    registry=tables)
     if document == "methods":
         parts += [
             doc.section("statistics", "Descriptive statistics for each series",
@@ -312,12 +314,13 @@ def document_html(context: dict, document: str = "report", figures=None) -> str:
                 "About the selected years",
                 f"<p>{doc.esc(coverage)}</p><p>{doc.esc(gap_note)}</p>")))
     if document == "report":
+        rows_html = doc.defer_table(context["rows_html"], tables)
         parts.append(doc.section(
             "observations", "Original observations",
             doc.disclosure(
                 "Open the searchable and sortable observation table",
                 "<p>Filtering and sorting change only the view, not the saved results. "
-                "“Missing” marks an absent field.</p>" + context["rows_html"])))
+                "“Missing” marks an absent field.</p>" + rows_html)))
         if len(analysis.get("category_statistics") or []) > len(
                 analysis.get("chart_categories") or []):
             parts.append(
@@ -340,12 +343,13 @@ def document_html(context: dict, document: str = "report", figures=None) -> str:
     return "\n".join(parts)
 
 
-def quarto_document(context: dict, document: str, record: dict, figures=None) -> str:
+def quarto_document(context: dict, document: str, record: dict, figures=None,
+                    tables=None) -> str:
     """Wrap the HTML body in a Quarto markdown document with no execution engine."""
     parameters = context["analysis"]["parameters"]
     profile = context["profile"]
     title = f'{parameters.get("title")} | {profile.get("display_name")}'
-    body = document_html(context, document, figures=figures)
+    body = document_html(context, document, figures=figures, tables=tables)
     return ("---\n"
             f"title: {doc.esc(title)}\n"
             "format:\n"

@@ -74,7 +74,7 @@ LABELS = {
 }
 
 
-def html_table(rows: list[dict], columns=None) -> str:
+def html_table(rows: list[dict], columns=None, registry=None) -> str:
     if not rows:
         return "<p>No compatible results are available for this selection.</p>"
     columns = [c for c in (columns or list(rows[0])) if c in rows[0]]
@@ -83,11 +83,26 @@ def html_table(rows: list[dict], columns=None) -> str:
         "<tr>" + "".join(f"<td>{esc(row.get(c))}</td>" for c in columns) + "</tr>"
         for row in rows
     )
-    return ('<div class="table-scroll"><table class="report-table" data-searchable="true">'
-            f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>")
+    markup = ('<div class="table-scroll"><table class="report-table" data-searchable="true">'
+              f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>")
+    return defer_table(markup, registry)
 
 
-def display_table(rows, columns, period="year") -> str:
+def defer_table(markup: str, registry) -> str:
+    """Defer a table past Quarto rendering.
+
+    Quarto's table postprocessing moves the table-scroll closing tag and strips
+    <details> wrappers around it. A plain placeholder survives unchanged; the
+    balanced table markup is restored after Quarto.
+    """
+    if registry is None:
+        return markup
+    token = str(len(registry))
+    registry[token] = markup
+    return f'<div data-pilot-table="{token}"></div>'
+
+
+def display_table(rows, columns, period="year", registry=None) -> str:
     data = records(rows)
     if not data:
         return "<p>No compatible results are available for this selection.</p>"
@@ -113,7 +128,7 @@ def display_table(rows, columns, period="year") -> str:
             if key in row:
                 value = row[key]
                 row[key] = "Not available" if value is None else str(value)[:4 if period == "year" else 10]
-    return html_table(data, columns) + (
+    return html_table(data, columns, registry=registry) + (
         '<p class="chart-note">Display rounding only: summaries use one decimal place; '
         "observation counts use whole numbers. Small nonzero values retain significant digits. "
         "Full precision is retained in analysis.json.</p>")
@@ -165,16 +180,25 @@ def figure(png: bytes, title: str, note: str, width=9, height=4.2, registry=None
     return f'<div data-pilot-figure="{token}"></div>'
 
 
-def restore_figures(rendered: str, registry: dict) -> str:
-    """Replace pilot placeholders after Quarto render (Quarto rewrites raw <figure>)."""
+def _restore_deferred(rendered: str, registry: dict, attribute: str, label: str) -> str:
     import re
     for token, markup in registry.items():
-        pattern = re.compile(r'<div data-pilot-figure="%s">\s*</div>' % re.escape(token))
+        pattern = re.compile(r'<div %s="%s">\s*</div>' % (attribute, re.escape(token)))
         if len(pattern.findall(rendered)) != 1:
             raise PilotDocumentError(
-                f"pilot figure placeholder {token} was not preserved by the renderer")
+                f"pilot {label} placeholder {token} was not preserved by the renderer")
         rendered = pattern.sub(lambda match: markup, rendered, count=1)
     return rendered
+
+
+def restore_figures(rendered: str, registry: dict) -> str:
+    """Replace pilot figure placeholders after Quarto render (Quarto rewrites raw <figure>)."""
+    return _restore_deferred(rendered, registry, "data-pilot-figure", "figure")
+
+
+def restore_tables(rendered: str, registry: dict) -> str:
+    """Restore balanced table markup after Quarto table postprocessing."""
+    return _restore_deferred(rendered, registry, "data-pilot-table", "table")
 
 
 def provenance_script(record: dict) -> str:

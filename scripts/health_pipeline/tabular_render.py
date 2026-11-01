@@ -353,9 +353,10 @@ def _render_python_reports(prepared, destination, *, quarto, report_options,
                 (work / "provenance.json").write_bytes(bundles._json_bytes(record))
                 for document in ("report", "methods"):
                     figures = {}
+                    tables = {}
                     (work / f"{document}.qmd").write_text(
                         tabular_python.quarto_document(context, document, record,
-                                                      figures=figures),
+                                                      figures=figures, tables=tables),
                         encoding="utf-8")
                     subprocess.run([quarto, "render", f"{document}.qmd", "--to", "html",
                                     "--output", f"{document}.html"],
@@ -363,10 +364,10 @@ def _render_python_reports(prepared, destination, *, quarto, report_options,
                     result = work / f"{document}.html"
                     if not result.is_file() or result.stat().st_size == 0:
                         raise ValueError("Quarto returned without a nonempty document.")
-                    result.write_text(
-                        tabular_python.doc.restore_figures(result.read_text(encoding="utf-8"),
-                                                       figures),
-                        encoding="utf-8")
+                    rendered = tabular_python.doc.restore_figures(
+                        result.read_text(encoding="utf-8"), figures)
+                    rendered = tabular_python.doc.restore_tables(rendered, tables)
+                    result.write_text(rendered, encoding="utf-8")
                     shutil.copyfile(result, folder / result.name)
         names = sorted(path.relative_to(stage).as_posix()
                        for path in stage.rglob("*") if path.is_file())

@@ -199,6 +199,24 @@ def graphs(analysis: dict, technical: bool = False, period: str | None = None) -
         return wide
 
 
+def _histogram_bounds(histogram: list[dict]):
+    """Axis bounds for valid bins; None when there is nothing to draw."""
+    if not histogram:
+        return None
+    lefts = [float(row["left"]) for row in histogram]
+    rights = [float(row["right"]) for row in histogram]
+    counts = [float(row["count"]) for row in histogram]
+    low, high = min(lefts), max(rights)
+    if not (math.isfinite(low) and math.isfinite(high)):
+        return None
+    if high <= low:
+        pad = max(abs(low) * 0.05, 0.5)
+    else:
+        pad = (high - low) * 0.02
+    top = max(counts) if counts else 0.0
+    return low - pad, high + pad, 0.0, max(1.0, top * 1.1)
+
+
 def _graphs(analysis: dict, technical: bool, plt, mdates, period=None,
             *, narrow: bool = False) -> list[dict]:
     parameters = analysis["parameters"]
@@ -337,24 +355,44 @@ def _graphs(analysis: dict, technical: bool, plt, mdates, period=None,
                                       tight=not narrow)})
     histogram = [row for row in analysis.get("histogram") or []
                  if None not in (row.get("left"), row.get("right"), row.get("count"))]
-    if technical and histogram:
-        fig, ax = plt.subplots()
-        _theme(ax, tick_size)
-        for row in histogram:
-            ax.add_patch(plt.Rectangle((float(row["left"]), 0),
-                                       float(row["right"]) - float(row["left"]),
-                                       float(row["count"]), facecolor=TEAL,
-                                       edgecolor="white", linewidth=0.8))
-        title = "Distribution of supplied row values"
-        lines = _wrap_title(title, 26) if narrow else [title]
-        ax.set_title("\n".join(lines),
-                     fontsize=18 if narrow else 14, color=INK, loc="left")
-        ax.set_xlabel(measure, fontsize=13 if narrow else 9, color=MUTED)
-        ax.set_ylabel("Observations", fontsize=13 if narrow else 9, color=MUTED)
-        fig.tight_layout()
-        output.append({"title": "Distribution diagnostic",
-                       "note": ("Unweighted row-value distribution across selected categories and "
-                                "periods; it describes only the supplied rows."),
-                       "png": _finish(fig, width, 4.5 + 0.35 * (len(lines) - 1),
-                                      tight=not narrow)})
+    if technical:
+        if histogram:
+            fig, ax = plt.subplots()
+            _theme(ax, tick_size)
+            for row in histogram:
+                ax.add_patch(plt.Rectangle((float(row["left"]), 0),
+                                           float(row["right"]) - float(row["left"]),
+                                           float(row["count"]), facecolor=TEAL,
+                                           edgecolor="white", linewidth=0.8))
+            bounds = _histogram_bounds(histogram)
+            if bounds is not None:
+                ax.set_xlim(bounds[0], bounds[1])
+                ax.set_ylim(bounds[2], bounds[3])
+            title = "Distribution of supplied row values"
+            lines = _wrap_title(title, 26) if narrow else [title]
+            ax.set_title("\n".join(lines),
+                         fontsize=18 if narrow else 14, color=INK, loc="left")
+            ax.set_xlabel(measure, fontsize=13 if narrow else 9, color=MUTED)
+            ax.set_ylabel("Observations", fontsize=13 if narrow else 9, color=MUTED)
+            fig.tight_layout()
+            output.append({"title": "Distribution diagnostic",
+                           "note": ("Unweighted row-value distribution across selected categories and "
+                                    "periods; it describes only the supplied rows."),
+                           "png": _finish(fig, width, 4.5 + 0.35 * (len(lines) - 1),
+                                          tight=not narrow)})
+        else:
+            fig, ax = plt.subplots()
+            ax.axis("off")
+            title = "Distribution of supplied row values"
+            lines = _wrap_title(title, 26) if narrow else [title]
+            ax.set_title("\n".join(lines),
+                         fontsize=18 if narrow else 14, color=INK, loc="left")
+            ax.text(0.5, 0.5, "No distribution is available\nfor the supplied rows.",
+                    ha="center", va="center", fontsize=14 if narrow else 12, color=MUTED,
+                    transform=ax.transAxes)
+            fig.tight_layout()
+            output.append({"title": "Distribution diagnostic",
+                           "note": ("No populated row-value bins are available for this selection; "
+                                    "no values have been invented."),
+                           "png": _finish(fig, width, 3.2, tight=not narrow)})
     return output
