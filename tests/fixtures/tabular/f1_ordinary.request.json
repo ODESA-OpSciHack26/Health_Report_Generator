@@ -1,0 +1,16 @@
+{
+  "schema": "health-report/tabular-request/2",
+  "source_sha256": "eda96444472d06364b98a60ccb6b165954a2a4a703d7c3ed83659e109e355bb1",
+  "mapping": {
+    "category": "category",
+    "measure": "value",
+    "time": "date"
+  },
+  "mode": "timeseries",
+  "period": "year",
+  "report": {
+    "title": "F1 ordinary",
+    "reference_period": "2021-01-01",
+    "latest_period": "2023-01-01"
+  }
+}

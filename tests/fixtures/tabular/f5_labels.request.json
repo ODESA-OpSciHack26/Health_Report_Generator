@@ -1,0 +1,11 @@
+{
+  "schema": "health-report/tabular-request/1",
+  "source_sha256": "e566e17353a197825db95561b9e7a03b478484915c0cec7094d30092f88eaad0",
+  "mapping": {
+    "category": "category",
+    "measure": "value",
+    "time": "date"
+  },
+  "mode": "timeseries",
+  "period": "year"
+}

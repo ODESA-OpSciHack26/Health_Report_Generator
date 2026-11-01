@@ -1,0 +1,14 @@
+{
+  "schema": "health-report/tabular-request/2",
+  "source_sha256": "fa40efc4e6032cc80bf11af1e3da13f772c358d01c5d8145a353976b27dde1a4",
+  "mapping": {
+    "category": "category",
+    "measure": "value",
+    "time": "date"
+  },
+  "mode": "timeseries",
+  "period": "year",
+  "report": {
+    "max_categories": 2
+  }
+}

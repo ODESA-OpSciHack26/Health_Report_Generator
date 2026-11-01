@@ -1,0 +1,15 @@
+{
+  "schema": "health-report/tabular-request/2",
+  "source_sha256": "386462f9a5e7037110eea8ea93c59e07dca407c650561626bc243716367744a7",
+  "mapping": {
+    "category": "category",
+    "measure": "value",
+    "time": "date"
+  },
+  "mode": "timeseries",
+  "period": "year",
+  "report": {
+    "reference_period": "2021-01-01",
+    "latest_period": "2022-01-01"
+  }
+}

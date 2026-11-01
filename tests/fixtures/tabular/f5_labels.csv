@@ -1,0 +1,5 @@
+category,value,date
+"<script>alert(1)</script>",3,2021-01-01
+"A & B ""quoted""",4,2021-01-01
+"Über-Ärztliche-Überwachungsstelle-für-sehr-lange-Bezeichnungen",5,2021-01-01
+"中文类别",6,2021-01-01

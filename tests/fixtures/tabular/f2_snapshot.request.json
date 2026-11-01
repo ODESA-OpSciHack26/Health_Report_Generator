@@ -1,0 +1,10 @@
+{
+  "schema": "health-report/tabular-request/1",
+  "source_sha256": "28518775ed4f4ea79d901d7f14a0b42a068f7ce4bafefd893708ff36b2d82d49",
+  "mapping": {
+    "category": "category",
+    "measure": "value"
+  },
+  "mode": "snapshot",
+  "period": null
+}
