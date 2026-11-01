@@ -63,6 +63,23 @@ HTML pages embed machine-readable provenance.
 `results/release.json` records output hashes and environment/code information.
 `results/snapshots/` contains archived inputs.
 
+If this checkout is a linked Git worktree, the container cannot read the worktree's Git
+administration directory and will record the source state as unknown. Record the identity
+on the host first; the runtime then verifies the declared input content digest:
+
+```bash
+python3 scripts/health_pipeline/source_identity.py collect \
+  --out reproduced/source-identity.json
+docker compose run --rm \
+  -e HEALTH_REPORT_SOURCE_IDENTITY=/app/reproduced/source-identity.json \
+  report snakemake --cores 2
+```
+
+An invalid or mismatching supplied record fails the run before publishing. Commit, tree
+and worktree cleanliness are host-reported assertions; the content digest is the part the
+runtime verifies. See [reproduction](docs/reproduction.md#source-identity-for-linked-worktrees)
+for the full boundary and limitations.
+
 Open HTML files using your browser or file manager.
 Keep each audience folder intact when sharing it.
 

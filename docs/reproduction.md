@@ -101,6 +101,58 @@ python -m pytest -q
 
 `check_outputs.py` confirms exactly one HTML report per configured audience, embedded and sidecar provenance, and distinct presentations. Compare `results/release.json` (artifact and code hashes, Git state, runtime versions) with the one you expect.
 
+## Source identity for linked worktrees
+
+A linked Git worktree stores its administration directory outside the checkout. When the
+report container mounts only the checkout, the runtime cannot resolve `git`, so it records
+the source state as unknown. Record the identity on the host and let the runtime verify it:
+
+```sh
+python3 scripts/health_pipeline/source_identity.py collect \
+  --out reproduced/source-identity-<UTC>.json
+docker compose run --rm \
+  -e HEALTH_REPORT_SOURCE_IDENTITY=/app/reproduced/source-identity-<UTC>.json \
+  report snakemake --cores 2
+```
+
+`--config source_identity=<path>` is equivalent for direct Snakemake runs, and
+`publish.py`/`release.py` accept `--source-identity` for hand-driven renders. The collector
+uses only the standard library, so it runs with the host Python rather than the report
+environment.
+
+The record separates what the runtime can verify from what it cannot:
+
+- **Verified in the runtime:** every declared execution input (`Snakefile`, `.Rprofile`,
+  `renv.lock`, `pyproject.toml`, `Dockerfile.report`, `scripts/`, `workflow/`, `src/`) is
+  re-hashed and compared with the supplied path set, per-file digests, count and canonical
+  digest. Files are hashed even when Git ignores them; symlinks, unreadable files and
+  added or removed inputs fail the run.
+- **Host-reported, an external assertion:** the commit, HEAD tree and the
+  staged/unstaged/untracked classification. The runtime has no Git object database, so it
+  cannot prove that a commit describes these bytes.
+- **Outside this content claim:** data snapshots (recorded by snapshot id and bundle
+  digests), dependency locks, the container image and external tools (recorded separately).
+- **Boundary:** inputs are verified before provenance is written and again before the
+  report is published. A change between those points fails the render; a change after the
+  final check, or a file outside the declared inputs, is not observed. This is not complete
+  source attestation.
+
+An explicitly supplied record that is malformed, oversized, unreadable or mismatched fails
+the generation with a nonzero exit before any report or release is published. When no
+record is supplied, the runtime records its own Git observation or an honest unknown state.
+Untracked files outside the declared inputs are counted and named as outside the content
+claim; the worktree is not described as unconditionally clean. The published provenance
+carries commit, counts and content digest only; detailed path lists stay in the local
+identity file. Historical packages without these fields remain readable and are never
+backfilled. The supplied-table route does not record source identity in this slice.
+
+Verify a record without rendering:
+
+```sh
+python3 scripts/health_pipeline/source_identity.py verify \
+  --project . --identity reproduced/source-identity-<UTC>.json
+```
+
 ## Integration handover and optional local form
 
 See [handover](handover.md) for the recorded integration baseline,
