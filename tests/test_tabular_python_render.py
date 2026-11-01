@@ -60,6 +60,7 @@ def test_unicode_and_html_sensitive_labels_are_escaped():
     assert "&amp;" in html
 
 
+@pytest.mark.quarto_runtime
 def test_python_generation_through_documented_cli(tmp_path):
     output = tmp_path / "candidate"
     tabular_run.main([
@@ -80,6 +81,7 @@ def test_python_generation_through_documented_cli(tmp_path):
     assert "table-filter" in report
 
 
+@pytest.mark.quarto_runtime
 def test_v2_integrity_rejects_tampered_artifact_without_source_check(tmp_path):
     output = tmp_path / "candidate"
     tabular_run.main([
@@ -92,6 +94,7 @@ def test_v2_integrity_rejects_tampered_artifact_without_source_check(tmp_path):
         tabular_render.verify_tabular_reports(output)
 
 
+@pytest.mark.quarto_runtime
 def test_invalid_identity_fails_before_rendering(tmp_path, monkeypatch):
     def refuse(*args, **kwargs):
         raise ValueError("the supplied source identity does not describe the files")

@@ -936,6 +936,54 @@ def sources(site, host, job_id):
     return api(site, host, "GET", f"/api/jobs/{job_id}/sources")[1]
 
 
+def assert_job_succeeded(site, host, job_id, timeout=60):
+    """Wait for a terminal job state, then fail with a safe diagnostic.
+
+    ``wait_idle`` joins with a timeout and returns no status, so a slow render can
+    still be running when a test proceeds. Poll the recorded job state here; this
+    is a bounded test synchronization, not a production change.
+    """
+    deadline = _time.monotonic() + timeout
+    timed_out = False
+    while True:
+        record = api(site, host, "GET", f"/api/jobs/{job_id}")[1]
+        status = record.get("status")
+        if status in ("succeeded", "failed", "cancelled"):
+            break
+        if _time.monotonic() >= deadline:
+            timed_out = True
+            break
+        _time.sleep(0.25)
+    detail = f"job {job_id} status={record.get('status')!r} error={record.get('error')!r}"
+    if timed_out:
+        assert False, f"{detail}; timed out after {timeout}s waiting for a terminal state"
+    assert record["status"] == "succeeded", detail
+    return record
+
+
+def test_assert_job_succeeded_reports_terminal_failure(monkeypatch):
+    monkeypatch.setattr(
+        "test_composer_csv.api",
+        lambda *args, **kwargs: (200, {"status": "failed", "error": "synthetic failure"}))
+    with pytest.raises(AssertionError) as error:
+        assert_job_succeeded(None, None, "job-failed")
+    message = str(error.value)
+    assert "job job-failed status='failed'" in message
+    assert "synthetic failure" in message
+
+
+def test_assert_job_succeeded_times_out_on_running_job(monkeypatch):
+    monkeypatch.setattr(
+        "test_composer_csv.api",
+        lambda *args, **kwargs: (200, {"status": "running", "error": None}))
+    with pytest.raises(AssertionError) as error:
+        assert_job_succeeded(None, None, "job-running", timeout=0)
+    message = str(error.value)
+    assert "job job-running status='running'" in message
+    assert "timed out after 0s" in message
+
+
+@pytest.mark.report_runtime
 def test_sources_are_bound_to_the_saved_report_not_the_draft(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, SNAPSHOT_CSV)
@@ -948,6 +996,7 @@ def test_sources_are_bound_to_the_saved_report_not_the_draft(real_csv_site):
                       {"digest": digest, "recipe": doc["recipe"]})
     assert status == 202
     site.wait_idle(10)
+    assert_job_succeeded(site, host, job["job_id"])
 
     before = sources(site, host, job["job_id"])
     assert before["report"]["job_id"] == job["job_id"]
@@ -966,6 +1015,7 @@ def test_sources_are_bound_to_the_saved_report_not_the_draft(real_csv_site):
     assert after["disclosure"]["policy"] == "local-audit"
 
 
+@pytest.mark.report_runtime
 def test_two_reports_same_dataset_stay_distinguishable(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, SNAPSHOT_CSV)
@@ -977,11 +1027,13 @@ def test_two_reports_same_dataset_stay_distinguishable(real_csv_site):
     first = api(site, host, "POST", "/api/csv/generate",
                 {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(10)
+    assert_job_succeeded(site, host, first["job_id"])
     display_edit(site, host, digest, instance, {"groups": ["B"], "layout": "chart"})
     doc = api(site, host, "GET", f"/api/csv?digest={digest}")[1]
     second = api(site, host, "POST", "/api/csv/generate",
                  {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(10)
+    assert_job_succeeded(site, host, second["job_id"])
     assert first["job_id"] != second["job_id"]
     one, two = sources(site, host, first["job_id"]), sources(site, host, second["job_id"])
     assert one["sections"][0]["layout"] == "table"
@@ -1016,6 +1068,7 @@ def test_opening_sources_is_read_only(real_csv_site):
     assert fingerprint() == before, "opening Data & sources changed saved state"
 
 
+@pytest.mark.report_runtime
 def test_restricted_report_offers_no_withheld_material(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, TIMESERIES_CSV, time="year")
@@ -1031,6 +1084,7 @@ def test_restricted_report_offers_no_withheld_material(real_csv_site):
     job = api(site, host, "POST", "/api/csv/generate",
               {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(10)
+    assert_job_succeeded(site, host, job["job_id"])
     payload = sources(site, host, job["job_id"])
     assert payload["disclosure"]["policy"] == "restricted-share"
     identifiers = [item["id"] for item in payload["artifacts"]]
@@ -1060,6 +1114,7 @@ def test_restricted_report_offers_no_withheld_material(real_csv_site):
     assert status == 403, "a restricted report served its analysis file"
 
 
+@pytest.mark.report_runtime
 def test_retained_material_is_bound_to_the_report_and_permissions(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, SNAPSHOT_CSV)
@@ -1068,6 +1123,7 @@ def test_retained_material_is_bound_to_the_report_and_permissions(real_csv_site)
     job = api(site, host, "POST", "/api/csv/generate",
               {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(20)
+    assert_job_succeeded(site, host, job["job_id"])
     payload = sources(site, host, job["job_id"])
     retained = payload["retained"]
     offered = {item["id"] for item in retained["items"]}
@@ -1085,6 +1141,7 @@ def test_retained_material_is_bound_to_the_report_and_permissions(real_csv_site)
     assert status == 200 and len(json.loads(body)["rows"]) == 4
 
 
+@pytest.mark.report_runtime
 def test_a_newer_analysis_revision_is_never_presented_as_historical(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, SNAPSHOT_CSV)
@@ -1093,6 +1150,7 @@ def test_a_newer_analysis_revision_is_never_presented_as_historical(real_csv_sit
     job = api(site, host, "POST", "/api/csv/generate",
               {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(20)
+    assert_job_succeeded(site, host, job["job_id"])
     before = sources(site, host, job["job_id"])
     assert {item["id"] for item in before["retained"]["items"]} == {
         "neutral-analysis.json", "prepared.json"}
@@ -1116,6 +1174,7 @@ def test_a_newer_analysis_revision_is_never_presented_as_historical(real_csv_sit
         assert status == 409, f"{name} served although it differs from this report"
 
 
+@pytest.mark.report_runtime
 def test_local_audit_without_record_permission_withholds_rows(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, SNAPSHOT_CSV)
@@ -1124,6 +1183,7 @@ def test_local_audit_without_record_permission_withholds_rows(real_csv_site):
     job = api(site, host, "POST", "/api/csv/generate",
               {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(20)
+    assert_job_succeeded(site, host, job["job_id"])
     retained = sources(site, host, job["job_id"])["retained"]
     assert {item["id"] for item in retained["items"]} == {"neutral-analysis.json"}
     reason = next(item for item in retained["withheld"] if item["id"] == "prepared.json")
@@ -1132,6 +1192,7 @@ def test_local_audit_without_record_permission_withholds_rows(real_csv_site):
     assert status == 403, "contributing records were served without permission"
 
 
+@pytest.mark.report_runtime
 def test_package_links_follow_policy_and_package_digest(real_csv_site):
     site, host = real_csv_site
     digest, _ = journey(site, host, TIMESERIES_CSV, time="year")
@@ -1148,6 +1209,7 @@ def test_package_links_follow_policy_and_package_digest(real_csv_site):
     job = api(site, host, "POST", "/api/csv/generate",
               {"digest": digest, "recipe": doc["recipe"]})[1]
     site.wait_idle(20)
+    assert_job_succeeded(site, host, job["job_id"])
     package = site.jobs_root / job["job_id"] / "package"
 
     # Even if an analysis file were present in a restricted package, policy wins.

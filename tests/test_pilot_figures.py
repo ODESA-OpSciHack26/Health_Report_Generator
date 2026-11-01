@@ -180,6 +180,7 @@ def test_real_quarto_restores_multiple_figures_and_shows_intermediate_placeholde
     _save("figure-titles.json", json.dumps(list(registry.values()), indent=1))
 
 
+@pytest.mark.quarto_runtime
 def test_caller_does_not_publish_when_restoration_fails(tmp_path, monkeypatch):
     pytest.importorskip("matplotlib", reason="requires the frozen pilot environment")
     import tabular_run
