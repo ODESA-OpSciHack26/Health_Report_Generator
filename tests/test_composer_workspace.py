@@ -347,3 +347,22 @@ def test_replay_reproduces_the_saved_recipe(tmp_path):
     composition = argv[argv.index("--composition") + 1]
     replayed = publish.load_composition(composition)
     assert replayed == ws.open_recipe(saved) == edited
+
+
+def test_discard_pending_keeps_unrelated_selection_and_exclusions(tmp_path):
+    draft = ws.Draft(
+        root=tmp_path,
+        recipe={"audience": "researcher", "blocks": []},
+        editor={
+            "pending": [{"instance_id": "pending-1", "entry": {"block": "series-trend"}}],
+            "selection": {"keep-1": {"topics": ["alpha"]}, "pending-1": {"topics": ["beta"]}},
+            "excluded": ["keep-2", "pending-1"],
+            "retired": [],
+            "next_seq": 4,
+        },
+    )
+    result = ws.discard_pending(draft, "pending-1")
+    assert result["pending"] == []
+    assert result["selection"] == {"keep-1": {"topics": ["alpha"]}}
+    assert result["excluded"] == ["keep-2"]
+    assert "pending-1" in result["retired"]

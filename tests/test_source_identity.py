@@ -1,8 +1,6 @@
 """Source-identity collection, verification and fail-closed behavior."""
 import json
-import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -195,7 +193,7 @@ def test_resolve_verifies_supplied_digest_and_rejects_disagreement(tmp_path):
 
 
 def test_resolve_without_git_records_honest_unknown(tmp_path):
-    project = make_project(tmp_path / "project")
+    make_project(tmp_path / "project")
     copied = tmp_path / "nogit"
     _write(copied, FILES)
     public = si.resolve(copied, None)

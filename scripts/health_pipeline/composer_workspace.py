@@ -1384,8 +1384,8 @@ def discard_pending(draft, pending_id):
                  if other["instance_id"] != pending_id]
     recipe, pending, problems = _promote(draft.recipe, remaining)
     selection = {key: value for key, value in draft.selection.items()
-                 if key != existing_id}
-    excluded = [item for item in draft.excluded if item != existing_id]
+                 if key != pending_id}
+    excluded = [item for item in draft.excluded if item != pending_id]
     return {"recipe": recipe, "pending": pending, "retired": retired,
             "next_seq": draft.next_seq, "instance_id": pending_id,
             "state": "added" if not pending else "pending", "problems": problems,

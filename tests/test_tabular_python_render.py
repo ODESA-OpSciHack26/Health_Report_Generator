@@ -4,7 +4,6 @@ Skipped in the baseline R runtime because matplotlib is intentionally absent the
 candidate image runs them. This is a pilot-only skip, not a skip of existing behaviour.
 """
 import json
-import sys
 from pathlib import Path
 
 import pytest

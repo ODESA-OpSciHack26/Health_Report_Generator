@@ -17,7 +17,6 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
-import json
 import math
 import re
 import statistics
@@ -25,11 +24,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-from pandas.api.types import (
-    is_bool_dtype,
-    is_complex_dtype,
-    is_numeric_dtype,
-)
 
 NEUTRAL_ANALYSIS_SCHEMA = "health-report/neutral-analysis/1"
 NEUTRAL_INTERPRETATION_SCHEMA = "health-report/neutral-interpretation/1"
@@ -424,7 +418,6 @@ def describe(rows: list[dict], interpretation: dict, *, dataset: dict | None = N
     SD are calculated exactly as in tabular_describe. Repeated group-period pairs are
     preserved as separate observations (never summed, averaged or thinned).
     """
-    category = interpretation.get("category")
     measure = interpretation.get("measure")
     time_col = interpretation.get("time")
     values = [row["value"] for row in rows]
@@ -440,7 +433,6 @@ def describe(rows: list[dict], interpretation: dict, *, dataset: dict | None = N
     for key in group_order:
         group_rows = per_group[key]
         member_values = [row["value"] for row in group_rows]
-        periods = sorted({row["period"] for row in group_rows if row["period"]})
         # Every record keeps its own period entry: a repeated group-period key must stay
         # visible as separate observations, never thinned to the first value.
         pair_counts: dict = {}

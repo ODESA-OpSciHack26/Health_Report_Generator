@@ -342,7 +342,7 @@ def test_global_exclude_differs_from_group_total_exclusion(scoped_project):
 
 
 def test_contradictory_and_malformed_scope_configs_rejected(scoped_project):
-    cfg = mutate_cfg(scoped_project, include_topics=['virus'], exclude_topics=['virus'])
+    mutate_cfg(scoped_project, include_topics=['virus'], exclude_topics=['virus'])
     with pytest.raises(ValueError, match='Contradictory topic scope'):
         load_config(scoped_project[2])
 

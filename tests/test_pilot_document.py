@@ -1,10 +1,7 @@
 """Pilot document helpers that do not require the experimental graphics stack."""
-import json
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 import pilot_document as doc
 import tabular_python

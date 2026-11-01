@@ -217,7 +217,6 @@ def validate_disclosure(disclosure) -> dict:
         raise NeutralLibraryError(
             "Choose a disclosure policy from " + ", ".join(sorted(DISCLOSURE_POLICIES))
             + f"; got {policy!r}.")
-    spec = DISCLOSURE_POLICIES[policy]
     permit_values = disclosure.get("permit_values")
     permit_records = disclosure.get("permit_records")
     if not isinstance(permit_values, bool) or not isinstance(permit_records, bool):

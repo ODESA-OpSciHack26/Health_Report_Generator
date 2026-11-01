@@ -137,7 +137,6 @@ def test_methods_document_has_no_figure_placeholders():
 
 
 def _fixture_context():
-    import tabular_describe
     import tabular_render
     import tabular_run
 

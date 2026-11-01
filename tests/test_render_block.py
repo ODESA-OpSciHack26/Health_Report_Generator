@@ -1,10 +1,7 @@
 """Block emission at render time: saved records only, explicit evidence path, honest failure."""
 import json
-import os
 import subprocess
 from pathlib import Path
-
-import pytest
 
 import publish
 from test_composer_contracts import build_bundle

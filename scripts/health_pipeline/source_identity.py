@@ -401,7 +401,6 @@ def resolve(project_root, supplied_path=None) -> dict:
             manifest=current, collected_at=supplied["collected_at_utc"])
     current = content_manifest(project_root)
     commit = observe_commit(project_root)
-    status = observe_status(project_root, include_untracked=False)
     if commit is None:
         return public_record("unavailable", "computed-in-runtime", manifest=current)
     tree = None
@@ -437,9 +436,6 @@ def assert_unchanged(public, project_root) -> None:
     current = content_manifest(project_root)
     if current["digest"] != content.get("digest") or current["count"] != content.get("count"):
         expected = content.get("digest", "")
-        changed = []
-        # Recompute against the summary only: name the first few differing paths.
-        # The summary omits the map, so report counts and digests instead of paths.
         raise SourceIdentityError(
             "declared execution inputs changed during generation; refusing to publish "
             f"(recorded digest {expected[:16]}…, current {current['digest'][:16]}…, "

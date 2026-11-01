@@ -6,11 +6,9 @@ data. Group totals are written as saved values so the builders never recalculate
 import copy
 import csv
 import json
-from pathlib import Path
 
 import pytest
 
-import composer_contracts as cc
 import publish
 from test_composer_contracts import sha256
 from test_composer_series import (ROOT, _render, build_series_bundle, write_recipe)

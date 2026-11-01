@@ -11,10 +11,8 @@ import os
 import shutil
 import threading
 import time as _time
-import re
 import subprocess
 import sys
-import threading
 import urllib.error
 import urllib.request
 from http.client import HTTPConnection
@@ -1540,8 +1538,6 @@ def test_simultaneous_identical_requests_do_not_duplicate_renders(reuse_site):
     digest, _ = journey(site, host, SNAPSHOT_CSV)
     choose(site, host, digest)
     recipe = api(site, host, "GET", f"/api/csv?digest={digest}")[1]["recipe"]
-
-    slow = {"inner": counter}
 
     def slow_render(*args, **kwargs):
         _time.sleep(0.6)

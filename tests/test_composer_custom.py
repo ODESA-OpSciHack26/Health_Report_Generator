@@ -8,7 +8,6 @@ evidence directory.
 import hashlib
 import json
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -21,8 +20,8 @@ import composer_site  # noqa: E402
 import composer_workspace as workbench  # noqa: E402
 import publish  # noqa: E402
 from test_composer_series import build_series_bundle  # noqa: E402
-from test_composer_site import (RECIPES, call, payload, stub_render,  # noqa: E402
-                                wait_for_job, write_bundle)  # noqa: E402
+from test_composer_site import (RECIPES, call, stub_render,  # noqa: E402
+                                wait_for_job)  # noqa: E402
 
 DEFAULT_ROWS = ((2019, "7253.0"), (2021, "6802.0"), (2022, "7645.0"),
                 (2023, "6784.0"), (2024, "8360.0"), (2025, "8716.0"))
@@ -410,9 +409,9 @@ def test_repair_keeps_valid_exclusions_and_settings(custom):
 
 def test_an_existing_single_trend_draft_still_opens_and_renders(custom):
     _, host = custom
-    doc = edit_ok(host, "add-block", None, {"block": "series-trend",
-                                            "options": {"topic": "influenza",
-                                                        "measure": "cases"}})
+    edit_ok(host, "add-block", None, {"block": "series-trend",
+                                      "options": {"topic": "influenza",
+                                                  "measure": "cases"}})
     reopened = document(host)
     trend = by_block(reopened, "series-trend")
     assert trend["included"] is True and trend["label"] == "Annual trend for one disease"

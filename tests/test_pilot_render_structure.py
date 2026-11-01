@@ -1,6 +1,5 @@
 """Regression tests for the table/disclosure wrapper and distribution-chart defects."""
 import html.parser
-import json
 import shutil
 import subprocess
 from pathlib import Path

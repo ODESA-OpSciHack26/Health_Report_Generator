@@ -11,7 +11,6 @@ import json
 import hashlib
 from pathlib import Path
 
-import neutral_describe as nd
 import source_identity as source_identity_module
 
 NEUTRAL_PROFILE = "neutral-overview"
@@ -53,7 +52,6 @@ def build_data_overview_record(bundle: Path, project_root: Path, instance_id: st
     """One checked data-overview record over the saved neutral analysis."""
     digest = _analysis_digest(analysis)
     selection_rows = list(prepared["rows"])
-    values = [row["value"] for row in selection_rows]
     bounds = {"rows": len(selection_rows), "selected": analysis["row_count"],
               "missing": analysis["missing"]}
     record = {

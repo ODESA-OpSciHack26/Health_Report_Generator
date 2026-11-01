@@ -682,7 +682,7 @@ def test_duplicate_generate_is_refused_while_one_is_running(tmp_path):
     blocking = BlockingRender()
     site, server, host = make_site(tmp_path, render=blocking)
     try:
-        job = generate_ok(host)
+        generate_ok(host)
         assert blocking.started.wait(10)
         status, _ = generate(host)
         assert status == 409
@@ -916,7 +916,7 @@ def test_different_code_identity_prevents_reuse(web, monkeypatch):
 def test_failed_or_tampered_reports_are_not_reused(web):
     site, host = web
     job = generate_ok(host)
-    finished = wait_for_job(host, job["job_id"])
+    wait_for_job(host, job["job_id"])
     record = site._job_record(job["job_id"])
     package = site.work_root / record["preview_dir"]
     assert reuse_of(host)["job_id"] == job["job_id"]
@@ -950,7 +950,6 @@ def test_multiple_matches_choose_the_newest_deterministically(web):
     assert reuse_of(host)["job_id"] == second["job_id"]
 
     # Forcing the newer record's timestamp back makes the choice flip, not wander.
-    import composer_site as module
     record_path = site.jobs_root / second["job_id"] / "job.json"
     payload = json.loads(record_path.read_text())
     payload["finished_utc"] = "2020-01-01T00:00:00+00:00"
