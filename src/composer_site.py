@@ -65,6 +65,7 @@ COLLECTION_EMPTY_MESSAGE = ("Select at least one disease, or turn off "
 # change meaning; records written with another version are not reused.
 REUSE_VERSION = 1
 REUSE_FILES = ("scripts/health_pipeline/publish.py",
+               "scripts/health_pipeline/source_identity.py",
                "scripts/health_pipeline/report_shared.qmd",
                "scripts/health_pipeline/templates/report_helpers.R",
                "scripts/health_pipeline/templates/audience_reports.R",

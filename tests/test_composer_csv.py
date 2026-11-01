@@ -304,6 +304,35 @@ def test_generate_launches_job_with_stub_render(csv_site):
     assert doc["status"] == "succeeded"
     assert "publish.py html" in doc["replay_command"]
     assert "csv-datasets" in doc["replay_command"]
+    found = sorted((site.jobs_root / job["job_id"]).rglob("provenance.json"))
+    assert found
+    record = json.loads(found[0].read_text())
+    source = record["code"]["source_identity"]
+    assert source["content"]["digest"]
+    assert source["origin"] in {"runtime-git", "unavailable", "host-supplied"}
+
+
+def test_csv_generation_fails_closed_on_invalid_supplied_identity(csv_site, tmp_path,
+                                                                  monkeypatch):
+    site, host = csv_site
+    broken = tmp_path / "broken-identity.json"
+    broken.write_text("{", encoding="utf-8")
+    monkeypatch.setenv("HEALTH_REPORT_SOURCE_IDENTITY", str(broken))
+    status, doc = upload(site, host)
+    digest = doc["capture"]["input_sha256"]
+    api(site, host, "POST", "/api/csv/confirm",
+        {"digest": digest,
+         "interpretation": {"category": "city", "measure": "value", "time": "year"}})
+    recipe = neutral_lib.default_recipe(has_time=True)
+    recipe["disclosure"] = neutral_lib.disclosure_record("local-audit")
+    status, job = api(site, host, "POST", "/api/csv/generate",
+                      {"digest": digest, "recipe": recipe})
+    assert status == 202
+    site.wait_idle(10)
+    status, doc = api(site, host, "GET", f"/api/jobs/{job['job_id']}")
+    assert doc["status"] == "failed"
+    assert "source-identity" in doc["error"].lower() or "source identity" in doc["error"].lower()
+    assert not list((site.jobs_root / job["job_id"]).rglob("report.html"))
 
 
 def test_recipe_validation_rejects_health_blocks(csv_site):

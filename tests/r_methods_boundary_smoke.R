@@ -161,4 +161,26 @@ stopifnot(grepl('clean worktree at the recorded commit', summary_html, fixed = T
 stopifnot(grepl('FIXTURE availability: supply the checkout separately.', summary_html, fixed = TRUE))
 stopifnot(!grepl('uncommitted changes present', summary_html, fixed = TRUE))
 
+# A host-supplied identity shows the recorded commit and says what was verified.
+supplied <- list(
+  git_commit = NULL, git_worktree_clean = NULL,
+  source_identity = list(origin = 'host-supplied', verification = 'supplied-digest-match',
+                         commit = 'abc123def456', tracked_dirty = FALSE,
+                         untracked_inputs = 0, untracked_outside_inputs = 0),
+  source_state = list(state = 'clean', commit = 'abc123def456',
+                      label = 'clean worktree at the recorded commit',
+                      detail = 'FIXTURE host-supplied detail.',
+                      availability = 'FIXTURE availability: supply the checkout separately.'))
+supplied_dir <- tempfile(); dir.create(supplied_dir)
+supplied_prov <- summary_prov
+supplied_prov$code <- supplied
+writeLines(toJSON(supplied_prov, auto_unbox = TRUE, null = 'null'),
+           file.path(supplied_dir, 'provenance.json'))
+old_supplied <- setwd(supplied_dir)
+supplied_text <- provenance_summary(b_summary, raw_links = FALSE)
+setwd(old_supplied)
+stopifnot(grepl('abc123def456', supplied_text, fixed = TRUE))
+stopifnot(grepl('commit and tree host-reported', supplied_text, fixed = TRUE))
+stopifnot(grepl('content verified in the runtime', supplied_text, fixed = TRUE))
+
 cat('r-methods-boundary smoke passed\n')

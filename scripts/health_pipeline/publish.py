@@ -14,6 +14,7 @@ import importlib.metadata
 from datetime import datetime, timezone
 from pathlib import Path
 from common import digest, write_json
+import source_identity
 try:
     from neutral_publish import (
         load_neutral_bundle as neutral_load_neutral_bundle,
@@ -144,30 +145,13 @@ SOURCE_STATE_AVAILABILITY=('This package contains neither the source checkout no
                           'both must be supplied separately before either can be inspected.')
 
 def source_state_record(code):
-    """Reader-facing source-state wording from the recorded Git state only.
+    """Reader-facing source-state wording from the recorded state.
 
-    Three states are possible: clean committed source, source with uncommitted changes, and
-    unknown. Cleanliness is never inferred from a commit hash, and an unreadable or missing Git
-    state is "unknown", never "clean". Availability is reported separately, so a clean commit is
-    never presented as proof that a reader has the source.
+    One implementation lives in ``source_identity.derive_state`` so every route reads the
+    same wording. Existing categories and their wording are preserved; a host-supplied
+    identity adds an explicit origin and never upgrades a dirty worktree to "clean".
     """
-    code=code if isinstance(code,dict) else {}
-    commit=code.get('git_commit'); clean=code.get('git_worktree_clean')
-    short=commit[:12] if isinstance(commit,str) and commit else None
-    if clean is True and short:
-        state,label='clean','clean worktree at the recorded commit'
-        detail=(f'Source state recorded at render time: clean worktree at commit {short}. '
-                'A clean commit identifies the source revision; it does not by itself provide the source.')
-    elif clean is False:
-        state,label='uncommitted','uncommitted changes present'
-        detail=(f'Source state recorded at render time: commit {short or "not recorded"} with uncommitted '
-                'changes present. The Git SHA alone does not identify the full working-tree source.')
-    else:
-        state,label='unknown','source state not determined'
-        detail=('Source state recorded at render time: not determined, because the Git state could not be '
-                'read. Source identity is therefore unverified; this is not evidence of a clean tree.')
-    return {'state':state,'commit':commit,'label':label,'detail':detail,
-            'availability':SOURCE_STATE_AVAILABILITY}
+    return source_identity.derive_state(code)
 
 def reproduction_source_state(provenance):
     """The recorded source state used by the published reproduction record.
@@ -180,7 +164,7 @@ def reproduction_source_state(provenance):
     return recorded or source_state_record(code or {})
 
 def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=None,extra=None,
-                     preview=False):
+                     preview=False,source_identity_path=None):
     """Machine-readable record of what was rendered, from which data, with which parameters."""
     bundle=Path(bundle); m=verify_bundle(bundle)
     cfg=json.loads((bundle/'stakeholder.json').read_text())
@@ -202,10 +186,14 @@ def build_provenance(bundle,fmt,quarto='quarto',data_root=None,workflow_config=N
     dates=lambda k:sorted(d[k] for d in datasets if d[k])
     checks=pd.read_csv(bundle/'checks.csv',dtype=str).fillna('')
     toolchain=PROJECT/'workflow/toolchain.json'
-    git_commit=_command(['git','rev-parse','HEAD'])
-    git_status=_command(['git','status','--porcelain','--untracked-files=no'])
-    code={'git_commit':git_commit,'git_worktree_clean':None if git_status is None else git_status=='',
+    observed_commit=source_identity.observe_commit(PROJECT)
+    observed_status=source_identity.observe_status(PROJECT,include_untracked=False)
+    code={'git_commit':observed_commit,
+          'git_worktree_clean':None if observed_status is None else observed_status=='',
           'workflow_config':workflow_config}
+    # A host-supplied record is verified against the declared execution inputs here.
+    # Invalid or mismatching records raise, so no report is published under a false identity.
+    code['source_identity']=source_identity.resolve(PROJECT,source_identity_path)
     # One derived, reader-facing record; every output reads this instead of restating the state.
     code['source_state']=source_state_record(code)
     record={
@@ -1576,6 +1564,10 @@ def render(bundle, output, fmt, quarto="quarto", provenance=None, provenance_out
                     # The composed report is HTML-only: suppress Quarto's alternate-format offer.
                     command += ['-M', 'format-links:false']
             subprocess.run(command,cwd=tmp,check=True,env=env)
+        # The declared execution inputs must still hash to the recorded digest. A change
+        # during the render fails the publication instead of producing a mislabelled package.
+        source_identity.assert_unchanged(
+            ((provenance or {}).get('code') or {}).get('source_identity'),PROJECT)
         # Publish the pair only after both have rendered successfully.
         shutil.copyfile(Path(tmp)/f'report.{fmt}',output)
         shutil.copyfile(Path(tmp)/f'methods.{fmt}',output.parent/f'methods.{fmt}')
@@ -1701,6 +1693,8 @@ def _render_neutral(bundle, output, fmt, quarto='quarto', provenance=None,
         for document in ('report', 'methods'):
             command = _neutral_quarto_command(document, fmt, tmp, provenance, composition)
             subprocess.run(command, cwd=tmp, check=True, env=env)
+        source_identity.assert_unchanged(
+            ((provenance or {}).get('code') or {}).get('source_identity'), PROJECT)
         shutil.copyfile(Path(tmp) / f'report.{fmt}', output)
         shutil.copyfile(Path(tmp) / f'methods.{fmt}', output.parent / f'methods.{fmt}')
         if provenance is not None and provenance_out is not None:
@@ -1750,7 +1744,7 @@ def _workflow_record(path):
     return None
 
 def render_composition_batch(bundle_root,recipes_root,output_root,quarto='quarto',data_root=None,
-                             workflow_config=None,audiences=BATCH_AUDIENCES):
+                             workflow_config=None,audiences=BATCH_AUDIENCES,source_identity_path=None):
     """Render one composed HTML report per audience from that audience's own bundle and recipe.
 
     Every audience must resolve its own retained bundle and a recipe whose declared audience
@@ -1770,7 +1764,8 @@ def render_composition_batch(bundle_root,recipes_root,output_root,quarto='quarto
             bundle=audience_bundle(bundle_root,audience)
             output=Path(output_root)/audience/'report.html'
             provenance_out=output.parent/'provenance.json'
-            record=build_provenance(bundle,'html',quarto,data_root,wf)
+            record=build_provenance(bundle,'html',quarto,data_root,wf,
+                                    source_identity_path=source_identity_path)
             render(bundle,output,'html',quarto,record,provenance_out,recipe)
             results.append({'audience':audience,'status':'rendered',
                             'report':str(output),'provenance':str(provenance_out)})
@@ -1790,12 +1785,14 @@ def main(argv=None):
     ap.add_argument('--recipes',default=str(HERE/'config/composer/compositions'),
                     help='Directory of <audience>.json composition recipes')
     ap.add_argument('--output-root',help='Batch output root; each audience writes <audience>/report.html')
+    ap.add_argument('--source-identity',help='Host-collected source-identity record (JSON); invalid records fail the render')
     a=ap.parse_args(argv)
     if a.action=='batch':
         if not a.bundle_root or not a.output_root:
             ap.error('--bundle-root and --output-root are required for batch')
         results=render_composition_batch(a.bundle_root,a.recipes,a.output_root,a.quarto,
-                                         a.data_root,a.workflow_config)
+                                         a.data_root,a.workflow_config,
+                                         source_identity_path=a.source_identity)
         for item in results:
             detail=f" -> {item['report']}" if item['status']=='rendered' else f" ({item['error']})"
             print(f"{item['audience']}: {item['status']}{detail}")
@@ -1815,9 +1812,11 @@ def main(argv=None):
                 # saved neutral analysis and the frozen recipe, exactly as the site builds it.
                 # Without this branch the documented replay command fails on its first read.
                 recipe=load_composition(a.composition) if a.composition else {}
-                record=neutral_build_provenance(a.bundle,recipe,a.composition,PROJECT)
+                record=neutral_build_provenance(a.bundle,recipe,a.composition,PROJECT,
+                                                source_identity_path=a.source_identity)
             else:
-                record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,_workflow_record(a.workflow_config))
+                record=build_provenance(a.bundle,a.action,a.quarto,a.data_root,_workflow_record(a.workflow_config),
+                                        source_identity_path=a.source_identity)
         render(a.bundle,a.output,a.action,a.quarto,record,a.provenance,a.composition)
 
 if __name__=='__main__':

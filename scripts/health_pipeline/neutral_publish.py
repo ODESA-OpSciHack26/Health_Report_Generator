@@ -12,6 +12,7 @@ import hashlib
 from pathlib import Path
 
 import neutral_describe as nd
+import source_identity as source_identity_module
 
 NEUTRAL_PROFILE = "neutral-overview"
 
@@ -236,7 +237,8 @@ def composition_provenance(recipe: dict, recipe_path, analysis: dict) -> dict:
 
 
 def build_neutral_provenance(bundle: Path, recipe: dict, recipe_path,
-                             project_root: Path, *, input_kind: str = "neutral") -> dict:
+                             project_root: Path, *, input_kind: str = "neutral",
+                             source_identity_path=None) -> dict:
     """Provenance for a neutral composed render: blocks + composition + dataset passport.
 
     Only the blocks present in the recipe get records, mirroring the health path: intro,
@@ -255,6 +257,7 @@ def build_neutral_provenance(bundle: Path, recipe: dict, recipe_path,
             records.append(build_values_record(
                 bundle, project_root, entry["instance_id"], block, analysis,
                 recipe.get("disclosure")))
+    identity = source_identity_module.resolve(project_root, source_identity_path)
     return {
         "dataset": {
             "kind": "neutral",
@@ -268,6 +271,11 @@ def build_neutral_provenance(bundle: Path, recipe: dict, recipe_path,
         "interpretation": dict(interpretation),
         "blocks": records,
         "composition": composition_provenance(recipe, recipe_path, analysis),
+        # Neutral packages previously carried no source field; the shared record is additive.
+        # An explicitly supplied but invalid record raises before any render starts.
+        "code": {"source_identity": identity,
+                 "source_state": source_identity_module.derive_state(
+                     {"source_identity": identity})},
         "input_kind": input_kind,
         "neutral": True,
     }

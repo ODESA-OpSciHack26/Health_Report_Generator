@@ -8,7 +8,10 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import publish
+import source_identity
 
 CLEAN_SHA = "8e8ad84c99d9d877e574cde15b6aaf74d141b6b2"
 
@@ -136,3 +139,128 @@ def test_published_reproduction_record_for_dirty_and_unknown_states(tmp_path, mo
         record = json.loads((work / "reproduction" / "reproduction.json").read_text())
         assert record["source_state_status"] == expected
         assert code["source_state"]["detail"] in record["source_state"]
+
+
+def _project_and_bundle(tmp_path):
+    import hashlib
+    from test_composer_series import build_series_bundle
+    from test_source_identity import make_project, record_for
+
+    project = make_project(tmp_path / "project")
+    bundle = build_series_bundle(tmp_path / "case")
+    root = bundle["bundle"]
+    sources = root / "sources.csv"
+    sources.write_text(
+        "source_file,metadata_file,sha256,metadata_sha256,snapshot_id,dataset_id,topic,"
+        "source_system,publishing_date,rows,status,detail,used\n"
+        "data/virus/data.csv,data/virus/metadata.json," + "b" * 64 + "," + "c" * 64 +
+        "," + "d" * 64 + ",ds1,virus,mandatory_reporting_system,2026-01-01,4,ok,,True\n")
+    checks = root / "checks.csv"
+    checks.write_text("dataset_id,check,status,detail\nds1,no_duplicate_rows,PASS,0\n")
+    manifest = json.loads((root / "bundle.json").read_text())
+    manifest["snapshot_id"] = json.loads((root / "snapshot.json").read_text())["snapshot_id"]
+    for name in ("sources.csv", "checks.csv"):
+        manifest["files"][name] = hashlib.sha256((root / name).read_bytes()).hexdigest()
+    (root / "bundle.json").write_text(json.dumps(manifest))
+    return project, bundle, record_for(project, tmp_path)
+
+
+def test_build_provenance_verifies_supplied_identity(tmp_path, monkeypatch):
+    project, bundle, identity = _project_and_bundle(tmp_path)
+    monkeypatch.setattr(publish, "PROJECT", project)
+    html = publish.build_provenance(bundle["bundle"], "html",
+                                    source_identity_path=identity)
+    pdf = publish.build_provenance(bundle["bundle"], "pdf",
+                                   source_identity_path=identity)
+    for record in (html, pdf):
+        source = record["code"]["source_identity"]
+        assert source["origin"] == "host-supplied"
+        assert source["verification"] == "supplied-digest-match"
+        assert source["content"]["digest"] == json.loads(Path(identity).read_text())[
+            "content"]["digest"]
+        assert record["code"]["source_state"]["state"] == "clean"
+        assert record["code"]["git_commit"] == source["commit"]
+        assert "files" not in source["content"]
+    assert html["code"]["source_identity"]["content"]["digest"] == \
+        pdf["code"]["source_identity"]["content"]["digest"]
+
+
+def test_build_provenance_fails_closed_on_invalid_supplied_identity(tmp_path, monkeypatch):
+    project, bundle, identity = _project_and_bundle(tmp_path)
+    monkeypatch.setattr(publish, "PROJECT", project)
+    payload = json.loads(Path(identity).read_text())
+    payload["content"]["count"] = 1
+    broken = tmp_path / "broken.json"
+    broken.write_text(json.dumps(payload))
+    with pytest.raises(source_identity.SourceIdentityError):
+        publish.build_provenance(bundle["bundle"], "html", source_identity_path=broken)
+
+
+def test_build_provenance_fails_closed_without_git_and_no_identity(tmp_path, monkeypatch):
+    project, bundle, _ = _project_and_bundle(tmp_path)
+    plain = tmp_path / "no-git"
+    from test_source_identity import FILES
+    from test_source_identity import _write
+    _write(plain, FILES)
+    monkeypatch.setattr(publish, "PROJECT", plain)
+    record = publish.build_provenance(bundle["bundle"], "html")
+    source = record["code"]["source_identity"]
+    assert source["origin"] == "unavailable"
+    assert source["commit"] is None
+    assert source["content"]["digest"]
+    assert record["code"]["source_state"]["state"] == "unknown"
+
+
+def test_render_refuses_when_inputs_change_after_provenance(tmp_path, monkeypatch):
+    project, bundle, identity = _project_and_bundle(tmp_path)
+    monkeypatch.setattr(publish, "PROJECT", project)
+    monkeypatch.setattr(publish, "build_block", lambda *args, **kwargs: {"status": "verified"})
+    record = publish.build_provenance(bundle["bundle"], "html",
+                                      source_identity_path=identity)
+    work = tmp_path / "render"
+    work.mkdir()
+    monkeypatch.setattr(publish, "package",
+                        lambda source, dest: Path(dest).mkdir(parents=True, exist_ok=True))
+
+    def fake_run(command, cwd=None, check=True, env=None):
+        (Path(cwd) / (command[2].replace(".qmd", ".html"))).write_text("<html></html>")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(publish.subprocess, "run", fake_run)
+    (project / "workflow" / "config.yaml").write_text("out: changed\n")
+    with pytest.raises(source_identity.SourceIdentityError):
+        publish.render(bundle["bundle"], work / "report.html", "html", "quarto",
+                       record, work / "provenance.json")
+    assert not (work / "report.html").exists()
+    assert not (work / "provenance.json").exists()
+
+
+def test_release_records_identity_and_fails_closed(tmp_path, monkeypatch):
+    import release
+    from test_source_identity import make_project, record_for
+
+    project = make_project(tmp_path / "project")
+    (project / "tests").mkdir()
+    (project / "scripts" / "health_pipeline").mkdir()
+    (project / "scripts" / "health_pipeline" / "step.py").write_text("x = 1\n")
+    out = project / "results"
+    out.mkdir()
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(release, "command", lambda args: "test")
+    identity = record_for(project, tmp_path)
+
+    record = release.build_release(out, source_identity_path=identity)
+    saved = json.loads((out / "release.json").read_text())
+    assert saved["source_identity"]["origin"] == "host-supplied"
+    assert saved["source_identity"]["content"]["digest"] == \
+        record["source_identity"]["content"]["digest"]
+    assert saved["git_commit"] == saved["source_identity"]["commit"]
+
+    payload = json.loads(Path(identity).read_text())
+    payload["git"]["commit"] = "z" * 40
+    broken = tmp_path / "broken.json"
+    broken.write_text(json.dumps(payload))
+    (out / "release.json").unlink()
+    with pytest.raises(source_identity.SourceIdentityError):
+        release.build_release(out, source_identity_path=broken)
+    assert not (out / "release.json").exists()

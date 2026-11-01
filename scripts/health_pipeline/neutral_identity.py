@@ -25,6 +25,7 @@ IDENTITY_VERSION = 1
 # added deliberately rather than silently escaping reuse identity.
 REUSABLE_FILES = (
     "scripts/health_pipeline/publish.py",
+    "scripts/health_pipeline/source_identity.py",
     "scripts/health_pipeline/neutral_describe.py",
     "scripts/health_pipeline/neutral_publish.py",
     "scripts/health_pipeline/neutral_library.py",

@@ -298,7 +298,8 @@ def _named_recipe(directory, audience, block_order, declared=None, prefix=None):
 def _stub_batch(tmp_path, monkeypatch, audiences=None):
     calls = []
 
-    def fake_provenance(bundle, fmt, quarto=None, data_root=None, wf=None):
+    def fake_provenance(bundle, fmt, quarto=None, data_root=None, wf=None,
+                        source_identity_path=None):
         return {"schema": "test", "bundle": str(bundle), "format": fmt}
 
     def fake_render(bundle, output, fmt, quarto="quarto", provenance=None,
