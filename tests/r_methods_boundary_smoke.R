@@ -47,7 +47,7 @@ series_record <- function(instance) list(status = 'verified', instance_id = inst
   presentation = list(unit = 'cases'), identities = list(), snapshot = list(snapshot_id = strrep('a', 64)),
   implementation = list())
 
-run <- function(composition, blocks) {
+run <- function(composition, blocks, route = NULL) {
   dir <- tempfile(); dir.create(dir)
   writeLines(toJSON(list(blocks = blocks), auto_unbox = TRUE, null = 'null'), file.path(dir, 'provenance.json'))
   if(!is.null(composition))
@@ -58,7 +58,7 @@ run <- function(composition, blocks) {
     writeLines(toJSON(full, auto_unbox = TRUE, null = 'null'), file.path(dir, 'provenance.json'))
   }
   owd <- setwd(dir); on.exit(setwd(owd), add = TRUE)
-  methods_html(b, navigation = FALSE)
+  methods_html(b, navigation = FALSE, composed = route)
 }
 composed <- function(recipe_blocks, display_topics = 'virus')
   list(audience = 'test', effective_recipe = recipe_blocks,
@@ -184,3 +184,27 @@ stopifnot(grepl('commit and tree host-reported', supplied_text, fixed = TRUE))
 stopifnot(grepl('content verified in the runtime', supplied_text, fixed = TRUE))
 
 cat('r-methods-boundary smoke passed\n')
+
+# Route-aware reproduction/navigation; preserve all existing tests.
+canonical_explicit <- run(NULL, list(ref_record('ref-a')), route = FALSE)
+composed_explicit <- run(
+  composed(list(list(block = 'reference-comparison', instance_id = 'ref-x'))),
+  list(ref_record('ref-x')), route = TRUE)
+for (text in list(legacy, canonical_explicit)) {
+  stopifnot(!grepl('href="reproduction/composition.json"', text, fixed = TRUE))
+  stopifnot(!grepl('href="reproduction/reproduction.json"', text, fixed = TRUE))
+  stopifnot(grepl('This canonical package does not publish a composition recipe', text, fixed = TRUE))
+  stopifnot(!grepl('effective recipe digest appears', text, fixed = TRUE))
+  stopifnot(!grepl('report.html#quality-summary', text, fixed = TRUE))
+}
+for (text in list(valid, composed_explicit)) {
+  stopifnot(grepl('href="reproduction/composition.json"', text, fixed = TRUE))
+  stopifnot(grepl('href="reproduction/reproduction.json"', text, fixed = TRUE))
+}
+canonical_quality <- quality_methods_html(b_summary, composed = FALSE)
+composed_quality <- quality_methods_html(b_summary, composed = TRUE)
+stopifnot(grepl('href="report.html">', canonical_quality, fixed = TRUE))
+stopifnot(!grepl('report.html#quality-summary', canonical_quality, fixed = TRUE))
+stopifnot(grepl('report.html#quality-summary', composed_quality, fixed = TRUE))
+stopifnot(identical(quality_methods_html(b_summary), composed_quality))
+cat('route-aware methods regression passed\n')

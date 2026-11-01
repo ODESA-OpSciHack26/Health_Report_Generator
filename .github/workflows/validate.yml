@@ -80,13 +80,13 @@ jobs:
                 -p no:cacheprovider --junitxml=/app/rfree-quarto-runtime.xml
             "
 
-      - name: Enforce four executed quarto_runtime tests
+      - name: Enforce eight executed quarto_runtime tests
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             --volume "$PWD:/app" \
             --workdir /app \
-            health-report:rfree-ci python -c "import xml.etree.ElementTree as ET; root=ET.parse('/app/rfree-quarto-runtime.xml').getroot(); cases=root.findall('.//testcase'); skipped=root.findall('.//skipped'); failed=root.findall('.//failure')+root.findall('.//error'); print('QUARTO_RUNTIME_CASES', len(cases), [c.get('name') for c in cases]); ok=(len(cases)==4 and not skipped and not failed); raise SystemExit(0 if ok else 'expected 4 executed quarto_runtime tests with no skips/failures')"
+            health-report:rfree-ci python scripts/ci/check_quarto_runtime.py /app/rfree-quarto-runtime.xml
 
   secrets:
     name: secrets
@@ -116,7 +116,7 @@ jobs:
             --env HOME=/tmp \
             --volume "$PWD:/app" \
             health-report:reports-ci \
-            sh -ec 'command -v Rscript >/dev/null; python -m pytest -q'
+            sh -ec 'command -v Rscript >/dev/null; python -m pytest -q -m "not quarto_runtime"'
 
       - name: Report-runtime integration tests
         run: |

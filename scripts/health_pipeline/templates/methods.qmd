@@ -21,6 +21,7 @@ params:
   data_dir: "."
   download_prefix: ""
   html_only: false
+  composed_report: false
   input_kind: "canonical"
   block_recipe: ""
   doc_title: "Disease notifications | Methods & sources"
@@ -40,7 +41,7 @@ if(is_neutral) {
 ```{r}
 #| results: asis
 if(is_neutral && knitr::is_html_output()) cat(neutral_methods_html(b, prefix=params$download_prefix))
-if(!is_neutral && knitr::is_html_output())cat(methods_html(b,prefix=params$download_prefix,pdf=!params$html_only))
+if(!is_neutral && knitr::is_html_output())cat(methods_html(b,prefix=params$download_prefix,pdf=!params$html_only,composed=params$composed_report))
 if(knitr::is_html_output()) cat(provenance_script(), interactive_tables_script())
 if(!is_neutral && knitr::is_latex_output()) {
   p <- presentation_profile(b)

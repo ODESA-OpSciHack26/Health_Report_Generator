@@ -48,7 +48,10 @@ body {background:var(--paper);color:var(--ink);font-family:Arial,sans-serif;font
 .reproduction-code pre{overflow:auto;padding:18px;background:#142c38;color:#eef5f8}
 .reproduction-code pre code{font:13px/1.6 monospace;white-space:pre}
 .provenance-list dt{font-weight:600;margin-top:12px}
-.provenance-list dd{margin:4px 0;overflow-wrap:anywhere}
+.provenance-list dd{margin:4px 0;min-width:0;overflow-wrap:anywhere}
+.audit-row strong,.audit-row code,.provenance-list dd code{min-width:0;overflow-wrap:anywhere;white-space:normal}
+.quality-explanation{min-width:0;overflow-wrap:anywhere}
+.quality-explanation code{min-width:0;overflow-wrap:anywhere;white-space:normal}
 @media(max-width:850px){
   .document-layout{grid-template-columns:1fr;gap:0}
   .document-toc nav{position:static}

@@ -7,6 +7,7 @@ configfile: 'workflow/config.yaml'
 P = 'scripts/health_pipeline'
 sys.path.insert(0, str(Path(P).resolve()))
 from common import digest, object_hash
+import source_identity
 OUT = config['out'].rstrip('/')
 STAKEHOLDERS = config['stakeholders']
 PYTHON = sys.executable
@@ -14,6 +15,7 @@ QUARTO = config.get('quarto', 'quarto')
 # Host-collected source identity (see scripts/health_pipeline/source_identity.py).
 # Empty means: use the runtime's own Git observation, or record the state as unknown.
 SOURCE_IDENTITY = config.get('source_identity') or os.environ.get('HEALTH_REPORT_SOURCE_IDENTITY') or ''
+SOURCE_IDENTITY_ARG = source_identity.source_identity_argument(SOURCE_IDENTITY)
 for s in STAKEHOLDERS:
     if json.loads(Path(f'{P}/config/stakeholders/{s}.json').read_text())['id'] != s:
         raise ValueError('Stakeholder filename and id must match')
@@ -90,14 +92,14 @@ rule analyse:
 rule render_html:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
     output: report=OUT+'/reports/{s}/report.html', methods=OUT+'/reports/{s}/methods.html', provenance=OUT+'/reports/{s}/provenance.json'
-    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest'), source_identity=SOURCE_IDENTITY
-    shell: '{PYTHON:q} {P}/publish.py html --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml --source-identity {params.source_identity:q}'
+    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest'), source_identity_arg=SOURCE_IDENTITY_ARG
+    shell: '{PYTHON:q} {P}/publish.py html --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml {params.source_identity_arg}'
 
 rule render_pdf:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
     output: report=OUT+'/reports/{s}/report.pdf', methods=OUT+'/reports/{s}/methods.pdf', provenance=OUT+'/reports/{s}/provenance.pdf.json'
-    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest'), source_identity=SOURCE_IDENTITY
-    shell: '{PYTHON:q} {P}/publish.py pdf --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml --source-identity {params.source_identity:q}'
+    params: bundle=lambda w:f'{OUT}/reports/{w.s}/data', data_root=DATA_ROOT or config.get('snapshot_manifest'), source_identity_arg=SOURCE_IDENTITY_ARG
+    shell: '{PYTHON:q} {P}/publish.py pdf --bundle {params.bundle:q} --output {output.report:q} --quarto {QUARTO:q} --provenance {output.provenance:q} --data-root {params.data_root:q} --workflow-config workflow/config.yaml {params.source_identity_arg}'
 
 rule package_shiny:
     input: bundle=[OUT+'/reports/{s}/data/'+n for n in BUNDLE_NAMES], code=PRESENTATION_CODE, env=ENVIRONMENT
@@ -108,5 +110,5 @@ rule package_shiny:
 rule release:
     input: HTML, PDF, APPS, PROVENANCE, ANALYSIS, ENVIRONMENT, f'{P}/release.py', 'Snakefile', 'workflow/config.yaml', *[str(p) for p in Path('tests').glob('*') if p.is_file()], *[str(p) for p in Path(P).glob('*.py')]
     output: OUT+'/release.json'
-    params: out=OUT, source_identity=SOURCE_IDENTITY
-    shell: '{PYTHON:q} {P}/release.py --out {params.out:q} --quarto {QUARTO:q} --source-identity {params.source_identity:q}'
+    params: out=OUT, source_identity_arg=SOURCE_IDENTITY_ARG
+    shell: '{PYTHON:q} {P}/release.py --out {params.out:q} --quarto {QUARTO:q} {params.source_identity_arg}'

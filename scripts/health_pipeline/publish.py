@@ -1552,6 +1552,7 @@ def render(bundle, output, fmt, quarto="quarto", provenance=None, provenance_out
             command = [quarto,'render',f'{document}.qmd','--to',fmt]
             if document == 'methods':
                 command += ['-P', 'download_prefix:data/']
+                command += ['-P', 'composed_report:' + ('true' if composition is not None else 'false')]
                 if composition is not None and fmt == 'html':
                     # No PDF is generated beside this HTML-only package; do not offer one.
                     command += ['-P', 'html_only:true', '-M', 'format-links:false']

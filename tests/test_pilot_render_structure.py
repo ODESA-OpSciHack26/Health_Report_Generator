@@ -93,6 +93,7 @@ def _tree(rendered):
     return parser.root
 
 
+@pytest.mark.quarto_runtime
 @pytest.mark.skipif(shutil.which("quarto") is None,
                     reason="real-Quarto structure test requires the B2 image")
 @pytest.mark.parametrize("audience,document,expected_details", [
@@ -122,6 +123,7 @@ def test_table_scroll_ends_at_table_and_details_survive(audience, document,
         assert "Open the searchable and sortable observation table" in rendered
 
 
+@pytest.mark.quarto_runtime
 @pytest.mark.skipif(shutil.which("quarto") is None,
                     reason="real-Quarto structure test requires the B2 image")
 def test_methods_tables_are_balanced_and_have_no_details(tmp_path):

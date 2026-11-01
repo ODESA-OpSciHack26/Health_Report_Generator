@@ -44,7 +44,9 @@ tampered bundles, broken links, missing anchors, remote assets and embedded-prov
 Protect `main` (Settings → Branches, or a ruleset):
 
 - Require a pull request before merging, with at least one approving review; dismiss stale approvals.
-- Require status checks to pass and the branch to be up to date: `fast`, `secrets`, `container`, `full`.
+- Require status checks to pass and the branch to be up to date: `fast`, `secrets`, `container`,
+  `rfree-pilot`, `full`. `rfree-pilot` is the mandatory home of the eight `quarto_runtime` tests and
+  must be required, because the canonical container deselects that marker.
 - Block force pushes and deletion; include administrators.
 
 Equivalent API call (adjust reviewers as needed):
@@ -52,7 +54,7 @@ Equivalent API call (adjust reviewers as needed):
 ```sh
 gh api -X PUT repos/LarsEBaumann/Health_Report_Generator/branches/main/protection \
   -H "Accept: application/vnd.github+json" --input - <<'JSON'
-{"required_status_checks":{"strict":true,"contexts":["fast","secrets","container","full"]},
+{"required_status_checks":{"strict":true,"contexts":["fast","secrets","container","rfree-pilot","full"]},
  "enforce_admins":true,
  "required_pull_request_reviews":{"required_approving_review_count":1,"dismiss_stale_reviews":true},
  "restrictions":null,"allow_force_pushes":false,"allow_deletions":false}
@@ -66,4 +68,4 @@ The selected-report and data-update workflows keep `ref: main`, so they only eve
 - `ruff check .`, `python -m pytest -q` and `snakemake --dry-run` pass.
 - Full build, `check_outputs.py`, `verify_release.py`, Shiny and dashboard smoke tests pass; rebuild is a no-op.
 - Secret scan reports no leaks.
-- On the pull request, all four jobs pass on both push and pull_request events.
+- On the pull request, all five jobs pass on both push and pull_request events.

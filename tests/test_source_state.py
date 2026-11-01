@@ -5,6 +5,7 @@ Availability is a separate statement: a clean commit never implies that a reader
 source checkout or the container image.
 """
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -209,6 +210,38 @@ def test_build_provenance_fails_closed_without_git_and_no_identity(tmp_path, mon
     assert source["commit"] is None
     assert source["content"]["digest"]
     assert record["code"]["source_state"]["state"] == "unknown"
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _render_html_commands(tmp_path, source_identity):
+    args = ["snakemake", "--dry-run", "--printshellcmds", "--cores", "1",
+            "--until", "render_html",
+            "--config", f"out={tmp_path / 'out'}"]
+    if source_identity is not None:
+        args.append(f"source_identity={source_identity}")
+    env = os.environ.copy()
+    env.pop("HEALTH_REPORT_SOURCE_IDENTITY", None)
+    completed = subprocess.run(args, cwd=ROOT, capture_output=True, text=True,
+                               env=env, timeout=60)
+    assert completed.returncode == 0, completed.stderr
+    return [line for line in completed.stdout.splitlines()
+            if "publish.py html" in line]
+
+
+@pytest.mark.parametrize("identity", [None, ""])
+def test_snakefile_omits_absent_or_empty_source_identity(tmp_path, identity):
+    commands = _render_html_commands(tmp_path, identity)
+    assert commands
+    assert all("--source-identity" not in line for line in commands)
+
+
+def test_snakefile_quotes_supplied_source_identity_path_with_spaces(tmp_path):
+    path = "/tmp/identity with spaces.json"
+    commands = _render_html_commands(tmp_path, path)
+    assert commands
+    assert all(f"--source-identity '{path}'" in line for line in commands)
 
 
 def test_render_refuses_when_inputs_change_after_provenance(tmp_path, monkeypatch):

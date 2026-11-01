@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -380,6 +381,13 @@ def public_record(origin: str, verification: str, *, commit=None, tree=None,
         "collected_at_utc": collected_at,
         "limits": LIMITS,
     }
+
+
+def source_identity_argument(value) -> str:
+    """Shell fragment for an optional identity path; empty means omit the option."""
+    if not value:
+        return ""
+    return "--source-identity " + shlex.quote(str(value))
 
 
 def resolve(project_root, supplied_path=None) -> dict:

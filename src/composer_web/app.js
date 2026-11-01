@@ -3045,6 +3045,16 @@ function humanTime(iso) {
     + ", " + pad(date.getUTCHours()) + ":" + pad(date.getUTCMinutes()) + " UTC";
 }
 
+// One readable line for the saved list; the complete text stays in the diagnostics disclosure.
+function failureHeadline(message) {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const stop = text.search(/[.!?](\s|$)/);
+  const sentence = stop > 0 ? text.slice(0, stop + 1) : text;
+  if (sentence.length <= 160) return sentence;
+  return sentence.slice(0, 157).replace(/[\s,;:]+$/, "") + "…";
+}
+
 function classificationLabel(job) {
   if (job.classification === "custom") return "Custom composition";
   if (job.classification === "default") return "Default";
@@ -3091,12 +3101,9 @@ async function loadSaved(quiet) {
         : entry.label + " · " + classificationLabel(job);
       const when = document.createElement("span");
       when.className = "hint";
-      when.textContent = job.created_utc + " · " + job.status
-        + " · recipe " + shortDigest(job.recipe_sha256)
-        + (job.error ? " — " + job.error : "");
       when.textContent = humanTime(job.created_utc) + " · " + (job.mode === "csv" ? "CSV"
         : (entry.label || job.preset || "health")) + " · " + job.status
-        + (job.error ? " — " + job.error : "");
+        + (job.error ? " — " + failureHeadline(job.error) : "");
       head.append(title, when);
       row.append(head);
       const details = document.createElement("details");
@@ -3111,6 +3118,17 @@ async function loadSaved(quiet) {
       summary.className = "hint";
       summary.textContent = snapshotText(job.snapshot_summary);
       body.append(summary);
+
+      if (job.status === "failed" && job.error) {
+        const diagnostics = document.createElement("details");
+        diagnostics.className = "saved-diagnostics";
+        const diagnosticsSummary = document.createElement("summary");
+        diagnosticsSummary.textContent = "Full diagnostics";
+        const diagnosticsText = document.createElement("pre");
+        diagnosticsText.textContent = job.error;
+        diagnostics.append(diagnosticsSummary, diagnosticsText);
+        body.append(diagnostics);
+      }
 
       const reuse = job.reuse || { eligible: false, reason: "" };
       const line = document.createElement("p");

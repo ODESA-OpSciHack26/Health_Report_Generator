@@ -175,6 +175,57 @@ def test_legacy_pdf_is_still_supported(tmp_path, monkeypatch):
     assert not any(arg.startswith("block_recipe:") for arg in report)
 
 
+def _method_params(command, name):
+    """Values passed as `-P name:value` pairs, so a bare token is never a match."""
+    values = []
+    for position, arg in enumerate(command):
+        if arg == "-P" and position + 1 < len(command) \
+                and command[position + 1].startswith(name + ":"):
+            values.append(command[position + 1].split(":", 1)[1])
+    return values
+
+
+def _composed_report_args(command):
+    return [arg for arg in command if "composed_report" in arg]
+
+
+def test_canonical_html_methods_receives_composed_report_false(tmp_path, monkeypatch):
+    commands = _capture(tmp_path, monkeypatch, "html", provenance={"schema": "test"})
+    methods = [c for c in commands if "methods.qmd" in c][0]
+    assert _method_params(methods, "composed_report") == ["false"]
+    assert _composed_report_args(methods) == ["composed_report:false"]
+
+
+def test_composed_html_methods_receives_composed_report_true(tmp_path, monkeypatch):
+    commands = _capture(tmp_path, monkeypatch, "html",
+                        provenance={"schema": "test"}, composition=fixture_recipe(tmp_path))
+    methods = [c for c in commands if "methods.qmd" in c][0]
+    assert _method_params(methods, "composed_report") == ["true"]
+    assert _composed_report_args(methods) == ["composed_report:true"]
+
+
+def test_canonical_pdf_methods_receives_composed_report_false(tmp_path, monkeypatch):
+    commands = _capture(tmp_path, monkeypatch, "pdf", provenance={"schema": "test"})
+    methods = [c for c in commands if "methods.qmd" in c][0]
+    assert _method_params(methods, "composed_report") == ["false"]
+    assert _composed_report_args(methods) == ["composed_report:false"]
+
+
+def test_report_documents_receive_no_composed_report(tmp_path, monkeypatch):
+    cases = [
+        ("html", {"provenance": {"schema": "test"}}),
+        ("pdf", {"provenance": {"schema": "test"}}),
+    ]
+    for fmt, kwargs in cases:
+        commands = _capture(tmp_path / fmt, monkeypatch, fmt, **kwargs)
+        report = [c for c in commands if "report.qmd" in c][0]
+        assert _composed_report_args(report) == []
+    composed = _capture(tmp_path / "composed", monkeypatch, "html",
+                        provenance={"schema": "test"}, composition=fixture_recipe(tmp_path))
+    report = [c for c in composed if "report.qmd" in c][0]
+    assert _composed_report_args(report) == []
+
+
 def test_repeated_reference_comparison_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="Repeated reference-comparison"):
         publish.load_composition(write_recipe(tmp_path, [

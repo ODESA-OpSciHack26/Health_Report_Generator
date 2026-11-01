@@ -151,6 +151,7 @@ def _fixture_context():
     return context
 
 
+@pytest.mark.quarto_runtime
 def test_real_quarto_restores_multiple_figures_and_shows_intermediate_placeholders(tmp_path):
     if shutil.which("quarto") is None:
         pytest.skip("real-Quarto integration requires the B2 image")
