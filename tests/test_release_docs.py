@@ -12,7 +12,8 @@ DOCS = [ROOT / 'README.md', ROOT / 'RELEASE_NOTES.md', ROOT / 'CONTRIBUTING.md',
 LINK = re.compile(r'(?<!\!)\[[^\]]+\]\(([^)\s]+)\)')
 RETIRED = (
     'integration/steward-ready-v1',
-    'ODESA-OpSciHack26',
+    'LarsEBaumann/composer-sandbox',
+    'release/composer-r',
     'm4-tabular',
     'pilot-rfree',
     'local-interface',
@@ -85,12 +86,10 @@ def test_readme_documents_one_command_and_expected_outputs():
 def test_readme_states_r_rendering_and_release_candidate_identity():
     readme = (ROOT / 'README.md').read_text()
     assert 'R and Quarto' in readme
-    assert 'release/composer-r' in readme
-    assert 'LarsEBaumann/composer-sandbox' in readme
-    assert 'not the final public distribution repository' in readme
+    assert 'release/v2.0.0-rc.1' in readme
     quick_start = readme.split('## Quick start', 1)[1].split('\n## ', 1)[0]
     commands = re.findall(r'^git clone (.+)$', quick_start, re.MULTILINE)
-    assert commands == ['https://github.com/LarsEBaumann/composer-sandbox.git']
+    assert commands == ['https://github.com/ODESA-OpSciHack26/Health_Report_Generator.git']
 
 
 def test_citation_metadata_is_valid():

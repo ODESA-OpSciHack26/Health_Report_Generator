@@ -25,29 +25,21 @@ composer service in `compose.yaml`; use the native launch command below.
 
 ## Start the service
 
-For the native pipeline environment described in the [installation guide](installation.md):
+Build the audience data bundles once, then start the composer pointing at them:
 
 ```bash
+.venv-pipeline/bin/python -m snakemake tables --cores 2
 .venv-pipeline/bin/python src/composer_site.py \
-  --work-root "$HOME/.local/state/health-report-composer"
+  --work-root "$HOME/.local/state/health-report-composer" \
+  --inputs-root results/reports --data-root data/reference
 ```
 
-This command assumes that environment and its rendering dependencies already exist.
-It is not a fresh-install command.
+The default address is `http://127.0.0.1:2719/`. The server accepts only `127.0.0.1` or
+`localhost` as its bind address. Do not publish it as a network service or use it as a
+patient-data hosting service.
 
-The default address is:
-
-```text
-http://127.0.0.1:2719/
-```
-
-The server accepts only `127.0.0.1` or `localhost` as its bind address. Do not
-publish it as a network service or use it as a patient-data hosting service.
-
-The default input paths are `/inputs/reports` and `/inputs`. These are environment
-defaults, not directories automatically supplied by a fresh clone. Health-report
-operation requires appropriately prepared inputs. The command above is not a
-claim that a fresh installation or all input routes have been validated.
+Without `--inputs-root`, the composer looks in `/inputs/reports`, which a fresh clone does not
+provide, and no health presets are listed.
 
 ## Open the authenticated page
 
@@ -119,10 +111,9 @@ The server resolves each health bundle as:
 
 Here `<audience>` is `researcher`, `health_institution` or `public`.
 Maintained recipes are resolved as `<recipes-root>/<audience>.json`.
-Set `--inputs-root` to the parent containing those audience directories,
-not to an individual `data/` directory. Startup does not create these bundles.
-The complete bundle-preparation and validation procedure still needs
-to be verified before this guide can serve as an end-to-end quick start.
+Set `--inputs-root` to the parent containing those audience directories
+(`results/reports` after `snakemake tables`), not to an individual `data/`
+directory. Startup does not create these bundles.
 
 The standard audience choices are researcher, health institution and public.
 Custom composition is an editing mode, not a fourth stakeholder identity.
