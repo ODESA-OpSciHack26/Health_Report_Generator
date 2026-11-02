@@ -81,8 +81,10 @@ The composer is a separate local web application and needs the same Python depen
 libraries and Quarto:
 
 ```sh
+.venv-pipeline/bin/python -m snakemake tables --cores 2
 .venv-pipeline/bin/python src/composer_site.py \
-  --work-root "$HOME/.local/state/health-report-composer"
+  --work-root "$HOME/.local/state/health-report-composer" \
+  --inputs-root results/reports --data-root data/reference
 ```
 
 See [composer](composer.md) for the access-token flow, input layout and limitations.

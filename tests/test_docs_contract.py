@@ -53,11 +53,11 @@ def test_docs_do_not_instruct_publication_or_tagging():
             assert not re.match(r'^\s*gh release\b', line), (name, line)
 
 
-def test_only_the_sandbox_repository_is_named():
+def test_only_the_release_repository_is_named():
     for path in [ROOT / 'README.md', ROOT / 'CONTRIBUTING.md', ROOT / 'RELEASE_NOTES.md',
                  *(ROOT / 'docs').glob('*.md')]:
         content = path.read_text()
-        assert 'Health_Report_Generator.git' not in content
+        assert 'composer-sandbox' not in content
         assert 'steward-ready' not in content
 
 

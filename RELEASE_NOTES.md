@@ -1,6 +1,6 @@
 # Release notes
 
-## release/composer-r — release candidate (not accepted)
+## v2.0.0-rc.1 — release candidate (not accepted)
 
 This branch is a release candidate for the R-based Composer product. It is not accepted, not
 tagged and not deployed; a branch name is not acceptance, and no GitHub Actions run for this
