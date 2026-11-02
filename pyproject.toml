@@ -17,5 +17,4 @@ select = ["E9", "F"]
 testpaths = ["tests"]
 markers = [
     "report_runtime: requires the real Quarto/R report runtime and external executables",
-    "quarto_runtime: requires Quarto and the Python tabular renderer; not an R dependency",
 ]

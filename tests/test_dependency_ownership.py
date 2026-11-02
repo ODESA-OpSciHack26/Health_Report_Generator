@@ -9,7 +9,7 @@ def read(name):
 
 
 def test_dependency_ownership_document_names_existing_contracts():
-    document = read("docs/dependency-ownership.md")
+    document = read("docs/reproducibility.md")
     for name in (
         "workflow/toolchain.json",
         "scripts/health_pipeline/requirements.lock.txt",
@@ -20,7 +20,7 @@ def test_dependency_ownership_document_names_existing_contracts():
     ):
         assert (ROOT / name).is_file()
         assert name in document
-    assert "docs/dependency-ownership.md" in read("README.md")
+    assert "docs/reproducibility.md" in read("README.md")
 
 
 def test_report_installs_and_checks_the_pipeline_resolution():

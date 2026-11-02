@@ -8,7 +8,6 @@ CONTRACT = json.loads((ROOT / "workflow/toolchain.json").read_text())
 WORKFLOWS = (
     ".github/workflows/validate.yml",
     ".github/workflows/refresh-idd-data.yml",
-    ".github/workflows/render-selected-report.yml",
 )
 
 
@@ -61,18 +60,13 @@ def test_validation_runs_for_push_and_pull_requests():
 
 
 def test_workflow_branch_refs_are_main():
-    for workflow in (
-        ".github/workflows/refresh-idd-data.yml",
-        ".github/workflows/render-selected-report.yml",
-    ):
-        content = text(workflow)
-        assert "ref: main" in content
-        assert "ref: connector" not in content
-    assert "`connector` branch" not in text("CONNECTOR_SETUP.md")
+    content = text(".github/workflows/refresh-idd-data.yml")
+    assert "ref: main" in content
+    assert "ref: connector" not in content
 
 
 def test_documentation_names_authoritative_contract():
-    for path in ("README.md", "GETTING_STARTED.md"):
+    for path in ("README.md", "docs/installation.md"):
         assert "workflow/toolchain.json" in text(path)
 
 

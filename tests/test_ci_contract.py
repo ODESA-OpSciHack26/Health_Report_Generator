@@ -145,7 +145,6 @@ def test_pinned_python_jobs_use_compatible_runner():
     "filename,job_name",
     [
         ("refresh-idd-data.yml", "refresh"),
-        ("render-selected-report.yml", "render"),
     ],
 )
 def test_auxiliary_python_jobs_use_compatible_runner(filename, job_name):

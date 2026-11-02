@@ -33,7 +33,7 @@ The removal is reversible through Git history, but restoration is not part of th
 ## Project licence
 
 The project software is licensed under the MIT License. The tracked [LICENSE](../LICENSE)
-file holds the operative terms; [release-checklist.md](../docs/release-checklist.md)
+file holds the operative terms; [reproducibility.md](../docs/reproducibility.md)
 records how releases treat it. The source-data terms above are separate from that
 software licence: the MIT License does not license the source data, attribution to the
 FOPH is still required when redistributing reports or data, and the publisher publishes

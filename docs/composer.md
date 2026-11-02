@@ -5,7 +5,9 @@ compositions and generating report packages. It supports captured health-report
 inputs and a neutral CSV workflow.
 
 The former GitHub-backed interface and host-local Marimo form are retired.
-A GitHub token is not the composer's local access credential.
+A GitHub token is not the composer's local access credential. The custom-report
+CLI and its cache remain available; the canonical pipeline and supplied-table
+routes are unaffected.
 
 ## Requirements
 
@@ -13,8 +15,8 @@ Run from the repository root in a configured reporting environment. Python alone
 is not sufficient for report generation: rendering also requires the project's
 Python dependencies, R libraries and Quarto.
 
-See [installation](../GETTING_STARTED.md) and
-[dependency ownership](dependency-ownership.md). The authoritative runtime contract
+See [installation](installation.md) and
+[reproducibility](reproducibility.md). The authoritative runtime contract
 is `workflow/toolchain.json`; use the appropriate dependency locks rather than
 installing arbitrary latest versions.
 
@@ -23,7 +25,7 @@ composer service in `compose.yaml`; use the native launch command below.
 
 ## Start the service
 
-For the native pipeline environment described in GETTING_STARTED.md:
+For the native pipeline environment described in the [installation guide](installation.md):
 
 ```bash
 .venv-pipeline/bin/python src/composer_site.py \
@@ -147,7 +149,8 @@ Use the matching code and runtime when reproducing historical outputs.
 Do not expect forced rerenders to be byte-identical when generation timestamps
 change. Do not edit provenance to make an older output appear newly generated.
 
-See [reproduction](reproduction.md), [scientific policy](scientific-policy.md)
+See [reproducibility](reproducibility.md),
+[report generation](report-generation.md#methods-and-scientific-policy)
 and [limitations](limitations.md).
 
 ## Stop the service

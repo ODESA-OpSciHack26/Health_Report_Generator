@@ -1,45 +1,65 @@
 # Release notes
 
-## Integration documentation alignment (unreleased)
+## release/composer-r — release candidate (not accepted)
 
-Active Track B stages are B0-B7 on integration/steward-ready-v1. Older M4/M5 labels retain historical context. The mandatory [workflow-preservation policy](docs/workflow-preservation-policy.md) applies throughout; [conflict dispositions](docs/b0-conflict-dispositions.md) record route, branch, status and licence resolutions. These documentation changes do not implement target features, close B0, constitute new runtime acceptance or publish a release.
+This branch is a release candidate for the R-based Composer product. It is not accepted, not
+tagged and not deployed; a branch name is not acceptance, and no GitHub Actions run for this
+candidate is recorded here.
 
-## Hackathon release
+### Supported product
 
-Reproducible, parameterised FOPH Infectious Diseases Dashboard reporting: researcher, health-institution and public interactive HTML reports from a shared Quarto source and audience parameters, with machine-readable provenance.
+- Canonical pipeline: `snakemake --cores 2` (or `run_all.sh`) renders researcher,
+  health_institution and public reports from one shared Quarto source and audience parameters,
+  producing HTML, PDF, provenance sidecars, packaged Shiny apps and `results/release.json`.
+- Supplied-table CLI: `tabular_run.py build` renders the same three audiences to HTML from one
+  explicitly mapped CSV/TSV with a checksum-pinned request.
+- Local composer: `src/composer_site.py` serves the composition editor, renders one HTML report
+  package at a time and offers the report download.
+- Composed batch (`publish.py batch`), custom reports (`custom_report.py`), and verification
+  (`check_outputs.py`, `verify_release.py`) remain available as documented.
 
-### Highlights
+Report rendering uses R and Quarto. Python orchestrates acquisition, harmonisation, analysis,
+validation and provenance; it does not render reports.
 
-- snakemake --cores 2 or bash scripts/health_pipeline/run_all.sh builds canonical HTML, PDF and Shiny outputs for audiences in workflow/config.yaml.
-- Standard audiences differ in communication parameters and retain matching analytical tables. Python calculates results; presentation consumes verified tables.
-- Sidecar/embedded provenance records source, snapshot, release/retrieval dates, filters, effective parameters, versions, Git commit and render time; release.json records artifact/code hashes.
-- Blocking quality gate, content-addressed snapshots and source-row lineage.
-- Historical release toolchain: Python 3.11.6, R 4.3.2, Quarto 1.3.353, TinyTeX v2026.10; workflow/toolchain.json governs current runtime policy.
-- Separate weekly API synchronization and exact-snapshot reproduction; acquisition is not hidden inside report regeneration.
+### Changes in this candidate
 
-### Development history
+- **Pilot separation.** The experimental Python tabular renderer, its pilot dependency locks, its
+  Dockerfile, its CI job and enforcement checker, its tests and its documentation are no longer part
+  of the release tree. They remain available in the preserved history of this repository.
+- **Renderer option.** `--renderer` remains accepted by the supplied-table CLIs with `r` as the only
+  supported value and the default. `--renderer python` fails with an explicit argparse error; there
+  is no silent fallback.
+- **Existing pilot artifacts.** Reports produced by the retired Python renderer
+  (`health-report/tabular-render/2`) can still be integrity-verified offline. Their recorded source
+  cannot be verified from this checkout and this release cannot regenerate them; `--verify-source`
+  says so explicitly.
+- **Retired routes.** The GitHub-backed selected-report entry point, its workflow and its route-only
+  configuration are removed. Shared audience configuration is retained, including the historical
+  `public_health_expert` analytic base profile used by audience tests.
+- **Handover utilities.** `report.py`, `mock_test.py`, `check_tabular_handover.py`,
+  `watch_and_open_report.sh` and the legacy `data/archive/lyme_sentinella_legacy/` dataset are
+  removed after confirming no supported caller. `evidence_archive.py` is retained as a
+  renderer-independent archive/verify tool for result sets.
+- **Documentation.** Seven user documents replace the development diary set: README,
+  installation, composer, report-generation, reproducibility, troubleshooting and limitations.
+  Machine-readable data migration/removal audit records are retained unchanged.
+- **CI.** The `rfree-pilot` job and the `quarto_runtime` marker are gone; the fast job excludes only
+  `report_runtime`, the container job runs the complete suite and the mandatory `report_runtime`
+  group. Intended required checks are `fast`, `secrets`, `container`, `full`.
 
-| Phase | Outcome |
-|---|---|
-| 0 Baseline | Reference behavior/tests/dry run recorded |
-| 1 Safe hygiene | Junk removal, documentation and contributor guide |
-| 2 Environment alignment | Python/R/Quarto/TinyTeX contract with CI checks |
-| 3 Canonical data | data/reference/ and migration manifest |
-| 4 Legacy removal | Reversible removal of retired Data/ |
-| 5 Multi-audience reports | Three audiences, provenance and interactive tables (PR #12) |
-| 6 CI hardening | Gated CI, action pinning, secret scan and release verification; see docs/phase-6-ci-hardening.md |
-| 7 Release polish | Architecture, limitations, demo, citation, release notes and one-command wrapper fix |
+### Versions
 
-Historical phase records preserve their original context and evidence. The wrapper replaced an earlier reference to removed data/Data and an inappropriate loop over every profile. Documentation now distinguishes separate weekly acquisition from report generation.
-
-### Custom reports and supplied tables
-
-custom_report.py uses a request file and the shared template. Its local cache key covers request, snapshot, code, toolchain and schema. Sidecars include provenance and request/cache identity. The host-local form uses this path/cache; the GitHub-backed interface does not. Cache has no eviction and custom outputs are outside standard release.json. Legacy --out is replaced on every run; preserve earlier output or use a fresh destination.
-
-The optional explicitly mapped CSV/TSV route supports three verified HTML reports; see [tabular reproduction](docs/m4-tabular-reproduction.md). Guided upload, dynamic profiles/composition and evidence inspectors remain Track B targets. Generic HTML does not imply PDF/app parity.
+Python 3.11.6, R 4.3.2, Quarto 1.3.353, uv 0.8.14, TinyTeX 2026.10 — policy in
+`workflow/toolchain.json`. Python lock: `scripts/health_pipeline/requirements.lock.txt`; R
+resolution: `renv.lock`.
 
 ### Known limitations and terms
 
-See [limitations](docs/limitations.md): canonical national totals, descriptive comparisons and transitional non-package code layout. Current software terms are [MIT](LICENSE), not a licence for source data. Historical statements that no project licence existed do not describe the current repository.
+See [limitations](docs/limitations.md). Reports describe notified cases, not infections; comparisons
+are descriptive; recent years can be revised. The software is [MIT](LICENSE)-licensed; the licence
+does not cover the source data. Data: FOPH/BAG Infectious Diseases Dashboard, with separate
+[data terms](data/README.md) and attribution.
 
-Data source: FOPH/BAG Infectious Diseases Dashboard, with separate [data terms](data/README.md) and attribution. Each report identifies its exact snapshot, publication and retrieval dates. Release/tag/deployment decisions remain separate under the [release checklist](docs/release-checklist.md).
+Composer acceptance remains scoped: no broad browser, accessibility, clinical or deployment
+acceptance is claimed. Release, tags, deployment and branch protection are separate maintainer
+decisions.
