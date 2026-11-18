@@ -53,36 +53,76 @@ Without Docker, set up the native environment from [installation](docs/installat
 ## Run the composer
 
 The composer is a local browser app (`src/composer_site.py`) for composing one report package at a
-time. It runs natively, not in Docker. Run from the repository root.
+time. It runs natively, not in Docker. Run all commands below from the repository root.
 
-1. Create the Python environment:
+Opening the interface requires Python; generating reports also requires native R, the restored
+project R packages, and Quarto. Building the Docker report image does not install these tools on
+your host.
 
-   ```sh
-   uv venv --python 3.11.6 .venv-pipeline
-   uv pip install --python .venv-pipeline/bin/python -r scripts/health_pipeline/requirements.lock.txt
-   ```
+### 1. Install the native prerequisites
 
-2. Build the audience data bundles it reads (Python only, about a minute):
+Follow [native installation](docs/installation.md#alternative-native-environment) to install the
+toolchain specified in `workflow/toolchain.json`, including R 4.3.2, Quarto 1.3.353 and uv.
 
-   ```sh
-   .venv-pipeline/bin/python -m snakemake tables --cores 2
-   ```
+### 2. Restore the Python and R environments
 
-3. Start it:
+```sh
+uv venv --python 3.11.6 .venv-pipeline
+uv pip install --python .venv-pipeline/bin/python -r scripts/health_pipeline/requirements.lock.txt
+Rscript workflow/restore_r.R
+```
 
-   ```sh
-   .venv-pipeline/bin/python src/composer_site.py \
-     --work-root "$HOME/.local/state/health-report-composer" \
-     --inputs-root results/reports --data-root data/reference
-   ```
+The R restoration uses `renv.lock` and installs the project library under `.r-library`.
+Do not substitute individual latest-version package installations.
 
-4. Open `http://127.0.0.1:2719/?token=<token>`, where `<token>` is the contents of
-   `$HOME/.local/state/health-report-composer/access-token.txt`. The Researcher, Health institution
-   and Public presets should show as available. Stop with `Ctrl+C`.
+### 3. Configure and check rendering
 
-Generating a report from the composer also needs R packages (`Rscript workflow/restore_r.R`) and
-Quarto 1.3.353, see [installation](docs/installation.md#alternative-native-environment). Token
-handling, options, the CSV workflow and limitations: [composer](docs/composer.md).
+Run these commands in the same terminal used to start the composer:
+
+```sh
+export HEALTH_REPORT_PROJECT="$PWD"
+export HEALTH_REPORT_R_LIBRARY="$PWD/.r-library"
+export R_PROFILE_USER="$PWD/.Rprofile"
+
+Rscript -e 'library(knitr); library(rmarkdown)'
+quarto --version
+quarto check knitr
+```
+
+Confirm that Quarto matches the specified version, detects `knitr` and `rmarkdown`, and passes the
+Knitr engine render check. Resolve failures before starting the application. Repeat the exports
+when launching from a new terminal.
+
+### 4. Prepare the audience inputs
+
+```sh
+.venv-pipeline/bin/python -m snakemake tables --cores 2
+```
+
+### 5. Start the application
+
+```sh
+.venv-pipeline/bin/python src/composer_site.py \
+  --work-root "$HOME/.local/state/health-report-composer" \
+  --inputs-root results/reports --data-root data/reference
+```
+
+Keep this terminal running. In another terminal, print the local access URL:
+
+```sh
+printf 'http://127.0.0.1:2719/?token=%s\n' \
+  "$(cat "$HOME/.local/state/health-report-composer/access-token.txt")"
+```
+
+Open the printed URL in your browser. Keep the token private; do not include it in shared logs,
+screenshots or issues. The Researcher, Health institution and Public presets should show as
+available.
+
+Generate one report to confirm the complete workflow, not just that the interface opens.
+Stop with `Ctrl+C`. Stopping the application does not require deleting its working state.
+
+Token handling, options, the CSV workflow and limitations: [composer](docs/composer.md).
+For failures, see [troubleshooting](docs/troubleshooting.md).
 
 ## What you get
 
